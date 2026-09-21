@@ -254,8 +254,9 @@ input:focus {
 
 .cm-image {
   position: relative;
-  margin: 6px 0;
+  margin: 4px 6px 4px 0;
   display: inline-block;
+  vertical-align: top;
   max-width: 100%;
 }
 
@@ -299,4 +300,15 @@ input:focus {
 .cm-image-remove:hover {
   color: var(--danger);
   border-color: var(--danger);
+}
+
+/* Raw HTML (visible on the cursor lines only) */
+.cm-html {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.cm-underline {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

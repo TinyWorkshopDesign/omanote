@@ -24,7 +24,12 @@ crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
   - `count`: elementi, righe, parole, caratteri;
   - `code`: niente formattazione.
 - Caselle `[] ` o `- [ ] `, elenchi puntati e numerati che si continuano con Invio, `//` per
-  commentare una riga, markdown semplice (`**grassetto**`, `*corsivo*`, `__sottolineato__`, `~~barrato~~`).
+  commentare una riga.
+- **Markdown vero, con anteprima dal vivo** come in Obsidian: titoli `#`…`######`, grassetto e
+  corsivo (anche su più righe), `~~barrato~~`, `` `codice` ``, citazioni, link, e `++sottolineato++`
+  come in Joplin. Anche l'HTML dell'editor ricco di Joplin si vede bene: testo colorato
+  (`<span style="color:…">`), immagini `<img>`, `&nbsp;`. I simboli si nascondono e ricompaiono
+  sulla riga del cursore, per modificarli.
 - Calcoli: scrivi `=` alla fine della riga e il risultato compare subito dopo: `2+3*4=`,
   `100 € + iva =`, `20% di 50 =`, `sqrt(16) =`. Senza `=` la riga resta testo. Le variabili
   (`iva = 22%`) si memorizzano senza mostrare nulla; `totale =` / `media =` sommano il blocco
@@ -82,7 +87,7 @@ crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
 | `⌘D` | elimina nota |
 | `⌘F` | cerca (Invio senza risultati crea una nota) |
 | `⌘⇧K` / `⌘⇧M` | spunta riga / casella → punto → numero |
-| `⌘B` `⌘I` `⌘U` `⌘⇧X` | grassetto, corsivo, sottolineato, barrato |
+| `⌘B` `⌘I` `⌘U` `⌘⇧X` | grassetto, corsivo, sottolineato (`++`), barrato |
 | `⌘⇧H` / `⌘/` | livello titolo / commento |
 | `⌥↑` `⌥↓` | sposta riga |
 | `⌘P` / `⌘W` | finestra in primo piano / nascondi |
