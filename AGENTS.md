@@ -34,6 +34,12 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   SDK is not installed on the dev Mac.
 
 **Known gaps / next steps**
+- **TODO (owner request, high priority): redesign the navigation panel** (`Sidebar.svelte`,
+  opened with ☰ / Mod-\). Today it shows a flat folder list and, below it, a separate
+  flat list of notes: the owner finds it not intuitive at all. Make it hierarchical: a
+  folder tree (notebook → sub-folders → notes) with expand/collapse, the current note
+  highlighted in place, and clear per-folder actions. Confirm the design with the owner
+  before building it.
 - Attachments: OCR inserts text only; images are not stored as Joplin resources yet.
 - Tags are synced but not shown; no in-app trash view.
 - Mobile: timer notifications are not scheduled, so they do not fire while the app is
