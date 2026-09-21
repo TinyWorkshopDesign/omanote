@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::JoplinServer;
 use crate::e2ee::{self, KeyRing, MasterKey};
 use crate::error::{Error, Result};
-use crate::item::{self, RawItem, TYPE_NOTE};
+use crate::item::{self, RawItem, TYPE_NOTE, TYPE_RESOURCE};
 use crate::store::{Store, STORED_TYPES};
 
 pub const SUPPORTED_SYNC_VERSION: i64 = 3;
@@ -220,6 +220,13 @@ impl<'a> Synchronizer<'a> {
                 continue;
             }
 
+            if d.raw.item_type() == TYPE_RESOURCE && d.sync_time == 0 {
+                // New attachment: the file goes up first, like Joplin does.
+                let mut it = d.raw.clone();
+                self.upload_blob(info, &mut it).await?;
+                self.upload_one(info, &it, report).await?;
+                continue;
+            }
             self.upload_one(info, &d.raw, report).await?;
         }
         Ok(())
@@ -233,6 +240,41 @@ impl<'a> Synchronizer<'a> {
         copy.set_time("updated_time", item::now_ms());
         self.db().put_local(&copy)?;
         Ok(copy)
+    }
+
+    /// Uploads an attachment file to `.resource/<id>` (FileV1-encrypted under E2EE)
+    /// and records in the item whether the blob is encrypted.
+    async fn upload_blob(&mut self, info: &SyncInfo, it: &mut RawItem) -> Result<()> {
+        let Some(path) = self.db().resource_file(it.id())? else {
+            return Ok(()); // nothing local (e.g. created elsewhere): keep the remote blob
+        };
+        let bytes = std::fs::read(&path).map_err(|e| Error::Sync(e.to_string()))?;
+        let (body, encrypted) = if info.e2ee_enabled() {
+            (self.keys.encrypt_file(&bytes)?.into_bytes(), true)
+        } else {
+            (bytes, false)
+        };
+        self.api.put(&format!(".resource/{}", it.id()), body).await?;
+        it.set("encryption_blob_encrypted", if encrypted { "1" } else { "0" });
+        Ok(())
+    }
+
+    /// Downloads (and decrypts) an attachment file, saving it next to the database.
+    pub async fn fetch_resource(&mut self, id: &str) -> Result<Option<std::path::PathBuf>> {
+        if let Some(p) = self.db().resource_file(id)? {
+            return Ok(Some(p));
+        }
+        let Some((it, encrypted, ..)) = self.db().raw(id)? else { return Ok(None) };
+        if encrypted {
+            return Err(Error::MasterKeyNotLoaded(id.to_string()));
+        }
+        let Some(bytes) = self.api.get_bytes(&format!(".resource/{id}")).await? else { return Ok(None) };
+        let plain = if it.get("encryption_blob_encrypted") == "1" || e2ee::is_encrypted_text(&String::from_utf8_lossy(&bytes[..bytes.len().min(5)])) {
+            self.keys.decrypt_file(&String::from_utf8_lossy(&bytes))?
+        } else {
+            bytes
+        };
+        Ok(Some(self.db().save_resource_blob(id, &plain)?))
     }
 
     async fn upload_one(&mut self, info: &SyncInfo, it: &RawItem, report: &mut SyncReport) -> Result<()> {

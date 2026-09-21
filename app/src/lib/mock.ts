@@ -53,6 +53,8 @@ notes.push(
   },
 );
 
+const images = new Map<string, string>();
+
 const id32 = () => Array.from({ length: 32 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
 const summary = (n: (typeof notes)[number]): NoteSummary => ({
   id: n.id,
@@ -156,6 +158,15 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       return "Testo riconosciuto (demo)";
     case "toggle_pin":
       return true;
+    case "add_image": {
+      const id = id32();
+      images.set(id, URL.createObjectURL(new Blob([args as unknown as Uint8Array<ArrayBuffer>], { type: "image/png" })));
+      return id;
+    }
+    case "add_image_file":
+      return id32();
+    case "resource_path":
+      return images.get(a.id ?? "") ?? null;
     default:
       return null;
   }

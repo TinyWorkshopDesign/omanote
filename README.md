@@ -31,7 +31,11 @@ crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
   alla rovescia), `timer 9am` / `timer 21:15` (fino a un orario), `timer 5: Pasta` (con nome),
   `timer 25 5` / `timer pomo` (pomodoro), `timer p` / `r` / `s` (pausa, riavvia, stop). Il
   timer continua con la finestra nascosta, notifica alla fine e compare nella menu bar su macOS.
-- **OCR**: trascina o incolla uno screenshot e il testo finisce nella nota. `⌘⇧O` cattura una
+- **Immagini**: trascinando o incollando un'immagine Omanote chiede se inserirla come
+  **immagine** (`I`) o come **testo OCR** (`T`). Le immagini diventano allegati Joplin
+  (cifrati con la E2EE) e si vedono anche nei client Joplin; quelle allegate in Joplin si
+  vedono in Omanote.
+- **OCR**: con «Testo» il contenuto dell'immagine finisce nella nota. `⌘⇧O` cattura una
   zona dello schermo. Tutto sul dispositivo: Apple Vision su macOS/iOS, tesseract su Linux
   (già incluso in Omarchy, rispetta `OMARCHY_OCR_LANGS`).
 
@@ -109,5 +113,5 @@ I test E2EE usano vettori generati con lo stesso codice JavaScript di Joplin.
 ## Stato
 
 Verificato end-to-end contro un Joplin Server reale con E2EE, incluso il caso dei conflitti.
-Da fare: allegati e immagini come risorse Joplin, tag, build firmate per iOS e Android,
+Da fare: tag, build firmate per iOS e Android,
 OCR su Android, notifiche del timer programmate su mobile.
