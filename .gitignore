@@ -1,0 +1,8 @@
+target/
+node_modules/
+app/build/
+app/.svelte-kit/
+app/src-tauri/gen/
+*.sqlite
+*.sqlite-*
+.DS_Store
