@@ -4,6 +4,40 @@ Omanote is a quick-notes scratchpad for Linux, macOS, iOS and Android that syncs
 with an unmodified **Joplin Server** and looks like **Omarchy**. Read this before
 changing code.
 
+## Project status (2026-09-21)
+
+Owner: Michele Belleri (writes in Italian; UI text and commits are in Italian, code
+and comments in English). Working and verified on macOS with a real Joplin Server.
+
+**Done and verified**
+- Sync with Joplin Server incl. E2EE (both directions) and conflicts, tested against
+  `joplin/server` in Docker with the official Joplin CLI (`crates/omanote-core/examples/sync_e2e.rs`).
+- Scratchpad behaviour: first-line keywords, lists with `/x` and `[] `, double Enter ends a
+  list, inline math and variables (also in list notes, only `code` notes are raw), timers,
+  swipe navigation, auto-deleted empty notes, keyboard shortcuts.
+- OCR with Apple Vision (tested in the real app); tesseract/grim/slurp path for Linux.
+- 8 LTR languages; Omarchy look (JetBrains Mono, 22 bundled themes, live system theme).
+- macOS window: no title bar, traffic lights shown only with the hover menu (58 px bar).
+- Icons: `design/icon.svg` (cyber pencil, terminal green `#2bff88`) → `npx tauri icon
+  ../design/icon.png` from `app/`; `design/tray.svg` → `app/src-tauri/icons/tray.png`
+  (macOS template image). Render SVGs with `@resvg/resvg-js`.
+- `omanote-cli` + MCP server tested on real synced data.
+
+**Not verified yet**
+- Linux/Omarchy build on real hardware (theme from `colors.toml`, tesseract, grim/slurp,
+  `omanote --toggle` Hyprland binding, undecorated window).
+- iOS/Android: projects not initialised (`tauri ios init` / `android init`); the Android
+  SDK is not installed on the dev Mac.
+
+**Known gaps / next steps**
+- Attachments: OCR inserts text only; images are not stored as Joplin resources yet.
+- Tags are synced but not shown; no in-app trash view.
+- Mobile: timer notifications are not scheduled, so they do not fire while the app is
+  suspended; OCR on Android missing (ML Kit plugin planned).
+- Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
+- In dev (`tauri dev`) the Dock icon is embedded at compile time: after changing icons
+  touch `app/src-tauri/build.rs` to rebuild.
+
 ## Layout
 
 | Path | What |
