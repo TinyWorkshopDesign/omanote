@@ -423,7 +423,7 @@
   }
 
   function pointer(e: MouseEvent) {
-    nearTop = e.clientY < 56;
+    nearTop = e.clientY < 72;
   }
 </script>
 
@@ -556,7 +556,7 @@
     min-height: calc(var(--bar-h) + env(safe-area-inset-top));
     background: var(--bar);
     border-bottom: 1px solid var(--line);
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     transform: translateY(-100%);
     opacity: 0;
     transition:
@@ -565,7 +565,7 @@
   }
   /* Room for the macOS traffic lights (no title bar). */
   header.mac {
-    padding-left: 84px;
+    padding-left: 88px;
   }
   header.shown {
     transform: none;
@@ -583,10 +583,10 @@
   }
   .icon {
     line-height: 1;
-    font-size: 1.25rem;
-    min-width: 34px;
-    min-height: 32px;
-    padding: 6px 8px;
+    font-size: 2.3rem;
+    min-width: 50px;
+    min-height: 48px;
+    padding: 4px 8px;
     color: var(--muted);
   }
   .icon:hover {
@@ -597,17 +597,18 @@
   }
   .crumb {
     font-weight: 700;
+    font-size: 1.2rem;
     color: var(--accent);
     padding: 6px 8px;
   }
   .pos {
     color: var(--muted);
-    font-size: 0.85rem;
+    font-size: 1rem;
     font-variant-numeric: tabular-nums;
   }
   .dot {
     color: var(--result);
-    font-size: 0.8rem;
+    font-size: 1.3rem;
   }
   .dot.syncing {
     color: var(--accent);
