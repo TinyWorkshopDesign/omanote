@@ -155,6 +155,9 @@ const en = {
   "ctx.delete": "Move to trash",
   "ctx.copySuffix": "copy",
   "ctx.deleteNoteConfirm": "Move \"{name}\" to the Joplin trash?",
+  "set.wholeJoplin": "All of Joplin",
+  "set.wholeJoplinHint": "Every Joplin notebook, as folders. New notes go to “{name}”.",
+  "set.newNotesHere": "new notes",
 };
 
 export type Key = keyof typeof en;
@@ -288,6 +291,9 @@ const it: Dict = {
   "ctx.delete": "Sposta nel cestino",
   "ctx.copySuffix": "copia",
   "ctx.deleteNoteConfirm": "Spostare \"{name}\" nel cestino di Joplin?",
+  "set.wholeJoplin": "Tutto Joplin",
+  "set.wholeJoplinHint": "Tutti i notebook di Joplin, come cartelle. Le nuove note vanno in «{name}».",
+  "set.newNotesHere": "nuove note",
 };
 
 const es: Dict = {
@@ -416,6 +422,9 @@ const es: Dict = {
   "ctx.delete": "Mover a la papelera",
   "ctx.copySuffix": "copia",
   "ctx.deleteNoteConfirm": "¿Mover \"{name}\" a la papelera de Joplin?",
+  "set.wholeJoplin": "Todo Joplin",
+  "set.wholeJoplinHint": "Todas las libretas de Joplin, como carpetas. Las notas nuevas van a «{name}».",
+  "set.newNotesHere": "notas nuevas",
 };
 
 const fr: Dict = {
@@ -545,6 +554,9 @@ const fr: Dict = {
   "ctx.delete": "Mettre à la corbeille",
   "ctx.copySuffix": "copie",
   "ctx.deleteNoteConfirm": "Mettre « {name} » dans la corbeille de Joplin ?",
+  "set.wholeJoplin": "Tout Joplin",
+  "set.wholeJoplinHint": "Tous les carnets Joplin, comme dossiers. Les nouvelles notes vont dans « {name} ».",
+  "set.newNotesHere": "nouvelles notes",
 };
 
 const de: Dict = {
@@ -674,6 +686,9 @@ const de: Dict = {
   "ctx.delete": "In den Papierkorb",
   "ctx.copySuffix": "Kopie",
   "ctx.deleteNoteConfirm": "„{name}“ in den Joplin-Papierkorb verschieben?",
+  "set.wholeJoplin": "Ganz Joplin",
+  "set.wholeJoplinHint": "Alle Joplin-Notizbücher als Ordner. Neue Notizen landen in „{name}“.",
+  "set.newNotesHere": "neue Notizen",
 };
 
 const pt: Dict = {
@@ -802,6 +817,9 @@ const pt: Dict = {
   "ctx.delete": "Mover para a lixeira",
   "ctx.copySuffix": "cópia",
   "ctx.deleteNoteConfirm": "Mover \"{name}\" para a lixeira do Joplin?",
+  "set.wholeJoplin": "Todo o Joplin",
+  "set.wholeJoplinHint": "Todos os cadernos do Joplin, como pastas. As notas novas vão para «{name}».",
+  "set.newNotesHere": "notas novas",
 };
 
 const nl: Dict = {
@@ -931,6 +949,9 @@ const nl: Dict = {
   "ctx.delete": "Naar prullenbak",
   "ctx.copySuffix": "kopie",
   "ctx.deleteNoteConfirm": "\"{name}\" naar de Joplin-prullenbak verplaatsen?",
+  "set.wholeJoplin": "Heel Joplin",
+  "set.wholeJoplinHint": "Alle Joplin-notitieboeken als mappen. Nieuwe notities gaan naar “{name}”.",
+  "set.newNotesHere": "nieuwe notities",
 };
 
 const pl: Dict = {
@@ -1060,6 +1081,9 @@ const pl: Dict = {
   "ctx.delete": "Przenieś do kosza",
   "ctx.copySuffix": "kopia",
   "ctx.deleteNoteConfirm": "Przenieść „{name}” do kosza Joplin?",
+  "set.wholeJoplin": "Cały Joplin",
+  "set.wholeJoplinHint": "Wszystkie notesy Joplin jako foldery. Nowe notatki trafiają do „{name}”.",
+  "set.newNotesHere": "nowe notatki",
 };
 
 const DICTS: Record<Lang, Dict> = { en, it, es, fr, de, pt, nl, pl };

@@ -26,6 +26,8 @@ export interface Status {
   omarchy: boolean;
   /** No Joplin Server connected: notes stay on this device. */
   local: boolean;
+  /** Showing every Joplin notebook (tree root ""), new notes still go to root_folder_id. */
+  whole_joplin: boolean;
   data_dir: string;
 }
 
@@ -92,6 +94,7 @@ export const api = {
   syncNow: () => invoke<SyncReport | null>("sync_now"),
   setRootFolder: (folderId?: string, newTitle?: string) =>
     invoke<string>("set_root_folder", { folderId: folderId ?? null, newTitle: newTitle ?? null }),
+  setWholeJoplin: (enabled: boolean) => invoke<void>("set_whole_joplin", { enabled }),
   folders: () => invoke<Folder[]>("list_folders"),
   notes: (folderId?: string) => invoke<NoteSummary[]>("list_notes", { folderId: folderId ?? null }),
   search: (query: string) => invoke<NoteSummary[]>("search_notes", { query }),

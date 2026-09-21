@@ -62,6 +62,13 @@
     setTimeout(() => (copied = ""), 1500);
   }
 
+  const homeName = $derived(folders.find((f) => f.id === status.root_folder_id)?.title ?? "Omanote");
+
+  async function chooseWhole() {
+    await api.setWholeJoplin(true);
+    onRootChanged();
+  }
+
   async function chooseRoot(id: string) {
     await api.setRootFolder(id);
     onRootChanged();
@@ -91,12 +98,24 @@
     <h3>{t("set.notebook")}</h3>
     <p class="hint">{t("set.notebookHint")}</p>
     <div class="list">
+      {#if !status.local}
+        <button class="row whole" class:sel={status.whole_joplin} onclick={chooseWhole}>
+          <span>{t("set.wholeJoplin")}</span><span class="muted">{notebooks.length}</span>
+        </button>
+      {/if}
       {#each notebooks as f (f.id)}
-        <button class="row" class:sel={status.root_folder_id === f.id} onclick={() => chooseRoot(f.id)}>
-          <span>{f.icon ? `${f.icon} ` : ""}{f.title}</span><span class="muted">{f.note_count}</span>
+        <button class="row" class:sel={!status.whole_joplin && status.root_folder_id === f.id} onclick={() => chooseRoot(f.id)}>
+          <span>{f.icon ? `${f.icon} ` : ""}{f.title}</span>
+          <span class="muted"
+            >{#if status.whole_joplin && status.root_folder_id === f.id}<span class="badge">{t("set.newNotesHere")}</span>{/if}
+            {f.note_count}</span
+          >
         </button>
       {/each}
     </div>
+    {#if status.whole_joplin}
+      <p class="hint">{t("set.wholeJoplinHint", { name: homeName })}</p>
+    {/if}
     <div class="inline">
       <input placeholder={t("setup.notebookName")} bind:value={newNotebook} onkeydown={(e) => e.key === "Enter" && createRoot()} />
       <button class="accent" onclick={createRoot} disabled={!newNotebook.trim()}>＋</button>
@@ -287,6 +306,17 @@
     background: var(--accent-soft);
     color: var(--accent);
     font-weight: 700;
+  }
+  .row.whole {
+    border-bottom: 1px solid var(--line);
+    font-weight: 700;
+  }
+  .badge {
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0 5px;
+    margin-right: 6px;
+    font-size: 0.72rem;
   }
   .inline {
     display: flex;

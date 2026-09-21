@@ -64,11 +64,12 @@ impl AppState {
     }
 
     fn root_tree(&self) -> Result<Vec<String>, String> {
-        let root = self.config().root_folder_id;
-        if root.is_empty() {
+        let cfg = self.config();
+        if cfg.root_folder_id.is_empty() {
             return Ok(vec![]);
         }
-        self.db().folder_subtree(&root).map_err(err)
+        // "" is Joplin's top level: its subtree is every notebook.
+        self.db().folder_subtree(cfg.tree_root()).map_err(err)
     }
 }
 
@@ -108,6 +109,8 @@ struct Status {
     omarchy: bool,
     /// Local mode: no Joplin Server connected, notes stay on this device.
     local: bool,
+    /// Showing every Joplin notebook (tree root ""), not just the working one.
+    whole_joplin: bool,
     data_dir: String,
 }
 
@@ -211,6 +214,7 @@ async fn get_status(state: State<'_, AppState>) -> Result<Status, String> {
     Ok(Status {
         configured: c.is_configured(),
         local: c.server_url.is_empty(),
+        whole_joplin: c.whole_joplin,
         server_url: c.server_url,
         email: c.email,
         root_folder_id: c.root_folder_id,
@@ -356,9 +360,21 @@ fn set_root_folder(app: AppHandle, state: State<'_, AppState>, folder_id: Option
     };
     let mut cfg = state.config();
     cfg.root_folder_id = id.clone();
+    cfg.whole_joplin = false;
     state.save_config(cfg)?;
     spawn_sync(&app);
     Ok(id)
+}
+
+/// Shows every Joplin notebook; new notes keep going to the working notebook.
+#[tauri::command]
+fn set_whole_joplin(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
+    let mut cfg = state.config();
+    if cfg.root_folder_id.is_empty() {
+        return Err(E_NO_NOTEBOOK.into());
+    }
+    cfg.whole_joplin = enabled;
+    state.save_config(cfg)
 }
 
 // ---------------------------------------------------------------------------
@@ -422,7 +438,8 @@ fn trash_note(state: State<'_, AppState>, id: String) -> Result<(), String> {
 
 #[tauri::command]
 fn create_folder(state: State<'_, AppState>, title: String, parent_id: Option<String>) -> Result<Folder, String> {
-    let parent = parent_id.filter(|p| !p.is_empty()).unwrap_or_else(|| state.config().root_folder_id);
+    // No parent: inside the working notebook. "" : a new top-level Joplin notebook.
+    let parent = parent_id.unwrap_or_else(|| state.config().root_folder_id);
     state.db().create_folder(&title, &parent).map_err(err)
 }
 
@@ -976,6 +993,7 @@ pub fn run() {
             logout,
             sync_now,
             set_root_folder,
+            set_whole_joplin,
             list_folders,
             list_notes,
             search_notes,
