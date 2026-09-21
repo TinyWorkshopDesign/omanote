@@ -55,6 +55,9 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   `.stignore` is local, so other devices need the same lines.
 - macOS keychain: each debug rebuild changes the binary signature, so macOS may ask
   again for keychain access; the sync waits on that prompt (the UI must not).
+- Release build on the dev Mac: `cd app && PATH=/usr/bin:$PATH npm run tauri build -- --bundles app`.
+  A Python `xattr` (from python.org's framework) shadows `/usr/bin/xattr` and lacks `-r`,
+  which breaks Tauri's ad-hoc signing step. Install with `ditto` into /Applications.
 - In dev (`tauri dev`) the Dock icon is embedded at compile time: after changing icons
   touch `app/src-tauri/build.rs` to rebuild.
 
