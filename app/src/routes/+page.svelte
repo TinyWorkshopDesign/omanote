@@ -46,6 +46,9 @@
   let timerDone = $state(false);
   let pinned = $state(false);
   let nearTop = $state(false);
+  let nearBottom = $state(false);
+  let bottomFlash = $state(false); // bottom bar shown briefly after moving between notes
+  let treeVersion = $state(0); // reloads the navigation tree
   let fontSize = $state(readFontSize());
   const touch = typeof matchMedia !== "undefined" && matchMedia("(hover: none)").matches;
 
@@ -55,6 +58,7 @@
   let syncTimer: ReturnType<typeof setTimeout> | undefined;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingText: string | null = null;
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
   let currentText = "";
 
   const index = $derived(current ? notes.findIndex((n) => n.id === current!.id) : -1);
@@ -62,6 +66,19 @@
   const folderName = $derived(
     folders.find((f) => f.id === (current?.parent_id ?? draftFolder ?? selectedFolder))?.title ?? "Omanote",
   );
+  // Bottom bar: the note stack oldest → newest, one dot per note; the last
+  // slot is "+" (a new note). Shown near the bottom edge or right after moving.
+  const stack = $derived([...notes].reverse());
+  const stackPos = $derived(current ? stack.findIndex((n) => n.id === current!.id) : stack.length);
+  const dotWindow = $derived.by(() => {
+    const slots = stack.length + 1;
+    const size = Math.min(11, slots);
+    const start = Math.max(0, Math.min(stackPos - Math.floor(size / 2), slots - size));
+    return Array.from({ length: size }, (_, i) => start + i);
+  });
+  const overlayOpen = $derived(sidebar || !!palette || settings);
+  const bottomVisible = $derived(!overlayOpen && (nearBottom || bottomFlash));
+
   const barVisible = $derived(touch || nearTop || sidebar || !!palette || settings || syncState === "error");
 
   // macOS: the traffic lights appear and disappear with the hover menu.
@@ -140,6 +157,13 @@
   async function refresh() {
     if (!status?.configured || !status.root_folder_id) return;
     [folders, notes] = await Promise.all([api.folders(), api.notes(selectedFolder || undefined)]);
+    treeVersion++;
+  }
+
+  function flashBottom() {
+    bottomFlash = true;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => (bottomFlash = false), 2000);
   }
 
   function scheduleSync(ms = 3000) {
@@ -218,6 +242,22 @@
     palette = null;
   }
 
+  /** "+" on a folder in the tree: new note there, and that folder becomes the stack. */
+  function newNoteIn(folderId: string) {
+    selectedFolder = folderId === status?.root_folder_id ? "" : folderId;
+    newNote();
+  }
+
+  /** A note picked in the tree; the stack follows its folder unless showing everything. */
+  async function openFromTree(id: string) {
+    sidebar = false;
+    await open(id);
+    if (current && selectedFolder && current.parent_id !== selectedFolder) {
+      selectedFolder = current.parent_id === status?.root_folder_id ? "" : current.parent_id;
+      await refresh();
+    }
+  }
+
   function scheduleSave(text: string) {
     pendingText = text;
     currentText = text;
@@ -261,6 +301,7 @@
 
   /** -1 = older, +1 = newer; going past the newest note starts a new one. */
   function go(dir: -1 | 1) {
+    flashBottom();
     if (!current) {
       if (dir === -1 && notes.length) void open(notes[0].id);
       return;
@@ -271,6 +312,7 @@
   }
 
   function jumpToFront() {
+    flashBottom();
     if (notes.length) void open(notes[0].id);
   }
 
@@ -296,14 +338,18 @@
     scheduleSync(1500);
   }
 
+  /** Folder picked in the tree: the note stack now shows that folder (tree stays open). */
   async function selectFolder(id: string) {
-    selectedFolder = id;
-    sidebar = false;
-    await leaveCurrent();
-    current = null;
+    await flush();
+    selectedFolder = id === status?.root_folder_id ? "" : id;
     await refresh();
-    if (notes.length) await open(notes[0].id, false);
-    else newNote();
+    if (current && notes.some((n) => n.id === current!.id)) return;
+    if (notes.length) await open(notes[0].id);
+    else {
+      const keep = sidebar;
+      newNote();
+      sidebar = keep;
+    }
   }
 
   async function moveTo(folderId: string) {
@@ -425,6 +471,7 @@
 
   function pointer(e: MouseEvent) {
     nearTop = e.clientY < 72;
+    nearBottom = e.clientY > window.innerHeight - 70;
   }
 </script>
 
@@ -474,17 +521,43 @@
   {/if}
 </div>
 
+{#if status?.configured}
+  <nav class="bottombar" class:shown={bottomVisible} aria-label={t("key.prevNext")}>
+    <button class="nav" disabled={stackPos <= 0} onclick={() => go(-1)} aria-label="‹">‹</button>
+    <div class="dots">
+      {#each dotWindow as i (i)}
+        {#if i === stack.length}
+          <button class="dot plus" class:cur={stackPos === i} title={t("act.newNote")} onclick={() => (flashBottom(), newNote())}
+            >+</button
+          >
+        {:else}
+          <button
+            class="dot"
+            class:cur={stackPos === i}
+            title={stack[i].title || t("note.untitled")}
+            aria-label={stack[i].title || t("note.untitled")}
+            onclick={() => (flashBottom(), void open(stack[i].id))}
+          ></button>
+        {/if}
+      {/each}
+    </div>
+    <button class="nav" onclick={() => go(1)} aria-label="›">›</button>
+    <span class="count">{position}</span>
+  </nav>
+{/if}
+
 {#if toast}<div class="toast">{toast}</div>{/if}
 
 {#if sidebar}
   <Sidebar
     {folders}
-    {notes}
-    selected={selectedFolder}
-    currentId={current?.id ?? null}
     rootId={status?.root_folder_id ?? ""}
+    currentId={current?.id ?? null}
+    scope={selectedFolder}
+    version={treeVersion}
+    onOpenNote={(id) => void openFromTree(id)}
     onSelectFolder={selectFolder}
-    onSelectNote={(id) => ((sidebar = false), void open(id))}
+    onNewNote={newNoteIn}
     onChanged={refresh}
     onClose={() => (sidebar = false)}
     onSettings={() => ((sidebar = false), (settings = true))}
@@ -628,10 +701,90 @@
       opacity: 0.25;
     }
   }
+  .bottombar {
+    position: fixed;
+    left: 50%;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--bar);
+    border: 1px solid var(--line);
+    transform: translate(-50%, 12px);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform 0.18s ease,
+      opacity 0.18s ease;
+  }
+  .bottombar.shown {
+    transform: translate(-50%, 0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .bottombar .nav {
+    font-size: 1.6rem;
+    line-height: 1;
+    padding: 2px 8px;
+    color: var(--muted);
+  }
+  .bottombar .nav:hover:not(:disabled) {
+    color: var(--accent);
+  }
+  .bottombar .nav:disabled {
+    opacity: 0.25;
+  }
+  .dots {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--muted);
+    opacity: 0.5;
+  }
+  .dot:hover {
+    opacity: 1;
+    background: var(--accent);
+  }
+  .dot.cur {
+    opacity: 1;
+    background: var(--accent);
+    transform: scale(1.35);
+  }
+  .dot.plus {
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 1.1rem;
+    line-height: 1;
+    opacity: 0.8;
+  }
+  .dot.plus.cur,
+  .dot.plus:hover {
+    color: var(--accent);
+    background: none;
+    transform: none;
+  }
+  .bottombar .count {
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    min-width: 3.5em;
+    text-align: right;
+  }
   .notice {
     position: absolute;
     left: 50%;
-    bottom: calc(14px + env(safe-area-inset-bottom));
+    bottom: calc(64px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
     color: var(--muted);
     font-size: 0.8rem;

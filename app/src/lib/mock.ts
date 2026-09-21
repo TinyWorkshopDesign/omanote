@@ -8,6 +8,7 @@ const folders: Folder[] = [
   { id: "r".repeat(32), parent_id: "", title: "Omanote", icon: "", note_count: 0 },
   { id: "a".repeat(32), parent_id: "r".repeat(32), title: "Spesa", icon: "🛒", note_count: 1 },
   { id: "b".repeat(32), parent_id: "r".repeat(32), title: "Lavoro", icon: "💼", note_count: 1 },
+  { id: "c".repeat(32), parent_id: "b".repeat(32), title: "Progetti", icon: "", note_count: 1 },
 ];
 
 const notes: (Note & { title: string })[] = [
@@ -30,6 +31,27 @@ const notes: (Note & { title: string })[] = [
     encrypted: false,
   },
 ];
+
+notes.push(
+  {
+    id: "3".repeat(32),
+    parent_id: "c".repeat(32),
+    title: "Omanote",
+    text: "Omanote\n- [x] albero delle cartelle\n- [ ] barra inferiore",
+    updated_time: Date.now() - 7_200_000,
+    created_time: Date.now() - 7_200_000,
+    encrypted: false,
+  },
+  {
+    id: "4".repeat(32),
+    parent_id: "r".repeat(32),
+    title: "Idea veloce",
+    text: "Idea veloce\n2+2",
+    updated_time: Date.now() - 60_000,
+    created_time: Date.now() - 60_000,
+    encrypted: false,
+  },
+);
 
 const id32 = () => Array.from({ length: 32 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
 const summary = (n: (typeof notes)[number]): NoteSummary => ({
