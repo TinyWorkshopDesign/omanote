@@ -128,7 +128,8 @@ function build(view: EditorView): Built {
   const first = doc.line(1).text;
   const { mode } = detectMode(first);
   // Math works in lists too; only code notes stay raw.
-  const results = mode === "code" ? [] : evaluate(text);
+  // Results show after a trailing "=" (every calculation in "math" notes).
+  const results = mode === "code" ? [] : evaluate(text, mode === "math");
   const deco: Range<Decoration>[] = [];
   const atomic: Range<Decoration>[] = [];
   let inFence = false;
@@ -153,10 +154,7 @@ function build(view: EditorView): Built {
         } else {
           // A quick note is often just "2+2" or "x = 5": the first line computes too.
           const res = results[0];
-          if (res?.show) {
-            deco.push(resultLine.range(line.from));
-            deco.push(Decoration.widget({ widget: new TextWidget(formatResult(res), "cm-result", true), side: 1 }).range(line.to));
-          }
+          if (res?.show) deco.push(inlineResult(s, line.from, formatResult(res)));
         }
         continue;
       }
@@ -176,7 +174,6 @@ function build(view: EditorView): Built {
       const res = results[line.number - 1];
       if (h) deco.push(headingLines[h[1].length - 1].range(line.from));
       if (task && task[3] !== " ") deco.push(doneLine.range(line.from));
-      if (res?.show) deco.push(resultLine.range(line.from));
 
       if (h) {
         deco.push(dim.range(line.from, line.from + h[0].length));
@@ -210,11 +207,19 @@ function build(view: EditorView): Built {
       }
 
       if (res?.show) {
-        deco.push(Decoration.widget({ widget: new TextWidget(formatResult(res), "cm-result", true), side: 1 }).range(line.to));
+        deco.push(inlineResult(s, line.from, formatResult(res)));
       }
     }
   }
   return { all: Decoration.set(deco, true), atomic: Decoration.set(atomic, true) };
+}
+
+/** The result sits right after the "=" (or after the text in "math" notes). */
+function inlineResult(text: string, lineFrom: number, value: string): Range<Decoration> {
+  const eq = text.search(/=\s*$/);
+  const at = eq >= 0 ? lineFrom + eq + 1 : lineFrom + text.trimEnd().length;
+  const shown = eq >= 0 ? value : `= ${value}`;
+  return Decoration.widget({ widget: new TextWidget(shown, "cm-result-inline", true), side: 1 }).range(at);
 }
 
 function modeSummary(mode: Mode, text: string): string | null {

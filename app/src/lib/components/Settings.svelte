@@ -69,6 +69,11 @@
     onRootChanged();
   }
 
+  async function chooseHome(id: string) {
+    await api.setNotesHome(id);
+    onRootChanged();
+  }
+
   async function chooseRoot(id: string) {
     await api.setRootFolder(id);
     onRootChanged();
@@ -104,13 +109,16 @@
         </button>
       {/if}
       {#each notebooks as f (f.id)}
-        <button class="row" class:sel={!status.whole_joplin && status.root_folder_id === f.id} onclick={() => chooseRoot(f.id)}>
-          <span>{f.icon ? `${f.icon} ` : ""}{f.title}</span>
-          <span class="muted"
-            >{#if status.whole_joplin && status.root_folder_id === f.id}<span class="badge">{t("set.newNotesHere")}</span>{/if}
-            {f.note_count}</span
-          >
-        </button>
+        {@const home = status.whole_joplin && status.root_folder_id === f.id}
+        <div class="nb">
+          <button class="row" class:sel={!status.whole_joplin && status.root_folder_id === f.id} onclick={() => chooseRoot(f.id)}>
+            <span>{f.icon ? `${f.icon} ` : ""}{f.title}</span>
+            <span class="muted">{#if home}<span class="badge">{t("set.newNotesHere")}</span>{/if}{f.note_count}</span>
+          </button>
+          {#if status.whole_joplin && !home}
+            <button class="sethome" title={t("ctx.useForNewNotes")} onclick={() => chooseHome(f.id)}>{t("set.newNotesHere")}</button>
+          {/if}
+        </div>
       {/each}
     </div>
     {#if status.whole_joplin}
@@ -306,6 +314,38 @@
     background: var(--accent-soft);
     color: var(--accent);
     font-weight: 700;
+  }
+  .nb {
+    position: relative;
+    display: flex;
+  }
+  .nb .row {
+    flex: 1;
+  }
+  .sethome {
+    position: absolute;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.72rem;
+    padding: 1px 6px;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    background: var(--bg-elev);
+    opacity: 0;
+  }
+  .nb:hover .sethome,
+  .sethome:focus-visible {
+    opacity: 1;
+  }
+  .sethome:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  @media (hover: none) {
+    .sethome {
+      opacity: 1;
+    }
   }
   .row.whole {
     border-bottom: 1px solid var(--line);

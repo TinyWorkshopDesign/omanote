@@ -224,8 +224,13 @@ function evalExpr(src: string, vars: Map<string, Val>): { val: Val; computed: bo
 const SKIP = /^\s*(#|>|```|\/\/|- \[[ xX]\]\s*$)/;
 const LIST_PREFIX = /^\s*(?:[-*+•]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/;
 
-/** Evaluates a whole note; returns one entry per line (null = no result). */
-export function evaluate(text: string): (LineResult | null)[] {
+/**
+ * Evaluates a whole note; returns one entry per line (null = no result).
+ * Every line is computed (variables, totals), but a result is *shown* only when
+ * the line ends with "=" ("2+2=", "x * 2 =", "totale ="). With `auto` (notes
+ * whose first line is "math") every calculation shows.
+ */
+export function evaluate(text: string, auto = false): (LineResult | null)[] {
   const vars = new Map<string, Val>();
   const out: (LineResult | null)[] = [];
   let block: Val[] = [];
@@ -241,6 +246,7 @@ export function evaluate(text: string): (LineResult | null)[] {
     const colon = body.match(/^([^:=]{1,40}):\s*(.+)$/);
     if (colon && !/^\d/.test(colon[1])) { label = colon[1]; body = colon[2]; }
     const word = body.toLowerCase().replace(/[:=]\s*$/, "").trim();
+    const asks = /=\s*$/.test(line);
 
     if (last) vars.set("ans", last); else vars.delete("ans");
 
@@ -251,7 +257,7 @@ export function evaluate(text: string): (LineResult | null)[] {
       const unit = block.find((x) => x.unit)?.unit ?? "";
       last = { v, unit, pct: false };
       for (const w of [...SUM_WORDS, ...AVG_WORDS]) vars.set(w, last);
-      out.push({ value: v, unit, pct: false, show: true });
+      out.push({ value: v, unit, pct: false, show: auto || asks });
       block = [];
       continue;
     }
@@ -264,12 +270,12 @@ export function evaluate(text: string): (LineResult | null)[] {
         const name = assign[1].trim().toLowerCase();
         if (name.includes(" ")) vars.set(name.replace(/\s+/g, ""), r.val);
         last = r.val;
-        out.push({ value: r.val.v, unit: r.val.unit, pct: r.val.pct, show: true });
+        out.push({ value: r.val.v, unit: r.val.unit, pct: r.val.pct, show: auto });
         continue;
       }
     }
 
-    // A trailing "= " asks explicitly for a result: "3 * 4 ="
+    // A trailing "=" asks for the result: "3 * 4 ="
     const r = evalExpr(body.replace(/=\s*$/, ""), vars);
     if (r) {
       last = r.val;
@@ -278,7 +284,7 @@ export function evaluate(text: string): (LineResult | null)[] {
         value: r.val.v,
         unit: r.val.unit,
         pct: r.val.pct,
-        show: r.computed || label !== "" || /=\s*$/.test(body),
+        show: asks || (auto && (r.computed || label !== "")),
       });
       continue;
     }

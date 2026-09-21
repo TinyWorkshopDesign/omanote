@@ -95,6 +95,7 @@ export const api = {
   setRootFolder: (folderId?: string, newTitle?: string) =>
     invoke<string>("set_root_folder", { folderId: folderId ?? null, newTitle: newTitle ?? null }),
   setWholeJoplin: (enabled: boolean) => invoke<void>("set_whole_joplin", { enabled }),
+  setNotesHome: (folderId: string) => invoke<void>("set_notes_home", { folderId }),
   folders: () => invoke<Folder[]>("list_folders"),
   notes: (folderId?: string) => invoke<NoteSummary[]>("list_notes", { folderId: folderId ?? null }),
   search: (query: string) => invoke<NoteSummary[]>("search_notes", { query }),

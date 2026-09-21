@@ -20,6 +20,7 @@
     onSelectFolder,
     onNewNote,
     onDeleteNote,
+    onHomeChanged,
     onChanged,
     onClose,
     onSettings,
@@ -40,6 +41,8 @@
     onSelectFolder: (id: string) => void;
     onNewNote: (folderId: string) => void;
     onDeleteNote: (id: string) => void;
+    /** The notebook for new notes changed (all-of-Joplin mode). */
+    onHomeChanged: () => void;
     onChanged: () => void;
     onClose: () => void;
     onSettings: () => void;
@@ -345,10 +348,17 @@
     menu = { x: Math.min(e.clientX, window.innerWidth - 230), y: Math.min(e.clientY, window.innerHeight - 290), target };
   }
 
-  function menuAction(fn: () => void) {
+  /** Runs a menu entry on its target, captured before the menu closes. */
+  function menuAction(fn: (target: Sel) => void) {
+    const target = menu?.target;
     menu = null;
-    fn();
+    if (target) fn(target);
     tree?.focus();
+  }
+
+  async function useForNewNotes(target: Sel) {
+    await api.setNotesHome(target.id);
+    onHomeChanged();
   }
 </script>
 
@@ -416,7 +426,11 @@
           <span class="meta">{n ? when(n.updated_time, i18n.lang) : ""}</span>
         {:else}
           {@const f = r.kind === "root" ? root : folderOf(r.id)}
-          <span class="label">{f?.icon ? `${f.icon} ` : ""}{f?.title ?? (rootId === "" ? "Joplin" : "Omanote")}</span>
+          <span class="label"
+            >{f?.icon ? `${f.icon} ` : ""}{f?.title ?? (rootId === "" ? "Joplin" : "Omanote")}{#if rootId === "" && r.id === noteHome}<span
+                class="home">{t("set.newNotesHere")}</span
+              >{/if}</span
+          >
           <span class="meta">{r.kind === "root" ? notes.length : countIn(r.id)}</span>
         {/if}
 
@@ -456,27 +470,30 @@
   <div class="menu-scrim" onclick={() => (menu = null)} oncontextmenu={(e) => (e.preventDefault(), (menu = null))} role="presentation"></div>
   <div class="menu" style="left: {m.x}px; top: {m.y}px" role="menu">
     {#if m.target.kind === "note"}
-      <button role="menuitem" onclick={() => menuAction(() => onOpenNote(m.target.id))}>{t("ctx.open")}</button>
+      <button role="menuitem" onclick={() => menuAction((x) => onOpenNote(x.id))}>{t("ctx.open")}</button>
     {:else}
-      <button role="menuitem" onclick={() => menuAction(() => onNewNote(m.target.id))}>{t("ctx.newNote")}</button>
-      <button role="menuitem" onclick={() => menuAction(() => startNewFolder(m.target.id))}>{t("ctx.newFolder")}</button>
+      <button role="menuitem" onclick={() => menuAction((x) => onNewNote(x.id))}>{t("ctx.newNote")}</button>
+      <button role="menuitem" onclick={() => menuAction((x) => startNewFolder(x.id))}>{t("ctx.newFolder")}</button>
+      {#if rootId === "" && m.target.kind === "folder" && m.target.id !== noteHome}
+        <button role="menuitem" onclick={() => menuAction((x) => void useForNewNotes(x))}>{t("ctx.useForNewNotes")}</button>
+      {/if}
     {/if}
     <hr />
     {#if m.target.kind !== "root"}
-      <button role="menuitem" onclick={() => menuAction(() => (treeClipboard.clip = { mode: "cut", kind: m.target.kind as TreeKind, id: m.target.id }))}
+      <button role="menuitem" onclick={() => menuAction((x) => (treeClipboard.clip = { mode: "cut", kind: x.kind as TreeKind, id: x.id }))}
         >{t("ctx.cut")} <kbd>{MOD}X</kbd></button
       >
-      <button role="menuitem" onclick={() => menuAction(() => (treeClipboard.clip = { mode: "copy", kind: m.target.kind as TreeKind, id: m.target.id }))}
+      <button role="menuitem" onclick={() => menuAction((x) => (treeClipboard.clip = { mode: "copy", kind: x.kind as TreeKind, id: x.id }))}
         >{t("ctx.copy")} <kbd>{MOD}C</kbd></button
       >
     {/if}
-    <button role="menuitem" disabled={!clip} onclick={() => menuAction(() => void paste(m.target))}>{t("ctx.paste")} <kbd>{MOD}V</kbd></button>
+    <button role="menuitem" disabled={!clip} onclick={() => menuAction((x) => void paste(x))}>{t("ctx.paste")} <kbd>{MOD}V</kbd></button>
     {#if m.target.kind !== "root"}
       <hr />
       {#if m.target.kind === "folder"}
-        <button role="menuitem" onclick={() => menuAction(() => ((renaming = m.target.id), (renameName = title(m.target))))}>{t("ctx.rename")}</button>
+        <button role="menuitem" onclick={() => menuAction((x) => ((renaming = x.id), (renameName = title(x))))}>{t("ctx.rename")}</button>
       {/if}
-      <button role="menuitem" class="danger" onclick={() => menuAction(() => void remove(m.target))}>{t("ctx.delete")} <kbd>⌫</kbd></button>
+      <button role="menuitem" class="danger" onclick={() => menuAction((x) => void remove(x))}>{t("ctx.delete")} <kbd>⌫</kbd></button>
     {/if}
   </div>
 {/if}
@@ -595,6 +612,15 @@
   }
   .root .label {
     color: var(--accent);
+  }
+  .home {
+    margin-left: 8px;
+    padding: 0 5px;
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    vertical-align: 1px;
   }
   .note.current .label,
   .note.current .glyph {
