@@ -40,6 +40,9 @@ struct AppState {
     store: Arc<Mutex<Store>>,
     config: Mutex<Config>,
     sync: tokio::sync::Mutex<SyncCtx>,
+    /// (e2ee enabled, keys locked) as last seen, so the UI never waits for a
+    /// running sync (which may itself wait on network or a keychain prompt).
+    e2ee_state: Mutex<(bool, bool)>,
     timer: Mutex<Option<timer::Timer>>,
     /// UI language, for the few strings produced by Rust (notifications).
     lang: Mutex<String>,
@@ -67,6 +70,18 @@ impl AppState {
         }
         self.db().folder_subtree(&root).map_err(err)
     }
+}
+
+fn e2ee_flags(ctx: &SyncCtx) -> (bool, bool) {
+    let e2ee = ctx.info.as_ref().map(|i| i.e2ee_enabled()).unwrap_or(false);
+    (e2ee, e2ee && ctx.keys.active_id.is_none())
+}
+
+/// Keychain reads can block (macOS may show an authorization prompt): keep them
+/// off the async runtime threads.
+async fn secret(dir: &std::path::Path, key: &'static str) -> Option<String> {
+    let dir = dir.to_path_buf();
+    tauri::async_runtime::spawn_blocking(move || secrets::get(&dir, key)).await.ok().flatten()
 }
 
 fn err(e: impl std::fmt::Display) -> String {
@@ -115,7 +130,7 @@ async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
         return Ok(None);
     }
     if ctx.api.is_none() {
-        let Some(pw) = secrets::get(&state.dir, secrets::SERVER_PASSWORD) else { return Ok(None) };
+        let Some(pw) = secret(&state.dir, secrets::SERVER_PASSWORD).await else { return Ok(None) };
         ctx.api = Some(JoplinServer::new(&cfg.server_url, &cfg.email, &pw));
     }
 
@@ -133,7 +148,7 @@ async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
     let result = async {
         let fetched = sync.fetch_info().await?;
         if fetched.e2ee_enabled() && sync.keys.active_id.is_none() {
-            if let Some(master) = secrets::get(&state.dir, secrets::MASTER_PASSWORD) {
+            if let Some(master) = secret(&state.dir, secrets::MASTER_PASSWORD).await {
                 unlock_keys(&fetched, &master, sync.keys);
             }
         }
@@ -141,6 +156,7 @@ async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
         sync.sync().await
     }
     .await;
+    *state.e2ee_state.lock().unwrap() = e2ee_flags(&ctx);
 
     match result {
         Ok(report) => {
@@ -182,15 +198,21 @@ fn is_omarchy() -> bool {
 #[tauri::command]
 async fn get_status(state: State<'_, AppState>) -> Result<Status, String> {
     let c = state.config();
-    let ctx = state.sync.lock().await;
-    let e2ee = ctx.info.as_ref().map(|i| i.e2ee_enabled()).unwrap_or(false);
+    let (e2ee, locked) = match state.sync.try_lock() {
+        Ok(ctx) => {
+            let flags = e2ee_flags(&ctx);
+            *state.e2ee_state.lock().unwrap() = flags;
+            flags
+        }
+        Err(_) => *state.e2ee_state.lock().unwrap(),
+    };
     Ok(Status {
         configured: !c.server_url.is_empty(),
         server_url: c.server_url,
         email: c.email,
         root_folder_id: c.root_folder_id,
         e2ee,
-        locked: e2ee && ctx.keys.active_id.is_none(),
+        locked,
         hotkey: c.hotkey,
         mobile: cfg!(mobile),
         platform: std::env::consts::OS,
@@ -257,6 +279,7 @@ async fn setup(
     {
         let mut ctx = state.sync.lock().await;
         *ctx = SyncCtx { api: Some(api), keys, info: Some(info) };
+        *state.e2ee_state.lock().unwrap() = e2ee_flags(&ctx);
     }
     do_sync(&app).await?;
     Ok(())
@@ -272,6 +295,7 @@ async fn unlock(app: AppHandle, state: State<'_, AppState>, master_password: Str
         if ctx.keys.active_id.is_none() {
             return Err(E_BAD_MASTER.into());
         }
+        *state.e2ee_state.lock().unwrap() = e2ee_flags(ctx);
     }
     secrets::set(&state.dir, secrets::MASTER_PASSWORD, Some(&master_password))?;
     spawn_sync(&app);
@@ -281,6 +305,7 @@ async fn unlock(app: AppHandle, state: State<'_, AppState>, master_password: Str
 #[tauri::command]
 async fn logout(state: State<'_, AppState>) -> Result<(), String> {
     *state.sync.lock().await = SyncCtx::default();
+    *state.e2ee_state.lock().unwrap() = (false, false);
     secrets::set(&state.dir, secrets::SERVER_PASSWORD, None)?;
     secrets::set(&state.dir, secrets::MASTER_PASSWORD, None)?;
     state.db().reset().map_err(err)?;
@@ -807,6 +832,7 @@ pub fn run() {
                 store: Arc::new(Mutex::new(store)),
                 config: Mutex::new(config),
                 sync: tokio::sync::Mutex::new(SyncCtx::default()),
+                e2ee_state: Mutex::new((false, false)),
                 timer: Mutex::new(None),
                 lang: Mutex::new("en".into()),
             });

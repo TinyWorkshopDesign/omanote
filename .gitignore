@@ -6,3 +6,8 @@ app/src-tauri/gen/
 *.sqlite
 *.sqlite-*
 .DS_Store
+
+# Syncthing
+*.sync-conflict-*
+.syncthing.*
+.stversions/

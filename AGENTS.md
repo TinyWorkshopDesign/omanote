@@ -35,6 +35,13 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 - Mobile: timer notifications are not scheduled, so they do not fire while the app is
   suspended; OCR on Android missing (ML Kit plugin planned).
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
+- The repo lives in a **Syncthing** folder (`~/Sync/...`) shared with another device.
+  Syncthing may drop `*.sync-conflict-*` copies next to sources: SvelteKit fails with
+  "Files prefixed with + are reserved" if one appears in `src/routes`. Such copies are
+  git-ignored; move them out (they are usually older versions) and keep `target/`,
+  `node_modules/`, `.svelte-kit/`, `build/` out of Syncthing (`.stignore`).
+- macOS keychain: each debug rebuild changes the binary signature, so macOS may ask
+  again for keychain access; the sync waits on that prompt (the UI must not).
 - In dev (`tauri dev`) the Dock icon is embedded at compile time: after changing icons
   touch `app/src-tauri/build.rs` to rebuild.
 
