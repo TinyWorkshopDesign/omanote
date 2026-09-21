@@ -134,6 +134,14 @@ const en = {
   "err.OCR_NO_TESSERACT": "Install tesseract to read text from images",
   "err.OCR_NO_GRIM": "Install grim and slurp to capture the screen",
   "err.OCR_FAILED": "Text recognition failed",
+  "setup.local": "Use without a server",
+  "setup.localHint": "Notes stay on this device. You can connect a Joplin Server later: your notes will be uploaded.",
+  "setup.localName": "Notebook name",
+  "setup.back": "Back",
+  "setup.cancel": "Cancel",
+  "set.localOnly": "Only on this device (no Joplin Server)",
+  "set.connect": "Connect to Joplin Server",
+  "setup.keepLocal": "Your local notebook",
 };
 
 export type Key = keyof typeof en;
@@ -246,6 +254,14 @@ const it: Dict = {
   "err.OCR_NO_TESSERACT": "Installa tesseract per leggere il testo dalle immagini",
   "err.OCR_NO_GRIM": "Installa grim e slurp per catturare lo schermo",
   "err.OCR_FAILED": "Riconoscimento del testo non riuscito",
+  "setup.local": "Usa senza server",
+  "setup.localHint": "Le note restano su questo dispositivo. Potrai collegare un Joplin Server più tardi: le note verranno caricate.",
+  "setup.localName": "Nome del notebook",
+  "setup.back": "Indietro",
+  "setup.cancel": "Annulla",
+  "set.localOnly": "Solo su questo dispositivo (nessun Joplin Server)",
+  "set.connect": "Connetti a Joplin Server",
+  "setup.keepLocal": "Il tuo notebook locale",
 };
 
 const es: Dict = {
@@ -353,6 +369,14 @@ const es: Dict = {
   "err.OCR_NO_TESSERACT": "Instala tesseract para leer texto de imágenes",
   "err.OCR_NO_GRIM": "Instala grim y slurp para capturar la pantalla",
   "err.OCR_FAILED": "Falló el reconocimiento de texto",
+  "setup.local": "Usar sin servidor",
+  "setup.localHint": "Las notas se quedan en este dispositivo. Puedes conectar un Joplin Server más tarde: tus notas se subirán.",
+  "setup.localName": "Nombre de la libreta",
+  "setup.back": "Atrás",
+  "setup.cancel": "Cancelar",
+  "set.localOnly": "Solo en este dispositivo (sin Joplin Server)",
+  "set.connect": "Conectar a Joplin Server",
+  "setup.keepLocal": "Tu libreta local",
 };
 
 const fr: Dict = {
@@ -461,6 +485,14 @@ const fr: Dict = {
   "err.OCR_NO_TESSERACT": "Installez tesseract pour lire le texte des images",
   "err.OCR_NO_GRIM": "Installez grim et slurp pour capturer l'écran",
   "err.OCR_FAILED": "La reconnaissance de texte a échoué",
+  "setup.local": "Utiliser sans serveur",
+  "setup.localHint": "Les notes restent sur cet appareil. Vous pourrez connecter un Joplin Server plus tard : vos notes seront envoyées.",
+  "setup.localName": "Nom du carnet",
+  "setup.back": "Retour",
+  "setup.cancel": "Annuler",
+  "set.localOnly": "Uniquement sur cet appareil (sans Joplin Server)",
+  "set.connect": "Se connecter à Joplin Server",
+  "setup.keepLocal": "Votre carnet local",
 };
 
 const de: Dict = {
@@ -569,6 +601,14 @@ const de: Dict = {
   "err.OCR_NO_TESSERACT": "Installiere tesseract, um Text aus Bildern zu lesen",
   "err.OCR_NO_GRIM": "Installiere grim und slurp für Bildschirmaufnahmen",
   "err.OCR_FAILED": "Texterkennung fehlgeschlagen",
+  "setup.local": "Ohne Server verwenden",
+  "setup.localHint": "Die Notizen bleiben auf diesem Gerät. Du kannst später einen Joplin Server verbinden: Deine Notizen werden hochgeladen.",
+  "setup.localName": "Name des Notizbuchs",
+  "setup.back": "Zurück",
+  "setup.cancel": "Abbrechen",
+  "set.localOnly": "Nur auf diesem Gerät (kein Joplin Server)",
+  "set.connect": "Mit Joplin Server verbinden",
+  "setup.keepLocal": "Dein lokales Notizbuch",
 };
 
 const pt: Dict = {
@@ -676,6 +716,14 @@ const pt: Dict = {
   "err.OCR_NO_TESSERACT": "Instale o tesseract para ler texto de imagens",
   "err.OCR_NO_GRIM": "Instale grim e slurp para capturar o ecrã",
   "err.OCR_FAILED": "O reconhecimento de texto falhou",
+  "setup.local": "Usar sem servidor",
+  "setup.localHint": "As notas ficam neste dispositivo. Pode ligar um Joplin Server mais tarde: as suas notas serão enviadas.",
+  "setup.localName": "Nome do caderno",
+  "setup.back": "Voltar",
+  "setup.cancel": "Cancelar",
+  "set.localOnly": "Só neste dispositivo (sem Joplin Server)",
+  "set.connect": "Ligar ao Joplin Server",
+  "setup.keepLocal": "O seu caderno local",
 };
 
 const nl: Dict = {
@@ -784,6 +832,14 @@ const nl: Dict = {
   "err.OCR_NO_TESSERACT": "Installeer tesseract om tekst uit afbeeldingen te lezen",
   "err.OCR_NO_GRIM": "Installeer grim en slurp om het scherm vast te leggen",
   "err.OCR_FAILED": "Tekstherkenning mislukt",
+  "setup.local": "Zonder server gebruiken",
+  "setup.localHint": "Notities blijven op dit apparaat. Je kunt later een Joplin Server koppelen: je notities worden dan geüpload.",
+  "setup.localName": "Naam van het notitieboek",
+  "setup.back": "Terug",
+  "setup.cancel": "Annuleren",
+  "set.localOnly": "Alleen op dit apparaat (geen Joplin Server)",
+  "set.connect": "Verbinden met Joplin Server",
+  "setup.keepLocal": "Je lokale notitieboek",
 };
 
 const pl: Dict = {
@@ -892,6 +948,14 @@ const pl: Dict = {
   "err.OCR_NO_TESSERACT": "Zainstaluj tesseract, aby odczytywać tekst z obrazów",
   "err.OCR_NO_GRIM": "Zainstaluj grim i slurp, aby przechwytywać ekran",
   "err.OCR_FAILED": "Rozpoznawanie tekstu nie powiodło się",
+  "setup.local": "Używaj bez serwera",
+  "setup.localHint": "Notatki zostają na tym urządzeniu. Później możesz połączyć Joplin Server: notatki zostaną wysłane.",
+  "setup.localName": "Nazwa notesu",
+  "setup.back": "Wstecz",
+  "setup.cancel": "Anuluj",
+  "set.localOnly": "Tylko na tym urządzeniu (bez Joplin Server)",
+  "set.connect": "Połącz z Joplin Server",
+  "setup.keepLocal": "Twój lokalny notes",
 };
 
 const DICTS: Record<Lang, Dict> = { en, it, es, fr, de, pt, nl, pl };

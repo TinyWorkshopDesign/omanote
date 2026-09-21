@@ -54,6 +54,7 @@ const status: Status = {
   mobile: false,
   platform: "macos",
   omarchy: false,
+  local: false,
   data_dir: "~/Library/Application Support/app.omanote",
 };
 

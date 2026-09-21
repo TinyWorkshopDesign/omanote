@@ -106,6 +106,8 @@ struct Status {
     platform: &'static str,
     /// Running on Omarchy (the global hotkey is then a Hyprland binding).
     omarchy: bool,
+    /// Local mode: no Joplin Server connected, notes stay on this device.
+    local: bool,
     data_dir: String,
 }
 
@@ -207,7 +209,8 @@ async fn get_status(state: State<'_, AppState>) -> Result<Status, String> {
         Err(_) => *state.e2ee_state.lock().unwrap(),
     };
     Ok(Status {
-        configured: !c.server_url.is_empty(),
+        configured: c.is_configured(),
+        local: c.server_url.is_empty(),
         server_url: c.server_url,
         email: c.email,
         root_folder_id: c.root_folder_id,
@@ -262,11 +265,14 @@ async fn setup(
     }
 
     let mut cfg = state.config();
-    let server_changed = cfg.server_url != server_url || cfg.email != email.trim();
+    // Switching from one server/account to another drops the old local copy.
+    // Coming from local mode (no server yet) keeps the notes: they are uploaded.
+    let server_changed = !cfg.server_url.is_empty() && (cfg.server_url != server_url || cfg.email != email.trim());
     if server_changed {
         state.db().reset().map_err(err)?;
         cfg.root_folder_id.clear();
     }
+    cfg.local_only = false;
     cfg.server_url = server_url;
     cfg.email = email.trim().to_string();
     if cfg.client_id.is_empty() {
@@ -313,7 +319,25 @@ async fn logout(state: State<'_, AppState>) -> Result<(), String> {
     cfg.server_url.clear();
     cfg.email.clear();
     cfg.root_folder_id.clear();
+    cfg.local_only = false;
     state.save_config(cfg)
+}
+
+/// Starts without a Joplin Server: creates a local notebook and works offline.
+#[tauri::command]
+fn use_local(state: State<'_, AppState>, notebook: String) -> Result<String, String> {
+    let title = if notebook.trim().is_empty() { "Omanote" } else { notebook.trim() };
+    let mut cfg = state.config();
+    if cfg.root_folder_id.is_empty() {
+        cfg.root_folder_id = state.db().create_folder(title, "").map_err(err)?.id;
+    }
+    if cfg.client_id.is_empty() {
+        cfg.client_id = omanote_core::item::new_id();
+    }
+    cfg.local_only = true;
+    let id = cfg.root_folder_id.clone();
+    state.save_config(cfg)?;
+    Ok(id)
 }
 
 #[tauri::command]
@@ -895,6 +919,7 @@ pub fn run() {
             get_system_theme,
             set_language,
             setup,
+            use_local,
             unlock,
             logout,
             sync_now,

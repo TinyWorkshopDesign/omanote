@@ -33,6 +33,10 @@ pub struct Config {
     pub hotkey: String,
     #[serde(default = "default_interval")]
     pub sync_interval_secs: u64,
+    /// Local mode: notes only on this device, no Joplin Server (yet). Connecting a
+    /// server later uploads the local notes instead of discarding them.
+    #[serde(default)]
+    pub local_only: bool,
 }
 
 impl Default for Config {
@@ -44,11 +48,17 @@ impl Default for Config {
             client_id: String::new(),
             hotkey: default_hotkey(),
             sync_interval_secs: default_interval(),
+            local_only: false,
         }
     }
 }
 
 impl Config {
+    /// Ready to use: connected to a server, or explicitly in local mode.
+    pub fn is_configured(&self) -> bool {
+        !self.server_url.is_empty() || self.local_only
+    }
+
     pub fn load(dir: &Path) -> Config {
         std::fs::read_to_string(dir.join("config.json"))
             .ok()
