@@ -44,11 +44,6 @@
       <path d="M726 446 H770 Q800 446 800 476 V548 Q800 578 770 578 H726" fill="#2bff88" fill-opacity="0.18"/>
     </g>
 
-    <!-- what the pencil writes: a prompt and a block cursor -->
-    <g fill="#2bff88" filter="url(#glow)">
-      <path d="M262 756 L302 780 L262 804" fill="none" stroke="#2bff88" stroke-width="16" stroke-linecap="square"/>
-      <rect x="328" y="790" width="64" height="16"/>
-    </g>
 
     <rect x="100" y="100" width="824" height="824" fill="url(#scan)"/>
   </g>
