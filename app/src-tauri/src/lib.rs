@@ -702,8 +702,12 @@ fn setup_desktop(app: &tauri::App) -> tauri::Result<()> {
                 toggle_window(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
+    // Monochrome pencil. On macOS it is a template image: the system tints it
+    // white or black to match the menu bar, like its own icons.
+    tray = tray.icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?);
+    #[cfg(target_os = "macos")]
+    {
+        tray = tray.icon_as_template(true);
     }
     tray.build(app)?;
 

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Omanote app icon: cyber pencil in terminal green (Omarchy look). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0f1512"/>
+      <stop offset="1" stop-color="#050807"/>
+    </linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
+      <path d="M48 0H0V48" fill="none" stroke="#2bff88" stroke-opacity="0.07" stroke-width="2"/>
+    </pattern>
+    <pattern id="scan" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="8" height="2" fill="#000" fill-opacity="0.35"/>
+    </pattern>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="haze">
+      <stop offset="0" stop-color="#2bff88" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#2bff88" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="184"/></clipPath>
+  </defs>
+
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#grid)"/>
+    <!-- radial phosphor haze -->
+    <circle cx="512" cy="512" r="420" fill="url(#haze)"/>
+
+    <!-- pencil, drawn horizontally then tilted -->
+    <g transform="rotate(-45 512 512)" fill="none" stroke="#2bff88" stroke-width="20"
+       stroke-linejoin="miter" filter="url(#glow)">
+      <!-- tip + graphite -->
+      <path d="M232 512 L372 446 L372 578 Z"/>
+      <path d="M232 512 L284 487 L284 537 Z" fill="#2bff88"/>
+      <!-- body with facet line -->
+      <path d="M372 446 H672 V578 H372"/>
+      <path d="M392 512 H652" stroke-opacity="0.45" stroke-width="10"/>
+      <!-- ferrule -->
+      <path d="M672 446 H726 V578 H672"/>
+      <path d="M699 446 V578" stroke-width="10"/>
+      <!-- eraser -->
+      <path d="M726 446 H770 Q800 446 800 476 V548 Q800 578 770 578 H726" fill="#2bff88" fill-opacity="0.18"/>
+    </g>
+
+    <!-- what the pencil writes: a prompt and a block cursor -->
+    <g fill="#2bff88" filter="url(#glow)">
+      <path d="M262 756 L302 780 L262 804" fill="none" stroke="#2bff88" stroke-width="16" stroke-linecap="square"/>
+      <rect x="328" y="790" width="64" height="16"/>
+    </g>
+
+    <rect x="100" y="100" width="824" height="824" fill="url(#scan)"/>
+  </g>
+  <rect x="102" y="102" width="820" height="820" rx="182" fill="none" stroke="#2bff88" stroke-opacity="0.35" stroke-width="4"/>
+</svg>
