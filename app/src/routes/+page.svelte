@@ -5,7 +5,6 @@
     api,
     onCaptureText,
     onDataChanged,
-    onFileDrop,
     onQuickNote,
     onSyncStatus,
     onTimer,
@@ -19,13 +18,13 @@
   import { createEditor, insertBlock, insertText } from "$lib/editor";
   import { errText, i18n, t } from "$lib/i18n.svelte";
   import { initTheme, type ThemeState } from "$lib/theme";
+  import { icons } from "$lib/icons";
   import Setup from "$lib/components/Setup.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Palette from "$lib/components/Palette.svelte";
   import Settings from "$lib/components/Settings.svelte";
 
   const FONT_KEY = "omanote.fontSize";
-  const IMAGE_EXT = /\.(png|jpe?g|gif|webp|heic|bmp|tiff?)$/i;
 
   let status = $state<Status | null>(null);
   let folders = $state<Folder[]>([]);
@@ -140,7 +139,6 @@
           timerDone = true;
           setTimeout(() => (timerDone = false), 8000);
         }),
-        await onFileDrop((paths) => void ocrPaths(paths)),
       );
     })();
     return () => offs.forEach((off) => off());
@@ -207,7 +205,7 @@
       doc: text,
       onChange: scheduleSave,
       onTimer: (line) => api.timerCommand(line),
-      onImage: (blob) => void handleImageBlob(blob),
+      onImages: (files) => void handleImages(files),
       resolveImage: (id) => api.resourceSrc(id),
       extraKeys: noteKeys(),
     });
@@ -421,50 +419,27 @@
     });
   }
 
-  async function handleImageBlob(blob: Blob) {
+  /** Pasted or dropped images: one question, then all of them as pictures or as text. */
+  async function handleImages(files: File[]) {
     const choice = await askImage();
     if (!choice || !view) return;
     if (choice === "ocr") {
-      const text = await ocrBlob(blob);
-      if (text) insertText(view, text);
-      return;
-    }
-    try {
-      const name = (blob as File).name || `immagine-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.png`;
-      const id = await api.addImage(blob, name);
-      insertBlock(view, `![${name}](:/${id})`, name.replace(/\.[^.]+$/, ""));
-      scheduleSync();
-    } catch (e) {
-      say(errText(e));
-    }
-  }
-
-  async function ocrPaths(paths: string[]) {
-    const images = paths.filter((p) => IMAGE_EXT.test(p));
-    if (!images.length || !view) return;
-    const choice = await askImage();
-    if (!choice || !view) return;
-    if (choice === "image") {
-      try {
-        for (const p of images) {
-          const id = await api.addImageFile(p);
-          const name = p.split(/[\\/]/).pop() ?? "image";
-          insertBlock(view, `![${name}](:/${id})`, name.replace(/\.[^.]+$/, ""));
-        }
-        scheduleSync();
-      } catch (e) {
-        say(errText(e));
+      const texts: string[] = [];
+      for (const f of files) {
+        const text = await ocrBlob(f);
+        if (text) texts.push(text);
       }
+      if (texts.length) insertText(view, texts.join("\n\n"));
       return;
     }
-    say(t("ocr.running"), 30000);
     try {
-      const texts = await Promise.all(images.map((p) => api.ocrFile(p)));
-      const text = texts.map((x) => x.trim()).filter(Boolean).join("\n\n");
-      if (text) {
-        insertText(view, text);
-        toast = "";
-      } else say(t("ocr.empty"));
+      for (const f of files) {
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+        const name = f.name && f.name !== "image.png" ? f.name : `immagine-${stamp}.png`;
+        const id = await api.addImage(f, name);
+        insertBlock(view, `![${name}](:/${id})`, name.replace(/\.[^.]+$/, ""));
+      }
+      scheduleSync();
     } catch (e) {
       say(errText(e));
     }
@@ -559,7 +534,7 @@
   <main bind:this={host} onwheel={wheel} ontouchstart={touchStart} ontouchend={touchEnd}></main>
 
   {#if current?.encrypted}
-    <div class="notice">🔒 {t("note.encryptedHint")}</div>
+    <div class="notice">{@html icons.lock} {t("note.encryptedHint")}</div>
   {/if}
 
   {#if timer}
@@ -607,8 +582,18 @@
   <div class="modal" role="dialog" aria-label={t("img.ask")}>
     <div class="box choice">
       <h2>{t("img.ask")}</h2>
-      <button class="primary" onclick={() => imageAsk?.("image")}>🖼 {t("img.image")} <kbd>I</kbd></button>
-      <button class="secondary" onclick={() => imageAsk?.("ocr")}>Aa {t("img.text")} <kbd>T</kbd></button>
+      <div class="tiles">
+        <button class="tile default" onclick={() => imageAsk?.("image")}>
+          <span class="big">{@html icons.image}</span>
+          <span>{t("img.image")}</span>
+          <kbd>I</kbd>
+        </button>
+        <button class="tile" onclick={() => imageAsk?.("ocr")}>
+          <span class="big">{@html icons.ocr}</span>
+          <span>{t("img.text")}</span>
+          <kbd>T</kbd>
+        </button>
+      </div>
       <button class="link" onclick={() => imageAsk?.(null)}>{t("setup.cancel")} <kbd>Esc</kbd></button>
     </div>
   </div>
@@ -924,24 +909,46 @@
     padding: 8px;
     font-weight: 700;
   }
-  .choice button {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  .tiles {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 10px;
-    padding: 9px 12px;
-    text-align: left;
   }
-  .choice .secondary {
+  .tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 10px 10px;
     border: 1px solid var(--line);
+    color: var(--text);
   }
-  .choice .link {
+  .tile .big {
+    font-size: 2.6rem;
+    line-height: 1;
     color: var(--muted);
+  }
+  .tile.default,
+  .tile:hover {
+    border-color: var(--accent);
+  }
+  .tile.default .big,
+  .tile:hover .big {
+    color: var(--accent);
   }
   .choice kbd {
     font-family: var(--font);
     font-size: 0.75rem;
-    opacity: 0.75;
+    color: var(--muted);
+  }
+  .choice .link {
+    align-self: center;
+    color: var(--muted);
+  }
+  .notice {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .toast {
     position: fixed;

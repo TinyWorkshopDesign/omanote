@@ -116,13 +116,11 @@ export const api = {
   // OCR: the image travels as the raw request body (no JSON encoding).
   ocrImage: async (image: Blob) =>
     invoke<string>("ocr_image", new Uint8Array(await image.arrayBuffer())),
-  ocrFile: (path: string) => invoke<string>("ocr_file", { path }),
   // images as Joplin attachments (referenced in notes as ![name](:/id))
   addImage: async (image: Blob, name: string) =>
     invoke<string>("add_image", new Uint8Array(await image.arrayBuffer()), {
       headers: { "x-name": name.replace(/[^\x20-\x7e]/g, "_"), "x-mime": image.type || "image/png" },
     }),
-  addImageFile: (path: string) => invoke<string>("add_image_file", { path }),
   /** URL the webview can load for an attachment (downloaded on demand). */
   resourceSrc: async (id: string) => {
     const path = await invoke<string | null>("resource_path", { id });
@@ -143,14 +141,6 @@ export const onCaptureText = (cb: () => void) => listen("capture-text", () => cb
 export const onTimer = (cb: (t: TimerTick | null) => void) => listen<TimerTick | null>("timer", (e) => cb(e.payload));
 export const onTimerFinished = (cb: (event: string) => void) => listen<string>("timer-finished", (e) => cb(e.payload));
 
-/** Files dropped on the window (Tauri delivers paths, not DOM drop events). */
-export async function onFileDrop(cb: (paths: string[]) => void): Promise<() => void> {
-  if (!inTauri) return () => {};
-  const { getCurrentWebview } = await import("@tauri-apps/api/webview");
-  return getCurrentWebview().onDragDropEvent((e) => {
-    if (e.payload.type === "drop") cb(e.payload.paths);
-  });
-}
 
 /** Human-friendly relative time in the UI language. */
 export function when(ms: number, lang = "en"): string {

@@ -24,6 +24,7 @@ import {
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from "@codemirror/commands";
 import { countIn, detectMode, evaluate, formatResult, numbersIn, type Mode } from "./calc";
 import { t } from "./i18n.svelte";
+import { icons } from "./icons";
 
 const TASK = /^(\s*)([-*+]) \[( |x|X)\] /;
 const BARE_TASK = /^(\s*)\[( |x|X)?\] /; // "[] " / "[x] " shorthand, normalised to "- [ ] "
@@ -521,12 +522,17 @@ class ImageWidget extends WidgetType {
       view.dispatch({ changes: { from, to } });
     };
     wrap.append(img, remove);
+    const missing = () => {
+      img.remove();
+      const ph = document.createElement("span");
+      ph.className = "cm-image-missing";
+      ph.innerHTML = icons.image;
+      ph.append(` ${this.alt}`);
+      wrap.prepend(ph);
+    };
     this.resolve(this.id)
-      .then((src) => {
-        if (src) img.src = src;
-        else wrap.dataset.missing = `🖼 ${this.alt}`;
-      })
-      .catch(() => (wrap.dataset.missing = `🖼 ${this.alt}`));
+      .then((src) => (src ? (img.src = src) : missing()))
+      .catch(missing);
     return wrap;
   }
   get estimatedHeight() {
@@ -595,8 +601,8 @@ export interface EditorOptions {
   onChange: (text: string) => void;
   /** A line starting with "timer" was entered; resolve true if it was a timer command. */
   onTimer?: (line: string) => Promise<boolean>;
-  /** An image was pasted: the page decides (attachment or OCR) and inserts it. */
-  onImage?: (image: Blob) => void;
+  /** Images were pasted or dropped: the page decides (attachment or OCR) and inserts them. */
+  onImages?: (images: File[]) => void;
   /** URL of an attachment (`:/id`) to display, or null if unavailable. */
   resolveImage?: ResolveImage;
   extraKeys?: { key: string; run: () => boolean }[];
@@ -671,11 +677,27 @@ export function createEditor(o: EditorOptions): EditorView {
       if (u.docChanged) o.onChange(u.state.doc.toString());
     }),
     EditorView.domEventHandlers({
-      paste(e, view) {
-        const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
-        if (!file || !o.onImage) return false;
+      paste(e) {
+        const files = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+        if (!files.length || !o.onImages) return false;
         e.preventDefault();
-        o.onImage(file);
+        o.onImages(files);
+        return true;
+      },
+      // Images dragged from Finder, a browser, Photos… arrive as files (Tauri's
+      // native drop interception is off, see tauri.conf.json).
+      dragover(e) {
+        if (!e.dataTransfer?.types.includes("Files")) return false;
+        e.preventDefault();
+        return true;
+      },
+      drop(e, view) {
+        const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+        if (!files.length || !o.onImages) return false;
+        e.preventDefault();
+        const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+        if (pos !== null) view.dispatch({ selection: { anchor: pos } });
+        o.onImages(files);
         return true;
       },
     }),

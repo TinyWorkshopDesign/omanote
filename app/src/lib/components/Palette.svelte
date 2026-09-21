@@ -2,6 +2,7 @@
   // Quick switcher: search notes (mode "search") or pick a folder (mode "move").
   import { api, type Folder, type NoteSummary, when } from "../api";
   import { i18n, t } from "../i18n.svelte";
+  import { icons } from "../icons";
 
   let {
     mode,
@@ -79,7 +80,7 @@
     {#if mode === "search"}
       {#each hits as n, i (n.id)}
         <button class:sel={i === index} onmouseenter={() => (index = i)} onclick={() => choose(i)}>
-          <span class="t">{n.encrypted ? `🔒 ${t("note.encrypted")}` : n.title || t("note.untitled")}</span>
+          <span class="t">{#if n.encrypted}{@html icons.lock} {t("note.encrypted")}{:else}{n.title || t("note.untitled")}{/if}</span>
           <span class="w">{when(n.updated_time, i18n.lang)}</span>
           <span class="p">{n.preview.replace(/\n/g, " ").slice(0, 70)}</span>
         </button>

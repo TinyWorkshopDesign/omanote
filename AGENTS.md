@@ -26,7 +26,10 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   ../design/icon.png` from `app/`; `design/tray.svg` → `app/src-tauri/icons/tray.png`
   (macOS template image). Render SVGs with `@resvg/resvg-js`.
 - `omanote-cli` + MCP server tested on real synced data.
-- Images as Joplin attachments: paste/drop asks "Image or Text (OCR)" (keys I / T / Esc);
+- Images as Joplin attachments: paste/drop asks "Image or Text (OCR)" (keys I / T / Esc).
+  Drops are handled by the editor as DOM files (`dragDropEnabled: false` in tauri.conf.json:
+  Tauri's native interception only yields file paths, which images dragged from browsers
+  or Photos do not have). UI icons are monochrome SVGs in `app/src/lib/icons.ts`, no emoji;
   images become resources (`store.add_resource`, blob uploaded to `.resource/<id>` before
   the item, FileV1-encrypted under E2EE, `encryption_blob_encrypted` set) and render in the
   editor from `![name](:/id)` lines; remote blobs are fetched on demand

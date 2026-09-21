@@ -4,6 +4,7 @@
   // open note is expanded automatically, notes can be dragged onto folders.
   import { api, type Folder, type NoteSummary, when } from "../api";
   import { i18n, t } from "../i18n.svelte";
+  import { icons } from "../icons";
 
   let {
     folders,
@@ -156,7 +157,7 @@
     onclick={() => onOpenNote(n.id)}
   >
     <span class="glyph">·</span>
-    <span class="label">{n.encrypted ? `🔒 ${t("note.encrypted")}` : n.title || t("note.untitled")}{n.is_conflict ? " ⚠︎" : ""}</span>
+    <span class="label">{#if n.encrypted}{@html icons.lock} {t("note.encrypted")}{:else}{n.title || t("note.untitled")}{/if}{n.is_conflict ? " ⚠︎" : ""}</span>
     <span class="meta">{when(n.updated_time, i18n.lang)}</span>
   </button>
 {/snippet}
