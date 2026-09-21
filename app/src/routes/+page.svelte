@@ -36,6 +36,7 @@
   let sidebar = $state(false);
   let palette = $state<"search" | "move" | null>(null);
   let settings = $state(false);
+  let connecting = $state(false); // local mode → Joplin Server login
   let syncState = $state<"idle" | "syncing" | "error">("idle");
   let syncMsg = $state("");
   let toast = $state("");
@@ -439,13 +440,13 @@
       <button class="icon" class:on={pinned} title={t("act.pin")} onclick={togglePin}>⌃</button>
       <button class="icon" title={t("act.capture")} onclick={() => void captureText()}>⌖</button>
     {/if}
-    <button
+    {#if !status?.local}<button
       class="icon dot"
       class:syncing={syncState === "syncing"}
       class:error={syncState === "error"}
       title={syncState === "error" ? `${t("sync.error")}: ${syncMsg}` : t("act.sync")}
       onclick={() => void syncNow()}>●</button
-    >
+    >{/if}
     <button class="icon" title={t("act.search")} onclick={() => (palette = "search")}>⌕</button>
     <button class="icon" title={t("act.newNote")} onclick={newNote}>＋</button>
     <button class="icon" title={t("nav.settings")} onclick={() => (settings = true)}>⚙</button>
@@ -502,12 +503,16 @@
   />
 {/if}
 
-{#if status && !status.configured}
+{#if status && (!status.configured || connecting)}
   <Setup
+    localRoot={connecting ? status.root_folder_id : ""}
+    onCancel={connecting ? () => (connecting = false) : undefined}
     onDone={async () => {
+      connecting = false;
       await refreshStatus();
       await refresh();
-      newNote();
+      if (notes.length) await open(notes[0].id, false);
+      else newNote();
     }}
   />
 {:else if status?.locked}
@@ -534,6 +539,7 @@
       else newNote();
     }}
     onLogout={refreshStatus}
+    onConnect={() => ((settings = false), (connecting = true))}
     onClose={() => ((settings = false), view?.focus())}
   />
 {/if}

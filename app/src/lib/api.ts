@@ -24,6 +24,8 @@ export interface Status {
   mobile: boolean;
   platform: string;
   omarchy: boolean;
+  /** No Joplin Server connected: notes stay on this device. */
+  local: boolean;
   data_dir: string;
 }
 
@@ -84,6 +86,7 @@ export const api = {
   status: () => invoke<Status>("get_status"),
   setup: (server_url: string, email: string, password: string, master_password?: string) =>
     invoke<void>("setup", { serverUrl: server_url, email, password, masterPassword: master_password ?? null }),
+  useLocal: (notebook: string) => invoke<string>("use_local", { notebook }),
   unlock: (master_password: string) => invoke<void>("unlock", { masterPassword: master_password }),
   logout: () => invoke<void>("logout"),
   syncNow: () => invoke<SyncReport | null>("sync_now"),

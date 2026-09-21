@@ -22,6 +22,10 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   ../design/icon.png` from `app/`; `design/tray.svg` → `app/src-tauri/icons/tray.png`
   (macOS template image). Render SVGs with `@resvg/resvg-js`.
 - `omanote-cli` + MCP server tested on real synced data.
+- Local mode: "use without a server" creates a local notebook (`Config.local_only`);
+  connecting a Joplin Server later uploads those notes instead of resetting the store
+  (only switching from one server/account to another resets it). Verified with
+  `crates/omanote-core/examples/local_then_sync.rs` + the official Joplin CLI.
 
 **Not verified yet**
 - Linux/Omarchy build on real hardware (theme from `colors.toml`, tesseract, grim/slurp,

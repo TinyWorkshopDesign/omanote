@@ -2,9 +2,20 @@
   import { api, type Folder } from "../api";
   import { errText, t } from "../i18n.svelte";
 
-  let { onDone }: { onDone: () => void } = $props();
+  let {
+    onDone,
+    onCancel,
+    localRoot = "",
+  }: {
+    onDone: () => void;
+    /** Present when connecting a server from local mode (Settings). */
+    onCancel?: () => void;
+    /** The local-mode notebook: offered first so its notes move to the server. */
+    localRoot?: string;
+  } = $props();
 
-  let step = $state<"login" | "folder">("login");
+  let step = $state<"login" | "folder" | "local">("login");
+  let localName = $state("Omanote");
   let serverUrl = $state("");
   let email = $state("");
   let password = $state("");
@@ -22,6 +33,7 @@
     try {
       await api.setup(serverUrl, email, password, needsMaster ? master : undefined);
       folders = (await api.folders()).filter((f) => f.parent_id === "");
+      if (localRoot && folders.some((f) => f.id === localRoot)) chosen = localRoot;
       step = "folder";
     } catch (e) {
       if (String(e).startsWith("E2EE_REQUIRED")) {
@@ -30,6 +42,19 @@
       } else {
         error = errText(e);
       }
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function startLocal() {
+    busy = true;
+    error = "";
+    try {
+      await api.useLocal(localName);
+      onDone();
+    } catch (e) {
+      error = errText(e);
     } finally {
       busy = false;
     }
@@ -64,12 +89,23 @@
         {busy ? t("setup.connecting") : t("setup.connect")}
       </button>
       <p class="hint">{t("setup.keychain")}</p>
+      {#if onCancel}
+        <button class="secondary" onclick={onCancel}>{t("setup.cancel")}</button>
+      {:else}
+        <div class="or"><span></span></div>
+        <button class="secondary" onclick={() => ((step = "local"), (error = ""))}>{t("setup.local")}</button>
+      {/if}
+    {:else if step === "local"}
+      <p class="sub">{t("setup.localHint")}</p>
+      <label>{t("setup.localName")}<input bind:value={localName} onkeydown={(e) => e.key === "Enter" && startLocal()} /></label>
+      <button class="primary" onclick={startLocal} disabled={busy}>{busy ? t("setup.wait") : t("setup.start")}</button>
+      <button class="secondary" onclick={() => (step = "login")}>{t("setup.back")}</button>
     {:else}
       <p class="sub">{t("setup.pickNotebook")}</p>
       <div class="list">
         {#each folders as f (f.id)}
           <button class="row" class:sel={chosen === f.id} onclick={() => (chosen = f.id)}>
-            <span>{f.title}</span><span class="count">{f.note_count}</span>
+            <span>{f.icon ? `${f.icon} ` : ""}{f.title}{f.id === localRoot ? ` · ${t("setup.keepLocal")}` : ""}</span><span class="count">{f.note_count}</span>
           </button>
         {/each}
         <button class="row" class:sel={chosen === ""} onclick={() => (chosen = "")}>
@@ -128,6 +164,16 @@
   .primary:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+  .secondary {
+    border: 1px solid var(--line);
+    padding: 9px;
+    color: var(--text);
+  }
+  .or {
+    height: 1px;
+    background: var(--line);
+    margin: 4px 0;
   }
   .hint,
   .error {

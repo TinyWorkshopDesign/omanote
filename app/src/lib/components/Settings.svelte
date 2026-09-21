@@ -10,6 +10,7 @@
     fontSize = $bindable(),
     onRootChanged,
     onLogout,
+    onConnect,
     onClose,
   }: {
     status: Status;
@@ -18,6 +19,8 @@
     fontSize: number;
     onRootChanged: () => void;
     onLogout: () => void;
+    /** Local mode: open the Joplin Server login. */
+    onConnect: () => void;
     onClose: () => void;
   } = $props();
 
@@ -181,20 +184,25 @@
 
   <section>
     <h3>{t("set.account")}</h3>
-    <div class="field"><span>{t("set.server")}</span><span class="muted">{status.server_url}</span></div>
-    <div class="field"><span>{t("setup.email")}</span><span class="muted">{status.email}</span></div>
-    <div class="field">
-      <span>{t("set.e2ee")}</span><span class="muted">{status.e2ee ? t("set.on") : t("set.off")}</span>
-    </div>
-    <button
-      class="danger"
-      onclick={async () => {
-        if (confirm(t("set.logoutConfirm"))) {
-          await api.logout();
-          onLogout();
-        }
-      }}>{t("set.logout")}</button
-    >
+    {#if status.local}
+      <p class="hint">{t("set.localOnly")}</p>
+      <button class="accent wide" onclick={onConnect}>{t("set.connect")}</button>
+    {:else}
+      <div class="field"><span>{t("set.server")}</span><span class="muted">{status.server_url}</span></div>
+      <div class="field"><span>{t("setup.email")}</span><span class="muted">{status.email}</span></div>
+      <div class="field">
+        <span>{t("set.e2ee")}</span><span class="muted">{status.e2ee ? t("set.on") : t("set.off")}</span>
+      </div>
+      <button
+        class="danger"
+        onclick={async () => {
+          if (confirm(t("set.logoutConfirm"))) {
+            await api.logout();
+            onLogout();
+          }
+        }}>{t("set.logout")}</button
+      >
+    {/if}
   </section>
 </div>
 
@@ -358,6 +366,10 @@
     padding: 6px 8px;
     overflow-x: auto;
     white-space: nowrap;
+  }
+  .wide {
+    align-self: flex-start;
+    padding: 7px 12px;
   }
   .danger {
     align-self: flex-start;
