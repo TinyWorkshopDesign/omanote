@@ -13,6 +13,10 @@ crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
 - Si apre su una nota nuova; `⌘[` / `⌘]` o lo swipe a due dita scorrono tra le note.
   Andare oltre la più recente ne crea una nuova; una nota lasciata vuota si cancella da sola.
 - Menu nascosto: compare avvicinando il mouse al bordo alto della nota (sempre visibile su touch).
+- Barra inferiore a scomparsa: ‹ un puntino per nota › e «+» per una nota
+  nuova; compare vicino al bordo basso o per un attimo quando cambi nota.
+- Pannello delle cartelle ad albero (notebook → cartelle → note): rami apribili, nota
+  corrente evidenziata, azioni su ogni cartella, trascina una nota su una cartella per spostarla.
 - Parole chiave sulla prima riga (anche tradotte: `lista`, `somma`, `media`…):
   - `list` / `list: Titolo`: ogni riga diventa una casella; `/x` a fine riga la spunta;
   - `math`: calcoli in linea (attivi comunque in ogni nota);
