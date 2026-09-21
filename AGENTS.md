@@ -35,6 +35,9 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 - Mobile: timer notifications are not scheduled, so they do not fire while the app is
   suspended; OCR on Android missing (ML Kit plugin planned).
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
+- Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (private for now, to be made
+  public), branch `main`. Share code between machines with git, never through Syncthing:
+  `.git` is excluded from Syncthing on the dev Mac.
 - The repo lives in a **Syncthing** folder (`~/Sync/...`) shared with another device.
   Syncthing may drop `*.sync-conflict-*` copies next to sources: SvelteKit fails with
   "Files prefixed with + are reserved" if one appears in `src/routes`. Such copies are
