@@ -1,7 +1,10 @@
 //! End-to-end check against a real Joplin Server.
 //!
-//! OMANOTE_URL=http://localhost:22300 OMANOTE_EMAIL=admin@localhost OMANOTE_PASSWORD=admin \
-//! OMANOTE_MASTER=segreto123 OMANOTE_DB=/tmp/omanote.db cargo run --example sync_e2e -- [write]
+//! OMANOTE_URL=… OMANOTE_EMAIL=… OMANOTE_PASSWORD=… OMANOTE_MASTER=… OMANOTE_DB=…
+//! cargo run --example sync_e2e -- [write] [edit <titolo> <testo>] [list]
+//!
+//! "edit" changes a note locally WITHOUT syncing, which is how the conflict
+//! path is exercised: edit the same note in Joplin, sync Joplin, then sync here.
 
 use std::sync::Mutex;
 
@@ -16,7 +19,9 @@ fn env(k: &str) -> String {
 
 #[tokio::main]
 async fn main() -> omanote_core::Result<()> {
-    let write = std::env::args().any(|a| a == "write");
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let write = args.iter().any(|a| a == "write");
+    let edit = args.iter().position(|a| a == "edit").map(|i| (args[i + 1].clone(), args[i + 2].clone()));
     let store = Mutex::new(Store::open(env("OMANOTE_DB"))?);
     let mut api = JoplinServer::new(&env("OMANOTE_URL"), &env("OMANOTE_EMAIL"), &env("OMANOTE_PASSWORD"));
     let mut keys = KeyRing::new();
@@ -31,6 +36,19 @@ async fn main() -> omanote_core::Result<()> {
     let info = sync.fetch_info().await?;
     let unlocked = unlock_keys(&info, &env("OMANOTE_MASTER"), sync.keys);
     println!("e2ee={} master keys unlocked: {unlocked}/{}", info.e2ee_enabled(), info.master_keys.len());
+
+    if let Some((title, text)) = edit {
+        let db = store.lock().unwrap();
+        let all: Vec<String> = db.folders()?.into_iter().map(|f| f.id).collect();
+        let n = db
+            .notes_in(&all)?
+            .into_iter()
+            .find(|n| n.title == title)
+            .unwrap_or_else(|| panic!("nota {title:?} non trovata"));
+        db.update_note_text(&n.id, &text)?;
+        println!("modificata localmente (non sincronizzata): {title}");
+        return Ok(());
+    }
 
     let t = std::time::Instant::now();
     let report = sync.sync().await?;
