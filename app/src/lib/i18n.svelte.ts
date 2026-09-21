@@ -142,6 +142,9 @@ const en = {
   "set.localOnly": "Only on this device (no Joplin Server)",
   "set.connect": "Connect to Joplin Server",
   "setup.keepLocal": "Your local notebook",
+  "img.ask": "Insert the image as…",
+  "img.image": "Image",
+  "img.text": "Text (OCR)",
 };
 
 export type Key = keyof typeof en;
@@ -262,6 +265,9 @@ const it: Dict = {
   "set.localOnly": "Solo su questo dispositivo (nessun Joplin Server)",
   "set.connect": "Connetti a Joplin Server",
   "setup.keepLocal": "Il tuo notebook locale",
+  "img.ask": "Inserisci l'immagine come…",
+  "img.image": "Immagine",
+  "img.text": "Testo (OCR)",
 };
 
 const es: Dict = {
@@ -377,6 +383,9 @@ const es: Dict = {
   "set.localOnly": "Solo en este dispositivo (sin Joplin Server)",
   "set.connect": "Conectar a Joplin Server",
   "setup.keepLocal": "Tu libreta local",
+  "img.ask": "Insertar la imagen como…",
+  "img.image": "Imagen",
+  "img.text": "Texto (OCR)",
 };
 
 const fr: Dict = {
@@ -493,6 +502,9 @@ const fr: Dict = {
   "set.localOnly": "Uniquement sur cet appareil (sans Joplin Server)",
   "set.connect": "Se connecter à Joplin Server",
   "setup.keepLocal": "Votre carnet local",
+  "img.ask": "Insérer l'image comme…",
+  "img.image": "Image",
+  "img.text": "Texte (OCR)",
 };
 
 const de: Dict = {
@@ -609,6 +621,9 @@ const de: Dict = {
   "set.localOnly": "Nur auf diesem Gerät (kein Joplin Server)",
   "set.connect": "Mit Joplin Server verbinden",
   "setup.keepLocal": "Dein lokales Notizbuch",
+  "img.ask": "Bild einfügen als…",
+  "img.image": "Bild",
+  "img.text": "Text (OCR)",
 };
 
 const pt: Dict = {
@@ -724,6 +739,9 @@ const pt: Dict = {
   "set.localOnly": "Só neste dispositivo (sem Joplin Server)",
   "set.connect": "Ligar ao Joplin Server",
   "setup.keepLocal": "O seu caderno local",
+  "img.ask": "Inserir a imagem como…",
+  "img.image": "Imagem",
+  "img.text": "Texto (OCR)",
 };
 
 const nl: Dict = {
@@ -840,6 +858,9 @@ const nl: Dict = {
   "set.localOnly": "Alleen op dit apparaat (geen Joplin Server)",
   "set.connect": "Verbinden met Joplin Server",
   "setup.keepLocal": "Je lokale notitieboek",
+  "img.ask": "Afbeelding invoegen als…",
+  "img.image": "Afbeelding",
+  "img.text": "Tekst (OCR)",
 };
 
 const pl: Dict = {
@@ -956,6 +977,9 @@ const pl: Dict = {
   "set.localOnly": "Tylko na tym urządzeniu (bez Joplin Server)",
   "set.connect": "Połącz z Joplin Server",
   "setup.keepLocal": "Twój lokalny notes",
+  "img.ask": "Wstaw obraz jako…",
+  "img.image": "Obraz",
+  "img.text": "Tekst (OCR)",
 };
 
 const DICTS: Record<Lang, Dict> = { en, it, es, fr, de, pt, nl, pl };

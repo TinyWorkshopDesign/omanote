@@ -16,7 +16,7 @@
     type Status,
     type TimerTick,
   } from "$lib/api";
-  import { createEditor, insertText } from "$lib/editor";
+  import { createEditor, insertBlock, insertText } from "$lib/editor";
   import { errText, i18n, t } from "$lib/i18n.svelte";
   import { initTheme, type ThemeState } from "$lib/theme";
   import Setup from "$lib/components/Setup.svelte";
@@ -59,6 +59,8 @@
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingText: string | null = null;
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Pending "image or text?" question for a pasted/dropped image. */
+  let imageAsk = $state<((choice: "image" | "ocr" | null) => void) | null>(null);
   let currentText = "";
 
   const index = $derived(current ? notes.findIndex((n) => n.id === current!.id) : -1);
@@ -205,7 +207,8 @@
       doc: text,
       onChange: scheduleSave,
       onTimer: (line) => api.timerCommand(line),
-      onImage: ocrBlob,
+      onImage: (blob) => void handleImageBlob(blob),
+      resolveImage: (id) => api.resourceSrc(id),
       extraKeys: noteKeys(),
     });
     if (focus) view.focus();
@@ -407,9 +410,53 @@
     }
   }
 
+  /** Asks whether a pasted/dropped image goes in as a picture or as text (OCR). */
+  function askImage(): Promise<"image" | "ocr" | null> {
+    return new Promise((resolve) => {
+      imageAsk = (choice) => {
+        imageAsk = null;
+        resolve(choice);
+        view?.focus();
+      };
+    });
+  }
+
+  async function handleImageBlob(blob: Blob) {
+    const choice = await askImage();
+    if (!choice || !view) return;
+    if (choice === "ocr") {
+      const text = await ocrBlob(blob);
+      if (text) insertText(view, text);
+      return;
+    }
+    try {
+      const name = (blob as File).name || `immagine-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.png`;
+      const id = await api.addImage(blob, name);
+      insertBlock(view, `![${name}](:/${id})`, name.replace(/\.[^.]+$/, ""));
+      scheduleSync();
+    } catch (e) {
+      say(errText(e));
+    }
+  }
+
   async function ocrPaths(paths: string[]) {
     const images = paths.filter((p) => IMAGE_EXT.test(p));
     if (!images.length || !view) return;
+    const choice = await askImage();
+    if (!choice || !view) return;
+    if (choice === "image") {
+      try {
+        for (const p of images) {
+          const id = await api.addImageFile(p);
+          const name = p.split(/[\\/]/).pop() ?? "image";
+          insertBlock(view, `![${name}](:/${id})`, name.replace(/\.[^.]+$/, ""));
+        }
+        scheduleSync();
+      } catch (e) {
+        say(errText(e));
+      }
+      return;
+    }
     say(t("ocr.running"), 30000);
     try {
       const texts = await Promise.all(images.map((p) => api.ocrFile(p)));
@@ -461,6 +508,16 @@
   }
 
   function windowKey(e: KeyboardEvent) {
+    if (imageAsk) {
+      const k = e.key.toLowerCase();
+      if (k === "i" || k === "enter") imageAsk("image");
+      else if (k === "t" || k === "o") imageAsk("ocr");
+      else if (k === "escape") imageAsk(null);
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (e.key !== "Escape") return;
     if (palette) palette = null;
     else if (sidebar) sidebar = false;
@@ -544,6 +601,17 @@
     <button class="nav" onclick={() => go(1)} aria-label="›">›</button>
     <span class="count">{position}</span>
   </nav>
+{/if}
+
+{#if imageAsk}
+  <div class="modal" role="dialog" aria-label={t("img.ask")}>
+    <div class="box choice">
+      <h2>{t("img.ask")}</h2>
+      <button class="primary" onclick={() => imageAsk?.("image")}>🖼 {t("img.image")} <kbd>I</kbd></button>
+      <button class="secondary" onclick={() => imageAsk?.("ocr")}>Aa {t("img.text")} <kbd>T</kbd></button>
+      <button class="link" onclick={() => imageAsk?.(null)}>{t("setup.cancel")} <kbd>Esc</kbd></button>
+    </div>
+  </div>
 {/if}
 
 {#if toast}<div class="toast">{toast}</div>{/if}
@@ -855,6 +923,25 @@
     color: var(--bg);
     padding: 8px;
     font-weight: 700;
+  }
+  .choice button {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    text-align: left;
+  }
+  .choice .secondary {
+    border: 1px solid var(--line);
+  }
+  .choice .link {
+    color: var(--muted);
+  }
+  .choice kbd {
+    font-family: var(--font);
+    font-size: 0.75rem;
+    opacity: 0.75;
   }
   .toast {
     position: fixed;

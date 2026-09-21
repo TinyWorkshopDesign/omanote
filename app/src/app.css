@@ -240,3 +240,43 @@ input:focus {
   text-decoration: line-through;
   color: var(--muted);
 }
+
+.cm-image {
+  position: relative;
+  margin: 6px 0;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.cm-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  border: 1px solid var(--line);
+}
+
+.cm-image[data-missing]::after {
+  content: attr(data-missing);
+  color: var(--muted);
+  font-size: 0.85em;
+}
+
+.cm-image-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--bar);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  opacity: 0;
+  padding: 2px 7px;
+}
+
+.cm-image:hover .cm-image-remove {
+  opacity: 1;
+}
+
+.cm-image-remove:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}

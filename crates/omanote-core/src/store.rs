@@ -2,13 +2,13 @@
 //! serialisation (`raw`), so unknown fields round-trip untouched; a few
 //! columns are denormalised for fast listing.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
 use crate::error::{Error, Result};
-use crate::item::{self, RawItem, FOLDER_FIELDS, NOTE_FIELDS, TYPE_FOLDER, TYPE_NOTE};
+use crate::item::{self, RawItem, FOLDER_FIELDS, NOTE_FIELDS, RESOURCE_FIELDS, TYPE_FOLDER, TYPE_NOTE, TYPE_RESOURCE};
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS items (
@@ -74,6 +74,8 @@ pub struct Folder {
 
 pub struct Store {
     conn: Connection,
+    /// Decrypted attachment files, `<id>.<ext>` (next to the database).
+    res_dir: PathBuf,
 }
 
 pub struct DirtyItem {
@@ -83,18 +85,80 @@ pub struct DirtyItem {
 
 impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let res_dir = path.as_ref().parent().unwrap_or(Path::new(".")).join("resources");
         let conn = Connection::open(path)?;
         // WAL + busy timeout: the app, the CLI and the MCP server can share the file.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
         conn.execute_batch(SCHEMA)?;
-        Ok(Self { conn })
+        Ok(Self { conn, res_dir })
     }
 
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch(SCHEMA)?;
-        Ok(Self { conn })
+        let res_dir = std::env::temp_dir().join(format!("omanote-res-{}", item::new_id()));
+        Ok(Self { conn, res_dir })
+    }
+
+    // -- attachments (Joplin resources) ------------------------------------
+
+    fn blob_path(&self, id: &str, ext: &str) -> PathBuf {
+        if ext.is_empty() {
+            self.res_dir.join(id)
+        } else {
+            self.res_dir.join(format!("{id}.{ext}"))
+        }
+    }
+
+    /// Local file of an attachment, if it has been saved or downloaded.
+    pub fn resource_file(&self, id: &str) -> Result<Option<PathBuf>> {
+        let Some((it, ..)) = self.raw(id)? else { return Ok(None) };
+        if it.item_type() != TYPE_RESOURCE {
+            return Ok(None);
+        }
+        let path = self.blob_path(id, it.get("file_extension"));
+        Ok(path.exists().then_some(path))
+    }
+
+    /// Where a downloaded attachment is saved (the resource item must be known).
+    pub fn save_resource_blob(&self, id: &str, bytes: &[u8]) -> Result<PathBuf> {
+        let (it, ..) = self.raw(id)?.ok_or_else(|| Error::Sync(format!("resource {id} not found")))?;
+        std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
+        let path = self.blob_path(id, it.get("file_extension"));
+        std::fs::write(&path, bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        Ok(path)
+    }
+
+    /// Stores a new attachment; returns its id. Insert `![name](:/id)` in a note to show it.
+    pub fn add_resource(&self, bytes: &[u8], mime: &str, filename: &str) -> Result<String> {
+        let id = item::new_id();
+        let ext = Path::new(filename)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .filter(|e| e.len() <= 5 && e.chars().all(|c| c.is_ascii_alphanumeric()))
+            .or_else(|| mime.strip_prefix("image/").map(|e| e.replace("jpeg", "jpg")))
+            .unwrap_or_default();
+        let now = item::now_ms();
+        let mut it = RawItem::new_with_fields(TYPE_RESOURCE, RESOURCE_FIELDS);
+        it.set("id", &id);
+        it.title = Some(filename.to_string());
+        it.set("mime", mime);
+        it.set("filename", filename);
+        it.set("file_extension", &ext);
+        it.set("size", bytes.len().to_string());
+        for k in ["created_time", "updated_time", "user_created_time", "user_updated_time", "blob_updated_time"] {
+            if k == "blob_updated_time" {
+                it.set(k, now.to_string());
+            } else {
+                it.set_time(k, now);
+            }
+        }
+        std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
+        std::fs::write(self.blob_path(&id, &ext), bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        self.put_local(&it)?;
+        Ok(id)
     }
 
     /// Wipes all local data (used when switching server/account).

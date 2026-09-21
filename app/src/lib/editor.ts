@@ -2,7 +2,15 @@
 // behave as a scratchpad — first-line keywords (list, math, sum, avg, count,
 // code), live checkboxes, simple Markdown, inline math, timers, OCR paste.
 
-import { EditorSelection, EditorState, type ChangeSpec, type Extension, type Range, type Text } from "@codemirror/state";
+import {
+  EditorSelection,
+  EditorState,
+  StateField,
+  type ChangeSpec,
+  type Extension,
+  type Range,
+  type Text,
+} from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -476,6 +484,110 @@ function continueList(view: EditorView): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Images: a line "![name](:/<resource id>)" (Joplin attachment) shows the image
+// ---------------------------------------------------------------------------
+
+const IMAGE_LINE = /^\s*!\[([^\]]*)\]\(:\/([0-9a-fA-F]{32})\)\s*$/;
+
+type ResolveImage = (id: string) => Promise<string | null>;
+
+class ImageWidget extends WidgetType {
+  constructor(
+    readonly id: string,
+    readonly alt: string,
+    readonly resolve: ResolveImage,
+  ) {
+    super();
+  }
+  eq(o: ImageWidget) {
+    return o.id === this.id && o.alt === this.alt;
+  }
+  toDOM(view: EditorView) {
+    const wrap = document.createElement("div");
+    wrap.className = "cm-image";
+    const img = document.createElement("img");
+    img.alt = this.alt;
+    const remove = document.createElement("button");
+    remove.className = "cm-image-remove";
+    remove.textContent = "✕";
+    remove.title = this.alt;
+    remove.onmousedown = (e) => {
+      e.preventDefault();
+      // Remove the whole line (and its line break); the attachment stays in Joplin.
+      const pos = view.posAtDOM(wrap);
+      const line = view.state.doc.lineAt(pos);
+      const to = Math.min(line.to + 1, view.state.doc.length);
+      const from = to === line.to && line.from > 0 ? line.from - 1 : line.from;
+      view.dispatch({ changes: { from, to } });
+    };
+    wrap.append(img, remove);
+    this.resolve(this.id)
+      .then((src) => {
+        if (src) img.src = src;
+        else wrap.dataset.missing = `🖼 ${this.alt}`;
+      })
+      .catch(() => (wrap.dataset.missing = `🖼 ${this.alt}`));
+    return wrap;
+  }
+  get estimatedHeight() {
+    return 200;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
+function imageDecorations(doc: Text, resolve: ResolveImage): DecorationSet {
+  const ranges: Range<Decoration>[] = [];
+  for (let n = 1; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    if (!line.text.includes("](:/")) continue;
+    const m = IMAGE_LINE.exec(line.text);
+    if (m) {
+      ranges.push(
+        Decoration.replace({ widget: new ImageWidget(m[2].toLowerCase(), m[1], resolve), block: true }).range(line.from, line.to),
+      );
+    }
+  }
+  return Decoration.set(ranges);
+}
+
+/** Block widgets must come from a state field (not a view plugin). */
+function imageField(resolve: ResolveImage) {
+  return StateField.define<DecorationSet>({
+    create: (state) => imageDecorations(state.doc, resolve),
+    update: (deco, tr) => (tr.docChanged ? imageDecorations(tr.state.doc, resolve) : deco),
+    provide: (f) => [EditorView.decorations.from(f), EditorView.atomicRanges.of((v) => v.state.field(f))],
+  });
+}
+
+/**
+ * Inserts an attachment reference on a line of its own at the cursor. Line 1 is
+ * the Joplin title, so the image never goes there: on the title it lands just
+ * below it, and an empty note gets `title` as its first line.
+ */
+export function insertBlock(view: EditorView, text: string, title = "") {
+  const doc = view.state.doc;
+  let { from, to } = view.state.selection.main;
+  let insert: string;
+  if (doc.length === 0) {
+    insert = `${title}\n${text}\n`;
+  } else if (doc.lineAt(from).number === 1) {
+    from = to = doc.line(1).to;
+    insert = `\n${text}` + (doc.lines === 1 ? "\n" : "");
+  } else {
+    const line = doc.lineAt(from);
+    insert = (from > line.from ? "\n" : "") + text + "\n";
+  }
+  view.dispatch({
+    changes: { from, to, insert },
+    selection: { anchor: from + insert.length },
+    scrollIntoView: true,
+  });
+  view.focus();
+}
+
+// ---------------------------------------------------------------------------
 
 export interface EditorOptions {
   parent: HTMLElement;
@@ -483,8 +595,10 @@ export interface EditorOptions {
   onChange: (text: string) => void;
   /** A line starting with "timer" was entered; resolve true if it was a timer command. */
   onTimer?: (line: string) => Promise<boolean>;
-  /** An image was pasted: resolve with the recognised text. */
-  onImage?: (image: Blob) => Promise<string | null>;
+  /** An image was pasted: the page decides (attachment or OCR) and inserts it. */
+  onImage?: (image: Blob) => void;
+  /** URL of an attachment (`:/id`) to display, or null if unavailable. */
+  resolveImage?: ResolveImage;
   extraKeys?: { key: string; run: () => boolean }[];
 }
 
@@ -529,6 +643,7 @@ export function createEditor(o: EditorOptions): EditorView {
   };
 
   const extensions: Extension[] = [
+    imageField(o.resolveImage ?? (async () => null)),
     theme,
     history(),
     EditorView.lineWrapping,
@@ -560,7 +675,7 @@ export function createEditor(o: EditorOptions): EditorView {
         const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
         if (!file || !o.onImage) return false;
         e.preventDefault();
-        void o.onImage(file).then((text) => text && insertText(view, text));
+        o.onImage(file);
         return true;
       },
     }),

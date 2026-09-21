@@ -26,6 +26,13 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   ../design/icon.png` from `app/`; `design/tray.svg` → `app/src-tauri/icons/tray.png`
   (macOS template image). Render SVGs with `@resvg/resvg-js`.
 - `omanote-cli` + MCP server tested on real synced data.
+- Images as Joplin attachments: paste/drop asks "Image or Text (OCR)" (keys I / T / Esc);
+  images become resources (`store.add_resource`, blob uploaded to `.resource/<id>` before
+  the item, FileV1-encrypted under E2EE, `encryption_blob_encrypted` set) and render in the
+  editor from `![name](:/id)` lines; remote blobs are fetched on demand
+  (`Synchronizer::fetch_resource`, served via Tauri's asset protocol scoped to
+  `$APPDATA/resources`). Verified both ways against Joplin CLI with identical SHA-256
+  (`crates/omanote-core/examples/resources_e2e.rs`). Images never go on line 1 (title).
 - Local mode: "use without a server" creates a local notebook (`Config.local_only`);
   connecting a Joplin Server later uploads those notes instead of resetting the store
   (only switching from one server/account to another resets it). Verified with
@@ -38,7 +45,6 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   SDK is not installed on the dev Mac.
 
 **Known gaps / next steps**
-- Attachments: OCR inserts text only; images are not stored as Joplin resources yet.
 - Tags are synced but not shown; no in-app trash view.
 - Mobile: timer notifications are not scheduled, so they do not fire while the app is
   suspended; OCR on Android missing (ML Kit plugin planned).

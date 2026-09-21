@@ -577,6 +577,78 @@ fn spawn_timer_loop(app: AppHandle) {
 }
 
 // ---------------------------------------------------------------------------
+// Images (Joplin resources)
+// ---------------------------------------------------------------------------
+
+fn image_mime(name: &str) -> &'static str {
+    match name.rsplit('.').next().unwrap_or("").to_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "heic" => "image/heic",
+        "bmp" => "image/bmp",
+        "tif" | "tiff" => "image/tiff",
+        "svg" => "image/svg+xml",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Stores a pasted image (raw request body; `x-name` / `x-mime` headers) as an
+/// attachment and returns its id, to be referenced as `![name](:/id)`.
+#[tauri::command]
+fn add_image(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected raw image bytes".into());
+    };
+    let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
+    let name = {
+        let n = header("x-name");
+        if n.is_empty() { "image.png".to_string() } else { n }
+    };
+    let mime = {
+        let m = header("x-mime");
+        if m.is_empty() { image_mime(&name).to_string() } else { m }
+    };
+    state.db().add_resource(bytes, &mime, &name).map_err(err)
+}
+
+/// Stores an image file dropped on the window as an attachment.
+#[tauri::command]
+fn add_image_file(state: State<'_, AppState>, path: String) -> Result<String, String> {
+    let bytes = std::fs::read(&path).map_err(err)?;
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "image".into());
+    state.db().add_resource(&bytes, image_mime(&name), &name).map_err(err)
+}
+
+/// Local path of an attachment, downloading it from Joplin Server if needed.
+#[tauri::command]
+async fn resource_path(state: State<'_, AppState>, id: String) -> Result<Option<String>, String> {
+    if let Some(p) = state.db().resource_file(&id).map_err(err)? {
+        return Ok(Some(p.display().to_string()));
+    }
+    // Work on copies so a running sync is not blocked by (or blocking) the download.
+    let (api, keys) = {
+        let ctx = state.sync.lock().await;
+        (ctx.api.clone(), ctx.keys.clone())
+    };
+    let Some(mut api) = api else { return Ok(None) };
+    let mut keys = keys;
+    let mut sync = Synchronizer {
+        api: &mut api,
+        store: &state.store,
+        keys: &mut keys,
+        client_id: state.config().client_id,
+        client_type: CLIENT_TYPE,
+    };
+    let path = sync.fetch_resource(&id).await.map_err(err)?;
+    Ok(path.map(|p| p.display().to_string()))
+}
+
+// ---------------------------------------------------------------------------
 // OCR
 // ---------------------------------------------------------------------------
 
@@ -942,6 +1014,9 @@ pub fn run() {
             timer_stop,
             timer_state,
             ocr_image,
+            add_image,
+            add_image_file,
+            resource_path,
             ocr_file,
             capture_text,
             toggle_pin,

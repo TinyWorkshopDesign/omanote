@@ -79,6 +79,34 @@ pub const FOLDER_FIELDS: &[&str] = &[
     "deleted_time",
 ];
 
+/// Field order used by Joplin for resources (attachments). The file itself is a
+/// separate blob at `.resource/<id>` on the sync target.
+pub const RESOURCE_FIELDS: &[&str] = &[
+    "id",
+    "title",
+    "mime",
+    "filename",
+    "created_time",
+    "updated_time",
+    "user_created_time",
+    "user_updated_time",
+    "file_extension",
+    "encryption_cipher_text",
+    "encryption_applied",
+    "encryption_blob_encrypted",
+    "size",
+    "is_shared",
+    "share_id",
+    "master_key_id",
+    "user_data",
+    "blob_updated_time",
+    "ocr_text",
+    "ocr_details",
+    "ocr_status",
+    "ocr_error",
+    "ocr_driver_id",
+];
+
 /// Properties kept in clear text when an item is encrypted
 /// (`BaseItem.serializeForSync` → `keepKeys`).
 pub const ENCRYPTION_KEEP_KEYS: &[&str] = &[
@@ -231,7 +259,8 @@ impl RawItem {
                 "latitude" | "longitude" => "0.00000000",
                 "altitude" => "0.0000",
                 "is_conflict" | "is_todo" | "todo_due" | "todo_completed" | "order"
-                | "encryption_applied" | "is_shared" | "deleted_time" => "0",
+                | "encryption_applied" | "is_shared" | "deleted_time" | "encryption_blob_encrypted"
+                | "size" | "ocr_status" | "ocr_driver_id" => "0",
                 "markup_language" => "1",
                 _ => "",
             };

@@ -1,13 +1,13 @@
 // Typed bridge to the Rust core (Tauri commands).
-import { invoke as tauriInvoke, type InvokeArgs } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke as tauriInvoke, type InvokeArgs, type InvokeOptions } from "@tauri-apps/api/core";
 import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
 
 /** True in the packaged app; false when the UI is opened in a plain browser. */
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-const invoke = <T>(cmd: string, args?: InvokeArgs): Promise<T> =>
+const invoke = <T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions): Promise<T> =>
   inTauri
-    ? tauriInvoke<T>(cmd, args)
+    ? tauriInvoke<T>(cmd, args, options)
     : import("./mock").then((m) => m.mockInvoke(cmd, args as Record<string, unknown>) as Promise<T>);
 
 const listen = <T>(event: string, cb: (e: { payload: T }) => void): Promise<UnlistenFn> =>
@@ -117,6 +117,17 @@ export const api = {
   ocrImage: async (image: Blob) =>
     invoke<string>("ocr_image", new Uint8Array(await image.arrayBuffer())),
   ocrFile: (path: string) => invoke<string>("ocr_file", { path }),
+  // images as Joplin attachments (referenced in notes as ![name](:/id))
+  addImage: async (image: Blob, name: string) =>
+    invoke<string>("add_image", new Uint8Array(await image.arrayBuffer()), {
+      headers: { "x-name": name.replace(/[^\x20-\x7e]/g, "_"), "x-mime": image.type || "image/png" },
+    }),
+  addImageFile: (path: string) => invoke<string>("add_image_file", { path }),
+  /** URL the webview can load for an attachment (downloaded on demand). */
+  resourceSrc: async (id: string) => {
+    const path = await invoke<string | null>("resource_path", { id });
+    return path && inTauri ? convertFileSrc(path) : path;
+  },
   captureText: () => invoke<string | null>("capture_text"),
   // window
   togglePin: () => invoke<boolean>("toggle_pin"),
