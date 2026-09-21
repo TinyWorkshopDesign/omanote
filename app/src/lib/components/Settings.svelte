@@ -90,7 +90,7 @@
     <div class="list">
       {#each notebooks as f (f.id)}
         <button class="row" class:sel={status.root_folder_id === f.id} onclick={() => chooseRoot(f.id)}>
-          <span>{f.icon} {f.title}</span><span class="muted">{f.note_count}</span>
+          <span>{f.icon ? `${f.icon} ` : ""}{f.title}</span><span class="muted">{f.note_count}</span>
         </button>
       {/each}
     </div>
