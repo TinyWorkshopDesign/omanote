@@ -251,8 +251,9 @@
 
   /** A note picked in the tree; the stack follows its folder unless showing everything. */
   async function openFromTree(id: string) {
-    sidebar = false;
-    await open(id);
+    // Wide windows keep the tree open (to keep organizing); narrow ones close it.
+    if (window.innerWidth < 760) sidebar = false;
+    if (current?.id !== id) await open(id);
     if (current && selectedFolder && current.parent_id !== selectedFolder) {
       selectedFolder = current.parent_id === status?.root_folder_id ? "" : current.parent_id;
       await refresh();
@@ -336,6 +337,25 @@
     await refresh();
     if (notes.length) await open(notes[Math.min(pos, notes.length - 1)].id, false);
     else newNote();
+    scheduleSync(1500);
+  }
+
+  /** Tree changed (moves, copies, renames): reload lists and the open note's folder. */
+  async function treeChanged() {
+    await flush();
+    await refresh();
+    if (current) current = (await api.note(current.id)) ?? current;
+    scheduleSync(1500);
+  }
+
+  /** Note trashed from the tree. */
+  async function trashNoteById(id: string) {
+    if (current?.id === id) {
+      await trash(false);
+      return;
+    }
+    await api.trashNote(id);
+    await refresh();
     scheduleSync(1500);
   }
 
@@ -640,7 +660,9 @@
     onOpenNote={(id) => void openFromTree(id)}
     onSelectFolder={selectFolder}
     onNewNote={newNoteIn}
-    onChanged={refresh}
+    onDeleteNote={(id) => void trashNoteById(id)}
+    onChanged={() => void treeChanged()}
+    mac={status?.platform === "macos"}
     onClose={() => (sidebar = false)}
     onSettings={() => ((sidebar = false), (settings = true))}
   />

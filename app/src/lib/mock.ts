@@ -140,6 +140,14 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       folders.push(f);
       return f;
     }
+    case "move_folder": {
+      folders.find((f) => f.id === a.id)!.parent_id = a.parentId!;
+      return null;
+    }
+    case "trash_folder": {
+      folders.splice(folders.findIndex((f) => f.id === a.id), 1);
+      return null;
+    }
     case "rename_folder": {
       folders.find((f) => f.id === a.id)!.title = a.title ?? "";
       return null;
