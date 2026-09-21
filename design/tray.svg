@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Menu bar icon: monochrome pencil, used as a macOS template image
+       (macOS tints it white or black to match the menu bar). -->
+  <g transform="rotate(-45 32 32)" fill="none" stroke="#fff" stroke-width="4.5"
+     stroke-linejoin="round" stroke-linecap="round">
+    <path d="M7 32 L17 26.5 V37.5 Z"/>
+    <path d="M7 32 L11 29.8 V34.2 Z" fill="#fff"/>
+    <path d="M17 26.5 H47 Q56 26.5 56 32 Q56 37.5 47 37.5 H17"/>
+    <path d="M45 26.5 V37.5"/>
+  </g>
+</svg>
