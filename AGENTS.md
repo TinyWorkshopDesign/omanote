@@ -39,7 +39,9 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   Syncthing may drop `*.sync-conflict-*` copies next to sources: SvelteKit fails with
   "Files prefixed with + are reserved" if one appears in `src/routes`. Such copies are
   git-ignored; move them out (they are usually older versions) and keep `target/`,
-  `node_modules/`, `.svelte-kit/`, `build/` out of Syncthing (`.stignore`).
+  `node_modules/`, `.svelte-kit/`, `build/` out of Syncthing. On the dev Mac this is
+  done in `~/Sync/.stignore` and `~/Sync/AI/.stignore` (two nested Syncthing folders);
+  `.stignore` is local, so other devices need the same lines.
 - macOS keychain: each debug rebuild changes the binary signature, so macOS may ask
   again for keychain access; the sync waits on that prompt (the UI must not).
 - In dev (`tauri dev`) the Dock icon is embedded at compile time: after changing icons
