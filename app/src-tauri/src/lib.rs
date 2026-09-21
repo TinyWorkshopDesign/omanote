@@ -598,6 +598,30 @@ fn toggle_pin(window: tauri::WebviewWindow) -> Result<bool, String> {
     }
 }
 
+/// macOS: shows or hides the traffic lights. Omanote has no title bar; the
+/// window buttons appear together with the hover menu.
+#[tauri::command]
+fn set_window_controls(window: tauri::WebviewWindow, visible: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let w = window.clone();
+        let _ = window.run_on_main_thread(move || {
+            use objc2_app_kit::{NSWindow, NSWindowButton};
+            let Ok(ptr) = w.ns_window() else { return };
+            // SAFETY: Tauri hands out the live NSWindow of this webview window,
+            // and we are on the main thread as AppKit requires.
+            let ns: &NSWindow = unsafe { &*(ptr as *const NSWindow) };
+            for b in [NSWindowButton::CloseButton, NSWindowButton::MiniaturizeButton, NSWindowButton::ZoomButton] {
+                if let Some(button) = ns.standardWindowButton(b) {
+                    button.setHidden(!visible);
+                }
+            }
+        });
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (window, visible);
+}
+
 #[tauri::command]
 fn hide_window(window: tauri::WebviewWindow) {
     #[cfg(desktop)]
@@ -761,6 +785,14 @@ pub fn run() {
             #[cfg(desktop)]
             setup_desktop(app)?;
 
+            // No title bar: macOS keeps the traffic lights (hidden until the hover
+            // menu shows), Linux drops the decorations (Hyprland has none anyway).
+            if let Some(w) = app.get_webview_window("main") {
+                #[cfg(target_os = "linux")]
+                let _ = w.set_decorations(false);
+                set_window_controls(w, false);
+            }
+
             // Follow the Omarchy theme while the app runs.
             if let Some(initial) = theme::current() {
                 let handle = app.handle().clone();
@@ -832,6 +864,7 @@ pub fn run() {
             capture_text,
             toggle_pin,
             hide_window,
+            set_window_controls,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Omanote");

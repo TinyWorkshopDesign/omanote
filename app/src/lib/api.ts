@@ -118,6 +118,7 @@ export const api = {
   // window
   togglePin: () => invoke<boolean>("toggle_pin"),
   hideWindow: () => invoke<void>("hide_window"),
+  setWindowControls: (visible: boolean) => invoke<void>("set_window_controls", { visible }),
 };
 
 export const onSyncStatus = (cb: (e: SyncEvent) => void) =>

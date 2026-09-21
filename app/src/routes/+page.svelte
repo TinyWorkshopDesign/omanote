@@ -63,6 +63,11 @@
   );
   const barVisible = $derived(touch || nearTop || sidebar || !!palette || settings || syncState === "error");
 
+  // macOS: the traffic lights appear and disappear with the hover menu.
+  $effect(() => {
+    if (status?.platform === "macos") void api.setWindowControls(barVisible);
+  });
+
   function readFontSize(): number {
     try {
       return Number(localStorage.getItem(FONT_KEY)) || 14;
@@ -418,14 +423,14 @@
   }
 
   function pointer(e: MouseEvent) {
-    nearTop = e.clientY < 44;
+    nearTop = e.clientY < 56;
   }
 </script>
 
 <svelte:window onkeydown={windowKey} onbeforeunload={() => void flush()} onmousemove={pointer} />
 
 <div class="app" style="--editor-size: {fontSize}px">
-  <header class:shown={barVisible} data-tauri-drag-region>
+  <header class:shown={barVisible} class:mac={status?.platform === "macos"} data-tauri-drag-region>
     <button class="icon" title={t("nav.folders")} onclick={() => (sidebar = true)}>☰</button>
     <button class="crumb" title={t("act.move")} onclick={() => (palette = "move")}>{folderName}</button>
     <span class="pos">{position}</span>
@@ -546,17 +551,21 @@
     z-index: 5;
     display: flex;
     align-items: center;
-    gap: 2px;
-    padding: env(safe-area-inset-top) 6px 0;
+    gap: 4px;
+    padding: env(safe-area-inset-top) 10px 0;
     min-height: calc(var(--bar-h) + env(safe-area-inset-top));
     background: var(--bar);
     border-bottom: 1px solid var(--line);
-    font-size: 0.82rem;
+    font-size: 0.95rem;
     transform: translateY(-100%);
     opacity: 0;
     transition:
       transform 0.14s ease,
       opacity 0.14s ease;
+  }
+  /* Room for the macOS traffic lights (no title bar). */
+  header.mac {
+    padding-left: 84px;
   }
   header.shown {
     transform: none;
@@ -574,8 +583,14 @@
   }
   .icon {
     line-height: 1;
-    padding: 5px 7px;
+    font-size: 1.25rem;
+    min-width: 34px;
+    min-height: 32px;
+    padding: 6px 8px;
     color: var(--muted);
+  }
+  .icon:hover {
+    color: var(--text);
   }
   .icon.on {
     color: var(--accent);
@@ -583,15 +598,16 @@
   .crumb {
     font-weight: 700;
     color: var(--accent);
+    padding: 6px 8px;
   }
   .pos {
     color: var(--muted);
-    font-size: 0.78rem;
+    font-size: 0.85rem;
     font-variant-numeric: tabular-nums;
   }
   .dot {
     color: var(--result);
-    font-size: 0.65rem;
+    font-size: 0.8rem;
   }
   .dot.syncing {
     color: var(--accent);
@@ -682,7 +698,7 @@
   }
   .toast {
     position: fixed;
-    top: calc(44px + env(safe-area-inset-top));
+    top: calc(var(--bar-h) + 12px + env(safe-area-inset-top));
     left: 50%;
     transform: translateX(-50%);
     background: var(--bg-elev);

@@ -10,7 +10,7 @@
   --font: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
   --mono: var(--font);
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
-  --bar-h: 30px;
+  --bar-h: 42px;
 }
 
 * {
