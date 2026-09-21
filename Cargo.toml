@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/omanote-core", "app/src-tauri"]
+members = ["crates/omanote-core", "app/src-tauri", "crates/omanote-cli"]
 
 [profile.release]
 lto = true

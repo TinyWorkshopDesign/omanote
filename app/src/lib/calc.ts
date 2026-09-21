@@ -28,9 +28,14 @@ type Tok =
   | { t: "," };
 
 const CURRENCIES = "€$£¥₿";
-const SUM_WORDS = new Set(["sum", "total", "totale", "somma", "tot"]);
-const AVG_WORDS = new Set(["avg", "average", "media", "mean"]);
-const OF_WORDS = new Set(["of", "di", "del", "della", "dei", "on"]);
+// Per-line keywords, in every UI language.
+const SUM_WORDS = new Set([
+  "sum", "total", "tot", "totale", "somma", "suma", "soma", "somme", "summe", "gesamt", "som", "totaal", "razem",
+]);
+const AVG_WORDS = new Set([
+  "avg", "average", "mean", "media", "promedio", "média", "moyenne", "durchschnitt", "gemiddelde", "średnia",
+]);
+const OF_WORDS = new Set(["of", "on", "di", "del", "della", "dei", "de", "du", "des", "von", "vom", "van", "z", "ze"]);
 
 const FUNCS: Record<string, (...a: number[]) => number> = {
   sqrt: Math.sqrt, abs: Math.abs, round: Math.round, floor: Math.floor, ceil: Math.ceil,
@@ -216,7 +221,7 @@ function evalExpr(src: string, vars: Map<string, Val>): { val: Val; computed: bo
   return { val, computed: p.usedOperator || val.pct };
 }
 
-const SKIP = /^\s*(#|>|```|- \[[ xX]\]\s*$)/;
+const SKIP = /^\s*(#|>|```|\/\/|- \[[ xX]\]\s*$)/;
 const LIST_PREFIX = /^\s*(?:[-*+•]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/;
 
 /** Evaluates a whole note; returns one entry per line (null = no result). */
@@ -306,4 +311,63 @@ export function formatResult(r: LineResult, locale?: string): string {
   }
   const n = f.format(r.value);
   return r.unit ? `${n} ${r.unit}` : n;
+}
+
+// ---------------------------------------------------------------------------
+// Note modes (keywords on the first line: "list: Groceries")
+// ---------------------------------------------------------------------------
+
+export type Mode = "plain" | "list" | "math" | "sum" | "avg" | "count" | "code";
+
+export const MODE_KEYWORDS: Record<Exclude<Mode, "plain">, string[]> = {
+  list: ["list", "lista", "liste", "lijst", "todo"],
+  math: ["math", "calc", "maths", "mate", "matematica", "mathe", "matemática", "wiskunde", "matematyka"],
+  sum: ["sum", "somma", "suma", "soma", "somme", "summe", "som"],
+  avg: ["avg", "media", "promedio", "média", "moyenne", "durchschnitt", "gemiddelde", "średnia"],
+  count: ["count", "conta", "contar", "compter", "zählen", "tel", "licz"],
+  code: ["code", "codice", "código", "codigo", "kod"],
+};
+
+const KEYWORD_OF = new Map<string, Mode>(
+  Object.entries(MODE_KEYWORDS).flatMap(([mode, words]) => words.map((w) => [w, mode as Mode])),
+);
+
+/** Reads the note mode from its first line ("list" or "list: Title"). */
+export function detectMode(firstLine: string): { mode: Mode; title: string } {
+  const m = /^\s*([\p{L}]+)\s*(?::\s*(.*))?$/u.exec(firstLine);
+  const mode = m ? KEYWORD_OF.get(m[1].toLowerCase()) : undefined;
+  return mode ? { mode, title: (m![2] ?? "").trim() } : { mode: "plain", title: firstLine };
+}
+
+const NUMBER_RE = /-?\d+(?:[.,]\d+)?/g;
+
+/** Every number in the note body (line 1 and // comments excluded), for sum/avg. */
+export function numbersIn(text: string): number[] {
+  const out: number[] = [];
+  for (const line of text.split("\n").slice(1)) {
+    if (/^\s*\/\//.test(line)) continue;
+    for (const n of line.replace(/^\s*(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/, "").matchAll(NUMBER_RE)) {
+      out.push(parseFloat(n[0].replace(",", ".")));
+    }
+  }
+  return out;
+}
+
+export interface Counts {
+  items: number;
+  lines: number;
+  words: number;
+  chars: number;
+}
+
+/** "count" mode: items (non-empty lines after the first), lines, words, characters. */
+export function countIn(text: string): Counts {
+  const body = text.split("\n").slice(1).filter((l) => !/^\s*\/\//.test(l));
+  const joined = body.join("\n");
+  return {
+    items: body.filter((l) => l.trim() !== "").length,
+    lines: body.length,
+    words: (joined.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) ?? []).length,
+    chars: [...joined.replace(/\n/g, "")].length,
+  };
 }

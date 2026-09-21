@@ -50,8 +50,11 @@ const status: Status = {
   root_folder_id: "r".repeat(32),
   e2ee: true,
   locked: false,
-  hotkey: "CommandOrControl+Shift+Space",
+  hotkey: "Alt+A",
   mobile: false,
+  platform: "macos",
+  omarchy: false,
+  data_dir: "~/Library/Application Support/app.omanote",
 };
 
 const empty: SyncReport = {
@@ -118,6 +121,18 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
     }
     case "sync_now":
       return empty;
+    case "promote_note": {
+      const n = notes.find((x) => x.id === a.id);
+      if (n) n.updated_time = Date.now();
+      return null;
+    }
+    case "timer_command":
+      return /^\s*timer\b/i.test(a.line ?? "");
+    case "ocr_image":
+    case "ocr_file":
+      return "Testo riconosciuto (demo)";
+    case "toggle_pin":
+      return true;
     default:
       return null;
   }

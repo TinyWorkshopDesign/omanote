@@ -1,6 +1,7 @@
 <script lang="ts">
   // Quick switcher: search notes (mode "search") or pick a folder (mode "move").
   import { api, type Folder, type NoteSummary, when } from "../api";
+  import { i18n, t } from "../i18n.svelte";
 
   let {
     mode,
@@ -8,6 +9,7 @@
     notes,
     onPickNote,
     onPickFolder,
+    onCreate,
     onClose,
   }: {
     mode: "search" | "move";
@@ -15,6 +17,8 @@
     notes: NoteSummary[];
     onPickNote: (id: string) => void;
     onPickFolder: (id: string) => void;
+    /** Return with no results creates a note from the query. */
+    onCreate: (text: string) => void;
     onClose: () => void;
   } = $props();
 
@@ -49,6 +53,7 @@
   function choose(i = index) {
     if (mode === "search") {
       if (hits[i]) onPickNote(hits[i].id);
+      else if (query.trim()) onCreate(query.trim());
     } else if (folderHits[i]) onPickFolder(folderHits[i].id);
   }
 
@@ -68,18 +73,22 @@
     bind:this={input}
     bind:value={query}
     onkeydown={key}
-    placeholder={mode === "search" ? "Cerca nelle note…" : "Sposta nella cartella…"}
+    placeholder={mode === "search" ? t("palette.search") : t("palette.move")}
   />
   <div class="results">
     {#if mode === "search"}
       {#each hits as n, i (n.id)}
         <button class:sel={i === index} onmouseenter={() => (index = i)} onclick={() => choose(i)}>
-          <span class="t">{n.encrypted ? "🔒 cifrata" : n.title || "Senza titolo"}</span>
-          <span class="w">{when(n.updated_time)}</span>
+          <span class="t">{n.encrypted ? `🔒 ${t("note.encrypted")}` : n.title || t("note.untitled")}</span>
+          <span class="w">{when(n.updated_time, i18n.lang)}</span>
           <span class="p">{n.preview.replace(/\n/g, " ").slice(0, 70)}</span>
         </button>
       {:else}
-        <p class="empty">Nessuna nota</p>
+        {#if query.trim()}
+          <button class="sel" onclick={() => onCreate(query.trim())}><span class="t">↵ {t("palette.create")}</span></button>
+        {:else}
+          <p class="empty">{t("palette.empty")}</p>
+        {/if}
       {/each}
     {:else}
       {#each folderHits as f, i (f.id)}
@@ -95,11 +104,13 @@
 <style>
   .scrim {
     position: fixed;
+    z-index: 10;
     inset: 0;
     background: rgba(0, 0, 0, 0.3);
   }
   .palette {
     position: fixed;
+    z-index: 11;
     top: max(8vh, env(safe-area-inset-top));
     left: 50%;
     transform: translateX(-50%);

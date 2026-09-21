@@ -1,81 +1,109 @@
 # Omanote
 
 Note veloci sincronizzate con **Joplin Server**, con l'estetica di
-**Omarchy**. Una sola app per **Linux, macOS, iOS e Android**.
+**Omarchy**. Una sola app per **Linux, macOS, iOS e Android**, in 8 lingue.
 
 Il server non viene toccato: Omanote parla lo stesso protocollo dei client Joplin
 ufficiali (sync target versione 3), scrive gli stessi file `<id>.md` e usa la stessa
-crittografia end-to-end. Puoi tenere Joplin e Omanote sullo stesso account e usarli
-insieme.
-
-## Com'è fatto
-
-| Parte | Tecnologia | Perché |
-| --- | --- | --- |
-| Core | Rust (`crates/omanote-core`) | Sync, E2EE, database e modello dati: un solo codice nativo per tutte le piattaforme |
-| App | Tauri 2 (`app/src-tauri`) | Usa la webview di sistema: binari di pochi MB, niente Chromium incluso |
-| UI | Svelte 5 + CodeMirror 6 (`app/src`) | Editor leggero con checkbox, elenchi e calcoli in linea |
-
-```
-crates/omanote-core/
-  item.rs    formato delle note Joplin (serializzazione e parsing)
-  e2ee.rs    crittografia: AES-256-GCM + PBKDF2 (attuale), AES-CCM/SJCL (storica)
-  api.rs     client di Joplin Server
-  store.rs   database locale SQLite
-  sync.rs    motore di sincronizzazione (lock, upload, delta, conflitti)
-app/
-  src/lib/calc.ts    calcolatrice in linea
-  src/lib/editor.ts  editor CodeMirror
-  src/lib/theme.ts   temi (segue Omarchy quando disponibile)
-  src-tauri/         comandi, tray, hotkey, portachiavi, tema di sistema
-tools/gen-themes.py  rigenera i temi dalle palette ufficiali di Omarchy
-```
-
-## Compatibilità con Joplin
-
-- **Formato**: le note restano note Joplin normali (titolo = prima riga, corpo Markdown).
-  I campi sconosciuti vengono conservati, così le note scritte da versioni più recenti
-  di Joplin non si danneggiano passando da Omanote.
-- **E2EE**: Omanote decifra i metodi `KeyV1`, `StringV1`, `FileV1` (AES-256-GCM) e quelli
-  storici `SJCL1a`, `SJCL1b`, `SJCL3`, `SJCL4` (AES-CCM); scrive con il metodo attuale
-  di Joplin (`StringV1`). L'unico caso non supportato è il vecchio OCB2 (`SJCL`, `SJCL2`,
-  pre-2020): apri Joplin desktop una volta, si offrirà di aggiornare quelle chiavi.
-- **Master key**: Omanote non crea né modifica `info.json`. Attiva la crittografia da
-  Joplin; Omanote la riconosce e chiede la password master.
-- **Conflitti**: come Joplin. Vince la versione remota e quella locale resta come nota
-  separata con `is_conflict = 1` (in Joplin appare nella cartella "Conflitti").
-- **Cestino**: eliminare una nota imposta `deleted_time`, cioè il cestino di Joplin.
+crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
 
 ## Funzioni
 
-- Si apre su una nota nuova; si scorre tra le note con `⌘[` / `⌘]` o con uno swipe.
-- Cartelle: la nota vive in un notebook di Joplin scelto come radice; le sottocartelle
-  sono normali sotto-notebook.
-- Checklist: `- [ ]` diventa una casella cliccabile, `⌘↵` la spunta, l'invio continua l'elenco.
-- Calcoli in linea: `2+3*4`, `iva = 22%`, `100 € + iva`, `20% di 50`, `totale`, `media`,
-  `sqrt(16)`, `ans`. Clic sul risultato per copiarlo.
-- Ricerca rapida con `⌘K`, spostamento nota con `⌘⇧M`, cartelle con `⌘\`.
-- Desktop: icona nella menu bar/tray e scorciatoia globale (`⌘⇧Spazio`) per aprire al volo.
-- Temi: su Omarchy segue il tema di sistema e cambia insieme a `omarchy-theme-set`;
-  altrove ci sono i 22 temi di Omarchy inclusi.
+**Note veloci**
+- Si apre su una nota nuova; `⌘[` / `⌘]` o lo swipe a due dita scorrono tra le note.
+  Andare oltre la più recente ne crea una nuova; una nota lasciata vuota si cancella da sola.
+- Menu nascosto: compare avvicinando il mouse al bordo alto della nota (sempre visibile su touch).
+- Parole chiave sulla prima riga (anche tradotte: `lista`, `somma`, `media`…):
+  - `list` / `list: Titolo`: ogni riga diventa una casella; `/x` a fine riga la spunta;
+  - `math`: calcoli in linea (attivi comunque in ogni nota);
+  - `sum`, `avg`: somma o media di tutti i numeri della nota;
+  - `count`: elementi, righe, parole, caratteri;
+  - `code`: niente formattazione.
+- Caselle `[] ` o `- [ ] `, elenchi puntati e numerati che si continuano con Invio, `//` per
+  commentare una riga, markdown semplice (`**grassetto**`, `*corsivo*`, `__sottolineato__`, `~~barrato~~`).
+- Calcoli: `2+3*4`, `iva = 22%`, `100 € + iva`, `20% di 50`, `totale`, `media`, `sqrt(16)`, `ans`.
+  Clic sul risultato per copiarlo.
+- **Timer** su qualsiasi riga, poi Invio: `timer` (cronometro), `timer 5` / `timer 3:30` (conto
+  alla rovescia), `timer 9am` / `timer 21:15` (fino a un orario), `timer 5: Pasta` (con nome),
+  `timer 25 5` / `timer pomo` (pomodoro), `timer p` / `r` / `s` (pausa, riavvia, stop). Il
+  timer continua con la finestra nascosta, notifica alla fine e compare nella menu bar su macOS.
+- **OCR**: trascina o incolla uno screenshot e il testo finisce nella nota. `⌘⇧O` cattura una
+  zona dello schermo. Tutto sul dispositivo: Apple Vision su macOS/iOS, tesseract su Linux
+  (già incluso in Omarchy, rispetta `OMARCHY_OCR_LANGS`).
+
+**Joplin**
+- **Notebook di lavoro**: Omanote vede solo un notebook di Joplin (e i suoi sotto-notebook,
+  che diventano le cartelle). Lo scegli e lo cambi quando vuoi dalle Impostazioni, così il resto
+  del tuo Joplin resta intatto.
+- E2EE completa: legge `KeyV1`, `StringV1`, `FileV1` e i metodi storici `SJCL1a`, `SJCL1b`,
+  `SJCL3`, `SJCL4`; scrive con `StringV1` come Joplin. Non supportato solo il vecchio OCB2
+  (pre-2020): Joplin desktop propone di aggiornare quelle chiavi.
+- Conflitti gestiti come Joplin (la copia locale finisce nella cartella "Conflitti").
+- Eliminare una nota la sposta nel cestino di Joplin.
+
+**Omarchy**
+- Segue il tema di sistema (`~/.config/omarchy/current/theme`) e cambia al volo con il menu
+  temi; altrove include i 22 temi di Omarchy. Font JetBrains Mono.
+- Scorciatoie da tastiera con `Ctrl` al posto di `⌘`: nessun conflitto con Omarchy, che usa `Super`.
+- Scorciatoia globale su Hyprland, in `~/.config/hypr/bindings.conf`:
+
+  ```
+  bindd = SUPER ALT, N, Omanote, exec, omanote --toggle
+  ```
+
+  (`omanote --new` apre una nota nuova, `omanote --capture` avvia l'OCR dello schermo.)
+  Su macOS la scorciatoia globale è `⌥A`.
+
+**AI friendly**
+- `omanote-cli` lavora sulle stesse note dell'app: `list`, `show`, `search`, `new`, `append`,
+  `edit`, `move`, `trash`, `sync`, con `--json` per gli script.
+- `omanote-cli mcp` è un server MCP: `claude mcp add omanote -- omanote-cli mcp`.
+- L'app si aggiorna da sola quando un agente modifica le note.
+- `AGENTS.md` descrive architettura e regole del progetto per chi sviluppa con l'AI.
+
+## Scorciatoie
+
+| | |
+| --- | --- |
+| `⌘N` | nuova nota |
+| `⌘[` `⌘]` | nota precedente / successiva |
+| `⌘1` / `⌘⇧1` | vai alla più recente / porta in cima |
+| `⌘D` | elimina nota |
+| `⌘F` | cerca (Invio senza risultati crea una nota) |
+| `⌘⇧K` / `⌘⇧M` | spunta riga / casella → punto → numero |
+| `⌘B` `⌘I` `⌘U` `⌘⇧X` | grassetto, corsivo, sottolineato, barrato |
+| `⌘⇧H` / `⌘/` | livello titolo / commento |
+| `⌥↑` `⌥↓` | sposta riga |
+| `⌘P` / `⌘W` | finestra in primo piano / nascondi |
+| `⌘+` `⌘−` | dimensione testo |
+| `⌘\` / `⌘E` | cartelle / sposta nota |
+| `⌘⇧O` / `⌘S` / `⌘,` | OCR schermo / sincronizza / impostazioni |
+| `Esc` | ferma il timer |
+
+## Com'è fatto
+
+| Parte | Tecnologia |
+| --- | --- |
+| Core (`crates/omanote-core`) | Rust: formato Joplin, E2EE, client server, SQLite, sync |
+| CLI + MCP (`crates/omanote-cli`) | Rust, stesso database dell'app |
+| App (`app/src-tauri`) | Tauri 2: webview di sistema, binari di pochi MB |
+| UI (`app/src`) | Svelte 5 + CodeMirror 6, 616 KB compresi i font |
 
 ## Sviluppo
 
 ```bash
 npm install --prefix app
-npm run --prefix app tauri dev     # app desktop
-npm run --prefix app dev           # solo interfaccia nel browser, con dati finti
-cargo test                         # test del core (formato, E2EE, database, sync)
-npm run --prefix app test          # test della calcolatrice
+npm run --prefix app tauri dev      # app desktop
+npm run --prefix app dev            # solo interfaccia nel browser, con dati finti
+cargo test                          # test Rust
+npm run --prefix app test           # test di calcolatrice e modalità
+cargo install --path crates/omanote-cli
 ```
 
-I test di compatibilità E2EE girano su vettori generati con lo stesso codice JavaScript
-usato da Joplin (`crates/omanote-core/tests/joplin_vectors.json`).
+I test E2EE usano vettori generati con lo stesso codice JavaScript di Joplin.
 
 ## Stato
 
-Funzionante e verificato end-to-end contro un Joplin Server reale con E2EE attiva:
-le note create da Joplin arrivano in Omanote e viceversa.
-
-Da fare: allegati/immagini, tag, build e firma per iOS e Android, ricerca full-text
-indicizzata, cestino consultabile dall'app.
+Verificato end-to-end contro un Joplin Server reale con E2EE, incluso il caso dei conflitti.
+Da fare: allegati e immagini come risorse Joplin, tag, build firmate per iOS e Android,
+OCR su Android, notifiche del timer programmate su mobile.

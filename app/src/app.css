@@ -82,7 +82,7 @@ input:focus {
 
 .cm-editor {
   height: 100%;
-  font-size: 14px;
+  font-size: var(--editor-size, 14px);
   background: transparent;
 }
 
@@ -204,5 +204,39 @@ input:focus {
 }
 
 .cm-placeholder {
+  color: var(--muted);
+}
+
+.cm-keyword {
+  color: var(--bg);
+  background: var(--accent);
+  padding: 0 4px;
+  font-weight: 700;
+}
+
+.cm-comment {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.cm-code {
+  color: var(--result);
+}
+
+.cm-strong {
+  font-weight: 700;
+}
+
+.cm-em {
+  font-style: italic;
+}
+
+.cm-underline {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cm-strike {
+  text-decoration: line-through;
   color: var(--muted);
 }
