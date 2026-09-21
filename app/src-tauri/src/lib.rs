@@ -743,6 +743,31 @@ fn spawn_external_change_watch(app: AppHandle) {
     });
 }
 
+/// Debug builds only: JS errors and diagnostics from the webview end up in the
+/// `tauri dev` log, and `<data dir>/debug-eval.js` (if present) is run in the
+/// window, then deleted. Lets tooling inspect the real WKWebView/WebKitGTK.
+#[cfg(debug_assertions)]
+#[tauri::command]
+fn debug_log(msg: String) {
+    eprintln!("[webview] {msg}");
+}
+
+#[cfg(debug_assertions)]
+fn spawn_debug_eval(app: AppHandle) {
+    let path = app.state::<AppState>().dir.join("debug-eval.js");
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            if let Ok(js) = std::fs::read_to_string(&path) {
+                let _ = std::fs::remove_file(&path);
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.eval(&js);
+                }
+            }
+        }
+    });
+}
+
 /// The palette Omanote should use: `Some` only on Omarchy systems.
 #[tauri::command]
 fn get_system_theme() -> Option<theme::OmarchyTheme> {
@@ -811,6 +836,8 @@ pub fn run() {
             }
 
             spawn_timer_loop(app.handle().clone());
+            #[cfg(debug_assertions)]
+            spawn_debug_eval(app.handle().clone());
             spawn_external_change_watch(app.handle().clone());
 
             // Periodic background sync.
@@ -865,6 +892,8 @@ pub fn run() {
             toggle_pin,
             hide_window,
             set_window_controls,
+            #[cfg(debug_assertions)]
+            debug_log,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Omanote");

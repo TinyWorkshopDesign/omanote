@@ -18,7 +18,7 @@ import { countIn, detectMode, evaluate, formatResult, numbersIn, type Mode } fro
 import { t } from "./i18n.svelte";
 
 const TASK = /^(\s*)([-*+]) \[( |x|X)\] /;
-const BARE_TASK = /^(\s*)\[( |x|X)\] /; // "[] " shorthand, normalised to "- [ ] "
+const BARE_TASK = /^(\s*)\[( |x|X)?\] /; // "[] " / "[x] " shorthand, normalised to "- [ ] "
 const BULLET = /^(\s*)([-*+]) (?!\[[ xX]\] )/;
 const NUMBERED = /^(\s*)(\d+)([.)]) /;
 const HEADING = /^(#{1,3}) /;
@@ -118,7 +118,8 @@ function build(view: EditorView): Built {
   const text = doc.toString();
   const first = doc.line(1).text;
   const { mode } = detectMode(first);
-  const results = mode === "list" || mode === "code" ? [] : evaluate(text);
+  // Math works in lists too; only code notes stay raw.
+  const results = mode === "code" ? [] : evaluate(text);
   const deco: Range<Decoration>[] = [];
   const atomic: Range<Decoration>[] = [];
   let inFence = false;
@@ -300,7 +301,8 @@ const autoLists = EditorState.transactionFilter.of((tr) => {
 
     if (bare) {
       // "[] item" → "- [ ] item": plain Markdown, rendered as a checkbox by Joplin too.
-      const checked = endsWithTrigger ? bare[2] === " " : bare[2] !== " ";
+      const isChecked = bare[2] === "x" || bare[2] === "X";
+      const checked = endsWithTrigger ? !isChecked : isChecked;
       changes.push({ from: line.from + bare[1].length, to: line.from + bare[0].length, insert: checked ? "- [x] " : "- [ ] " });
       if (endsWithTrigger) changes.push({ from: end - CHECK_TRIGGER.length, to: end });
     } else if (needsMarker) {
