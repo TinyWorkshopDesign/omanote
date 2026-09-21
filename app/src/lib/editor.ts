@@ -34,6 +34,17 @@ function hasMarker(text: string) {
   return TASK.test(text) || BULLET.test(text) || NUMBERED.test(text);
 }
 
+/**
+ * In "list" notes a line becomes an item only if it continues the list: it
+ * follows the keyword line, an item, a heading or a comment. A blank line
+ * (double Enter) ends the list, and what comes after stays plain text.
+ */
+function continuesList(doc: Text, n: number, marked: Set<number>): boolean {
+  if (n - 1 <= 1) return true;
+  const prev = doc.line(n - 1).text;
+  return marked.has(n - 1) || hasMarker(prev) || BARE_TASK.test(prev) || HEADING.test(prev) || COMMENT.test(prev);
+}
+
 // ---------------------------------------------------------------------------
 // Widgets
 // ---------------------------------------------------------------------------
@@ -260,6 +271,7 @@ const autoLists = EditorState.transactionFilter.of((tr) => {
   }
 
   const changes: ChangeSpec[] = [];
+  const marked = new Set<number>();
   for (const n of [...touched].sort((a, b) => a - b)) {
     const line = doc.line(n);
     const s = line.text;
@@ -269,7 +281,14 @@ const autoLists = EditorState.transactionFilter.of((tr) => {
     const task = TASK.exec(s);
     const endsWithTrigger = s.trimEnd().endsWith(CHECK_TRIGGER);
     const needsMarker =
-      mode === "list" && !bare && s.trim() !== "" && !hasMarker(s) && !HEADING.test(s) && !COMMENT.test(s);
+      mode === "list" &&
+      !bare &&
+      s.trim() !== "" &&
+      !hasMarker(s) &&
+      !HEADING.test(s) &&
+      !COMMENT.test(s) &&
+      continuesList(doc, n, marked);
+    if (needsMarker) marked.add(n);
     const end = line.from + s.trimEnd().length;
 
     if (bare) {
@@ -423,7 +442,16 @@ function continueList(view: EditorView): boolean {
   if (sel.head < line.from + m[0].length) return false;
 
   if (line.text.trim() === m[0].trim()) {
-    view.dispatch({ changes: { from: line.from, to: line.to, insert: "" } });
+    if (modeOf(state.doc) === "list") {
+      // Double Enter ends the list: blank line, then plain text below.
+      view.dispatch({
+        changes: { from: line.from, to: line.to, insert: "\n" },
+        selection: { anchor: line.from + 1 },
+        scrollIntoView: true,
+      });
+    } else {
+      view.dispatch({ changes: { from: line.from, to: line.to, insert: "" } });
+    }
     return true;
   }
   let marker: string;
@@ -537,10 +565,14 @@ export function createEditor(o: EditorOptions): EditorView {
   // "- [ ] " markers: add them so every app sees a real checklist.
   if (modeOf(view.state.doc) === "list") {
     const changes: ChangeSpec[] = [];
-    for (let n = 2; n <= view.state.doc.lines; n++) {
-      const line = view.state.doc.line(n);
+    const marked = new Set<number>();
+    const doc = view.state.doc;
+    for (let n = 2; n <= doc.lines; n++) {
+      const line = doc.line(n);
       const s = line.text;
-      if (s.trim() !== "" && !hasMarker(s) && !BARE_TASK.test(s) && !HEADING.test(s) && !COMMENT.test(s) && !FENCE.test(s)) {
+      const plain = !hasMarker(s) && !BARE_TASK.test(s) && !HEADING.test(s) && !COMMENT.test(s) && !FENCE.test(s);
+      if (s.trim() !== "" && plain && continuesList(doc, n, marked)) {
+        marked.add(n);
         changes.push({ from: line.from + /^\s*/.exec(s)![0].length, insert: "- [ ] " });
       }
     }
