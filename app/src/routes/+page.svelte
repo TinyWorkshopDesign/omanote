@@ -4,6 +4,7 @@
   import {
     api,
     onCaptureText,
+    onOpenNote,
     onDataChanged,
     onQuickNote,
     onSyncStatus,
@@ -18,7 +19,7 @@
   import { createEditor, insertBlock, insertText } from "$lib/editor";
   import { errText, i18n, t } from "$lib/i18n.svelte";
   import { initTheme, type ThemeState } from "$lib/theme";
-  import { icons } from "$lib/icons";
+  import { fitIconsToScreen, icons } from "$lib/icons";
   import Setup from "$lib/components/Setup.svelte";
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Palette from "$lib/components/Palette.svelte";
@@ -106,6 +107,7 @@
   });
 
   onMount(() => {
+    fitIconsToScreen();
     const offs: (() => void)[] = [];
     void (async () => {
       offs.push(await initTheme((s) => (theme = s)));
@@ -114,7 +116,9 @@
       await refreshStatus();
       await refresh();
       timer = await api.timerState();
-      if (notes.length) await open(notes[0].id);
+      const launch = await api.takeLaunchNote();
+      if (launch && (await api.note(launch))) await open(launch);
+      else if (notes.length) await open(notes[0].id);
       else newNote();
 
       offs.push(
@@ -133,6 +137,9 @@
         }),
         await onQuickNote(() => newNote()),
         await onCaptureText(() => void captureText()),
+        await onOpenNote(async (id) => {
+          if (await api.note(id)) await open(id);
+        }),
         await onTimer((tk) => {
           timer = tk;
           if (!tk) timerDone = false;
@@ -562,24 +569,24 @@
 
 <div class="app" style="--editor-size: {fontSize}px">
   <header class:shown={barVisible} class:mac={status?.platform === "macos"} data-tauri-drag-region>
-    <button class="icon" title={t("nav.folders")} onclick={() => (sidebar = true)}>☰</button>
+    <button class="icon" title={t("nav.folders")} onclick={() => (sidebar = true)}>{@html icons.menu}</button>
     <button class="crumb" title={t("act.move")} onclick={() => (palette = "move")}>{folderName}</button>
     <span class="pos">{position}</span>
     <span class="spacer" data-tauri-drag-region></span>
     {#if status && !status.mobile}
-      <button class="icon" class:on={pinned} title={t("act.pin")} onclick={togglePin}>⌃</button>
-      <button class="icon" title={t("act.capture")} onclick={() => void captureText()}>⌖</button>
+      <button class="icon" class:on={pinned} title={t("act.pin")} onclick={togglePin}>{@html icons.pin}</button>
+      <button class="icon" title={t("act.capture")} onclick={() => void captureText()}>{@html icons.capture}</button>
     {/if}
     {#if !status?.local}<button
       class="icon dot"
       class:syncing={syncState === "syncing"}
       class:error={syncState === "error"}
       title={syncState === "error" ? `${t("sync.error")}: ${syncMsg}` : t("act.sync")}
-      onclick={() => void syncNow()}>●</button
+      onclick={() => void syncNow()}>{@html icons.sync}</button
     >{/if}
-    <button class="icon" title={t("act.search")} onclick={() => (palette = "search")}>⌕</button>
-    <button class="icon" title={t("act.newNote")} onclick={newNote}>＋</button>
-    <button class="icon" title={t("nav.settings")} onclick={() => (settings = true)}>⚙</button>
+    <button class="icon" title={t("act.search")} onclick={() => (palette = "search")}>{@html icons.search}</button>
+    <button class="icon" title={t("act.newNote")} onclick={newNote}>{@html icons.plus}</button>
+    <button class="icon" title={t("nav.settings")} onclick={() => (settings = true)}>{@html icons.settings}</button>
   </header>
 
   <main bind:this={host} onwheel={wheel} ontouchstart={touchStart} ontouchend={touchEnd}></main>
@@ -606,12 +613,12 @@
 
 {#if status?.configured}
   <nav class="bottombar" class:shown={bottomVisible} aria-label={t("key.prevNext")}>
-    <button class="nav" disabled={stackPos <= 0} onclick={() => go(-1)} aria-label="‹">‹</button>
+    <button class="nav" disabled={stackPos <= 0} onclick={() => go(-1)} aria-label="‹">{@html icons.prev}</button>
     <div class="dots">
       {#each dotWindow as i (i)}
         {#if i === stack.length}
           <button class="dot plus" class:cur={stackPos === i} title={t("act.newNote")} onclick={() => (flashBottom(), newNote())}
-            >+</button
+            >{@html icons.plus}</button
           >
         {:else}
           <button
@@ -624,7 +631,7 @@
         {/if}
       {/each}
     </div>
-    <button class="nav" onclick={() => go(1)} aria-label="›">›</button>
+    <button class="nav" onclick={() => go(1)} aria-label="›">{@html icons.next}</button>
     <span class="count">{position}</span>
   </nav>
 {/if}
@@ -770,7 +777,8 @@
   }
   .icon {
     line-height: 1;
-    font-size: 2.3rem;
+    /* Pixel icons: sized by fitIconsToScreen() so every cell lands on whole pixels. */
+    font-size: var(--ico-l, 24px);
     min-width: 50px;
     min-height: 48px;
     padding: 4px 8px;
@@ -795,7 +803,6 @@
   }
   .dot {
     color: var(--result);
-    font-size: 1.3rem;
   }
   .dot.syncing {
     color: var(--accent);
@@ -833,7 +840,7 @@
     pointer-events: auto;
   }
   .bottombar .nav {
-    font-size: 1.6rem;
+    font-size: var(--ico-l, 24px);
     line-height: 1;
     padding: 2px 8px;
     color: var(--muted);
@@ -849,35 +856,35 @@
     align-items: center;
     gap: 7px;
   }
-  .dot {
+  .dots .dot {
     width: 9px;
     height: 9px;
     padding: 0;
-    border-radius: 50%;
+    border-radius: 0;
     background: var(--muted);
     opacity: 0.5;
   }
-  .dot:hover {
+  .dots .dot:hover {
     opacity: 1;
     background: var(--accent);
   }
-  .dot.cur {
+  .dots .dot.cur {
     opacity: 1;
     background: var(--accent);
     transform: scale(1.35);
   }
-  .dot.plus {
+  .dots .dot.plus {
     width: auto;
     height: auto;
     border-radius: 0;
     background: none;
     color: var(--muted);
-    font-size: 1.1rem;
+    font-size: var(--ico-s, 16px);
     line-height: 1;
     opacity: 0.8;
   }
-  .dot.plus.cur,
-  .dot.plus:hover {
+  .dots .dot.plus.cur,
+  .dots .dot.plus:hover {
     color: var(--accent);
     background: none;
     transform: none;
