@@ -1,0 +1,208 @@
+/* Omanote — Omarchy look: flat surfaces, square corners, one accent colour.
+   Palette variables come from themes.css (bundled) or, on Omarchy, from the
+   system theme at runtime (see lib/theme.ts). */
+
+@import "@fontsource-variable/jetbrains-mono";
+@import "./themes.css";
+
+:root {
+  --radius: 2px;
+  --font: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --mono: var(--font);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --bar-h: 30px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  border-radius: var(--radius);
+  padding: 3px 7px;
+}
+
+button:hover:not(:disabled) {
+  background: var(--panel);
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 9px;
+  width: 100%;
+}
+
+input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--panel);
+}
+
+/* ---------- editor ---------- */
+
+.cm-editor {
+  height: 100%;
+  font-size: 14px;
+  background: transparent;
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+.cm-scroller {
+  padding: 8px 0 40vh;
+}
+
+.cm-content {
+  caret-color: var(--accent);
+  padding: 0 14px;
+  max-width: 52rem;
+}
+
+.cm-line {
+  padding: 0 2px;
+  position: relative;
+}
+
+.cm-cursor {
+  border-left-width: 2px;
+  border-color: var(--accent);
+}
+
+.cm-selectionBackground,
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: var(--accent-soft) !important;
+}
+
+.cm-title-line {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.cm-h1,
+.cm-h2,
+.cm-h3 {
+  font-weight: 700;
+}
+
+.cm-h1 {
+  font-size: 1.15em;
+}
+
+.cm-dim {
+  color: var(--muted);
+}
+
+.cm-task {
+  display: inline-block;
+  width: 0.95em;
+  height: 0.95em;
+  margin-right: 0.5em;
+  vertical-align: -0.08em;
+  border: 1px solid var(--muted);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.cm-task:hover {
+  border-color: var(--accent);
+}
+
+.cm-task-checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  position: relative;
+}
+
+.cm-task-checked::after {
+  content: "";
+  position: absolute;
+  left: 0.28em;
+  top: 0.08em;
+  width: 0.24em;
+  height: 0.5em;
+  border: solid var(--bg);
+  border-width: 0 2px 2px 0;
+  transform: rotate(40deg);
+}
+
+.cm-task-done {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.cm-bullet {
+  color: var(--accent);
+}
+
+.cm-has-result {
+  padding-right: 9rem;
+}
+
+.cm-result {
+  position: absolute;
+  right: 4px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92em;
+  color: var(--result);
+  border-left: 2px solid var(--result);
+  background: color-mix(in srgb, var(--result) 12%, transparent);
+  border-radius: 0;
+  padding: 0 6px;
+  cursor: copy;
+  max-width: 8.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-result-copied {
+  color: var(--bg);
+  background: var(--result);
+}
+
+.cm-placeholder {
+  color: var(--muted);
+}
