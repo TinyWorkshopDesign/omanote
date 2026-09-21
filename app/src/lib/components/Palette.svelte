@@ -93,7 +93,7 @@
     {:else}
       {#each folderHits as f, i (f.id)}
         <button class:sel={i === index} onmouseenter={() => (index = i)} onclick={() => choose(i)}>
-          <span class="t">{f.icon} {f.title}</span>
+          <span class="t">{f.icon ? `${f.icon} ` : ""}{f.title}</span>
           <span class="w">{f.note_count}</span>
         </button>
       {/each}

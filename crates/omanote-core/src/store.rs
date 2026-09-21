@@ -259,7 +259,7 @@ impl Store {
         let mut out = Vec::new();
         for row in rows {
             let (id, parent_id, title, raw, note_count) = row?;
-            let icon = RawItem::parse(&raw).map(|r| r.get("icon").to_string()).unwrap_or_default();
+            let icon = RawItem::parse(&raw).map(|r| folder_emoji(r.get("icon"))).unwrap_or_default();
             out.push(Folder { id, parent_id, title, icon, note_count });
         }
         Ok(out)
@@ -462,6 +462,24 @@ impl Store {
     }
 }
 
+/// Joplin stores a folder icon as JSON: `{"emoji":"🏦","name":"bank","type":1}`
+/// (type 1 = emoji; other types are images, not shown by Omanote). Returns the
+/// emoji only; the original value is left untouched in the item.
+pub fn folder_emoji(icon: &str) -> String {
+    let icon = icon.trim();
+    if icon.is_empty() {
+        return String::new();
+    }
+    if icon.starts_with('{') {
+        return serde_json::from_str::<serde_json::Value>(icon)
+            .ok()
+            .and_then(|v| v.get("emoji").and_then(|e| e.as_str()).map(str::to_string))
+            .unwrap_or_default();
+    }
+    // Very old clients stored the bare emoji.
+    if icon.chars().count() <= 8 { icon.to_string() } else { String::new() }
+}
+
 fn touch(it: &mut RawItem) {
     let now = item::now_ms();
     it.set_time("updated_time", now);
@@ -520,6 +538,15 @@ mod tests {
 
         s.trash(&n.id).unwrap();
         assert_eq!(s.notes_in(&tree).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn folder_icons() {
+        assert_eq!(folder_emoji(r#"{"emoji":"🏦","name":"bank","type":1}"#), "🏦");
+        assert_eq!(folder_emoji(r#"{"emoji":"","name":"","type":2,"dataUrl":"data:image/png;base64,AAA"}"#), "");
+        assert_eq!(folder_emoji("🏠"), "🏠");
+        assert_eq!(folder_emoji("not json and far too long"), "");
+        assert_eq!(folder_emoji(""), "");
     }
 
     #[test]

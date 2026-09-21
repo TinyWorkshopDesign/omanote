@@ -85,7 +85,7 @@
         <input bind:value={renameName} onblur={commitRename} onkeydown={(e) => e.key === "Enter" && commitRename()} />
       {:else}
         <button class="folder" class:sel={selected === f.id} onclick={() => onSelectFolder(f.id)}>
-          <span>{f.icon} {f.title}</span>
+          <span>{f.icon ? `${f.icon} ` : ""}{f.title}</span>
           <span class="count">{f.note_count}</span>
         </button>
         <button class="mini" title={t("nav.rename")} onclick={() => ((renaming = f.id), (renameName = f.title))}>✎</button>
