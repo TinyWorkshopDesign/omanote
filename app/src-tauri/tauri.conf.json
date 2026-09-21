@@ -13,8 +13,17 @@
     "windows": [
       {
         "title": "Omanote",
-        "width": 800,
-        "height": 600
+        "width": 720,
+        "height": 620,
+        "label": "main",
+        "minWidth": 320,
+        "minHeight": 240,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 14
+        }
       }
     ],
     "security": {
