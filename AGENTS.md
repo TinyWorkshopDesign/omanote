@@ -55,6 +55,14 @@ cargo run -p omanote-cli -- --help  # CLI
   `~/.config/omarchy/current/theme/colors.toml` and follows theme changes live; the
   bundled themes are only a fallback for other platforms.
 
+## Debugging the real webview
+
+`npm run tauri dev` builds in debug mode, where the webview forwards JS errors to the
+terminal as `[webview] …` lines and runs `<data dir>/debug-eval.js` once if the file
+appears (then deletes it); `window.__omanoteLog(msg)` prints to the same log. Both
+exist only with `debug_assertions`. Keep diagnostics read-only: the app may be
+connected to the user's real Joplin account.
+
 ## Using Omanote from an agent
 
 ```bash
