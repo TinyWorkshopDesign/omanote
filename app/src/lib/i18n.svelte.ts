@@ -145,6 +145,16 @@ const en = {
   "img.ask": "Insert the image as…",
   "img.image": "Image",
   "img.text": "Text (OCR)",
+  "ctx.open": "Open",
+  "ctx.cut": "Cut",
+  "ctx.copy": "Copy",
+  "ctx.paste": "Paste",
+  "ctx.newNote": "New note here",
+  "ctx.newFolder": "New folder",
+  "ctx.rename": "Rename",
+  "ctx.delete": "Move to trash",
+  "ctx.copySuffix": "copy",
+  "ctx.deleteNoteConfirm": "Move \"{name}\" to the Joplin trash?",
 };
 
 export type Key = keyof typeof en;
@@ -268,6 +278,16 @@ const it: Dict = {
   "img.ask": "Inserisci l'immagine come…",
   "img.image": "Immagine",
   "img.text": "Testo (OCR)",
+  "ctx.open": "Apri",
+  "ctx.cut": "Taglia",
+  "ctx.copy": "Copia",
+  "ctx.paste": "Incolla",
+  "ctx.newNote": "Nuova nota qui",
+  "ctx.newFolder": "Nuova cartella",
+  "ctx.rename": "Rinomina",
+  "ctx.delete": "Sposta nel cestino",
+  "ctx.copySuffix": "copia",
+  "ctx.deleteNoteConfirm": "Spostare \"{name}\" nel cestino di Joplin?",
 };
 
 const es: Dict = {
@@ -386,6 +406,16 @@ const es: Dict = {
   "img.ask": "Insertar la imagen como…",
   "img.image": "Imagen",
   "img.text": "Texto (OCR)",
+  "ctx.open": "Abrir",
+  "ctx.cut": "Cortar",
+  "ctx.copy": "Copiar",
+  "ctx.paste": "Pegar",
+  "ctx.newNote": "Nueva nota aquí",
+  "ctx.newFolder": "Nueva carpeta",
+  "ctx.rename": "Renombrar",
+  "ctx.delete": "Mover a la papelera",
+  "ctx.copySuffix": "copia",
+  "ctx.deleteNoteConfirm": "¿Mover \"{name}\" a la papelera de Joplin?",
 };
 
 const fr: Dict = {
@@ -505,6 +535,16 @@ const fr: Dict = {
   "img.ask": "Insérer l'image comme…",
   "img.image": "Image",
   "img.text": "Texte (OCR)",
+  "ctx.open": "Ouvrir",
+  "ctx.cut": "Couper",
+  "ctx.copy": "Copier",
+  "ctx.paste": "Coller",
+  "ctx.newNote": "Nouvelle note ici",
+  "ctx.newFolder": "Nouveau dossier",
+  "ctx.rename": "Renommer",
+  "ctx.delete": "Mettre à la corbeille",
+  "ctx.copySuffix": "copie",
+  "ctx.deleteNoteConfirm": "Mettre « {name} » dans la corbeille de Joplin ?",
 };
 
 const de: Dict = {
@@ -624,6 +664,16 @@ const de: Dict = {
   "img.ask": "Bild einfügen als…",
   "img.image": "Bild",
   "img.text": "Text (OCR)",
+  "ctx.open": "Öffnen",
+  "ctx.cut": "Ausschneiden",
+  "ctx.copy": "Kopieren",
+  "ctx.paste": "Einfügen",
+  "ctx.newNote": "Neue Notiz hier",
+  "ctx.newFolder": "Neuer Ordner",
+  "ctx.rename": "Umbenennen",
+  "ctx.delete": "In den Papierkorb",
+  "ctx.copySuffix": "Kopie",
+  "ctx.deleteNoteConfirm": "„{name}“ in den Joplin-Papierkorb verschieben?",
 };
 
 const pt: Dict = {
@@ -742,6 +792,16 @@ const pt: Dict = {
   "img.ask": "Inserir a imagem como…",
   "img.image": "Imagem",
   "img.text": "Texto (OCR)",
+  "ctx.open": "Abrir",
+  "ctx.cut": "Cortar",
+  "ctx.copy": "Copiar",
+  "ctx.paste": "Colar",
+  "ctx.newNote": "Nova nota aqui",
+  "ctx.newFolder": "Nova pasta",
+  "ctx.rename": "Renomear",
+  "ctx.delete": "Mover para a lixeira",
+  "ctx.copySuffix": "cópia",
+  "ctx.deleteNoteConfirm": "Mover \"{name}\" para a lixeira do Joplin?",
 };
 
 const nl: Dict = {
@@ -861,6 +921,16 @@ const nl: Dict = {
   "img.ask": "Afbeelding invoegen als…",
   "img.image": "Afbeelding",
   "img.text": "Tekst (OCR)",
+  "ctx.open": "Openen",
+  "ctx.cut": "Knippen",
+  "ctx.copy": "Kopiëren",
+  "ctx.paste": "Plakken",
+  "ctx.newNote": "Nieuwe notitie hier",
+  "ctx.newFolder": "Nieuwe map",
+  "ctx.rename": "Hernoemen",
+  "ctx.delete": "Naar prullenbak",
+  "ctx.copySuffix": "kopie",
+  "ctx.deleteNoteConfirm": "\"{name}\" naar de Joplin-prullenbak verplaatsen?",
 };
 
 const pl: Dict = {
@@ -980,6 +1050,16 @@ const pl: Dict = {
   "img.ask": "Wstaw obraz jako…",
   "img.image": "Obraz",
   "img.text": "Tekst (OCR)",
+  "ctx.open": "Otwórz",
+  "ctx.cut": "Wytnij",
+  "ctx.copy": "Kopiuj",
+  "ctx.paste": "Wklej",
+  "ctx.newNote": "Nowa notatka tutaj",
+  "ctx.newFolder": "Nowy folder",
+  "ctx.rename": "Zmień nazwę",
+  "ctx.delete": "Przenieś do kosza",
+  "ctx.copySuffix": "kopia",
+  "ctx.deleteNoteConfirm": "Przenieść „{name}” do kosza Joplin?",
 };
 
 const DICTS: Record<Lang, Dict> = { en, it, es, fr, de, pt, nl, pl };
