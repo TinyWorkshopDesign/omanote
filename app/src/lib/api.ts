@@ -1,14 +1,14 @@
 // Typed bridge to the Rust core (Tauri commands).
-import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke, type InvokeArgs } from "@tauri-apps/api/core";
 import { listen as tauriListen, type UnlistenFn } from "@tauri-apps/api/event";
 
 /** True in the packaged app; false when the UI is opened in a plain browser. */
 const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-const invoke = <T>(cmd: string, args?: Record<string, unknown>): Promise<T> =>
+const invoke = <T>(cmd: string, args?: InvokeArgs): Promise<T> =>
   inTauri
     ? tauriInvoke<T>(cmd, args)
-    : import("./mock").then((m) => m.mockInvoke(cmd, args) as Promise<T>);
+    : import("./mock").then((m) => m.mockInvoke(cmd, args as Record<string, unknown>) as Promise<T>);
 
 const listen = <T>(event: string, cb: (e: { payload: T }) => void): Promise<UnlistenFn> =>
   inTauri ? tauriListen<T>(event, cb) : Promise.resolve(() => {});
@@ -22,6 +22,18 @@ export interface Status {
   locked: boolean;
   hotkey: string;
   mobile: boolean;
+  platform: string;
+  omarchy: boolean;
+  data_dir: string;
+}
+
+export interface TimerTick {
+  kind: "stopwatch" | "countdown" | "pomodoro";
+  title: string;
+  phase: "work" | "rest";
+  running: boolean;
+  ms: number;
+  label: string;
 }
 
 export interface Folder {
@@ -91,22 +103,50 @@ export const api = {
   renameFolder: (id: string, title: string) => invoke<void>("rename_folder", { id, title }),
   moveFolder: (id: string, parentId: string) => invoke<void>("move_folder", { id, parentId }),
   trashFolder: (id: string) => invoke<void>("trash_folder", { id }),
+  promoteNote: (id: string) => invoke<void>("promote_note", { id }),
+  setLanguage: (lang: string) => invoke<void>("set_language", { lang }),
+  // timer
+  timerCommand: (line: string) => invoke<boolean>("timer_command", { line }),
+  timerToggle: () => invoke<void>("timer_toggle"),
+  timerStop: () => invoke<void>("timer_stop"),
+  timerState: () => invoke<TimerTick | null>("timer_state"),
+  // OCR: the image travels as the raw request body (no JSON encoding).
+  ocrImage: async (image: Blob) =>
+    invoke<string>("ocr_image", new Uint8Array(await image.arrayBuffer())),
+  ocrFile: (path: string) => invoke<string>("ocr_file", { path }),
+  captureText: () => invoke<string | null>("capture_text"),
+  // window
+  togglePin: () => invoke<boolean>("toggle_pin"),
+  hideWindow: () => invoke<void>("hide_window"),
 };
 
 export const onSyncStatus = (cb: (e: SyncEvent) => void) =>
   listen<SyncEvent>("sync-status", (e) => cb(e.payload));
 export const onDataChanged = (cb: () => void) => listen("data-changed", () => cb());
 export const onQuickNote = (cb: () => void) => listen("quick-note", () => cb());
+export const onCaptureText = (cb: () => void) => listen("capture-text", () => cb());
+export const onTimer = (cb: (t: TimerTick | null) => void) => listen<TimerTick | null>("timer", (e) => cb(e.payload));
+export const onTimerFinished = (cb: (event: string) => void) => listen<string>("timer-finished", (e) => cb(e.payload));
 
-/** Human-friendly relative time, in Italian. */
-export function when(ms: number): string {
+/** Files dropped on the window (Tauri delivers paths, not DOM drop events). */
+export async function onFileDrop(cb: (paths: string[]) => void): Promise<() => void> {
+  if (!inTauri) return () => {};
+  const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+  return getCurrentWebview().onDragDropEvent((e) => {
+    if (e.payload.type === "drop") cb(e.payload.paths);
+  });
+}
+
+/** Human-friendly relative time in the UI language. */
+export function when(ms: number, lang = "en"): string {
   const diff = Date.now() - ms;
   const min = Math.round(diff / 60000);
-  if (min < 1) return "adesso";
-  if (min < 60) return `${min} min`;
+  const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto", style: "short" });
+  if (min < 1) return rtf.format(0, "second");
+  if (min < 60) return rtf.format(-min, "minute");
   const h = Math.round(min / 60);
-  if (h < 24) return `${h} h`;
+  if (h < 24) return rtf.format(-h, "hour");
   const d = new Date(ms);
   const sameYear = d.getFullYear() === new Date().getFullYear();
-  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: sameYear ? undefined : "2-digit" });
+  return d.toLocaleDateString(lang, { day: "numeric", month: "short", year: sameYear ? undefined : "2-digit" });
 }

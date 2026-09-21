@@ -1,7 +1,8 @@
-// CodeMirror 6 setup for Omanote: plain-text notes (Joplin Markdown) with
-// live checkboxes, bullets, headings and inline calculation results.
+// CodeMirror 6 setup for Omanote: plain-text notes (Joplin Markdown) that
+// behave as a scratchpad — first-line keywords (list, math, sum, avg, count,
+// code), live checkboxes, simple Markdown, inline math, timers, OCR paste.
 
-import { EditorState, RangeSetBuilder, type Extension } from "@codemirror/state";
+import { EditorSelection, EditorState, type ChangeSpec, type Extension, type Range, type Text } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -12,13 +13,30 @@ import {
   type DecorationSet,
   type ViewUpdate,
 } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { evaluate, formatResult } from "./calc";
+import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from "@codemirror/commands";
+import { countIn, detectMode, evaluate, formatResult, numbersIn, type Mode } from "./calc";
+import { t } from "./i18n.svelte";
 
 const TASK = /^(\s*)([-*+]) \[( |x|X)\] /;
+const BARE_TASK = /^(\s*)\[( |x|X)\] /; // "[] " shorthand, normalised to "- [ ] "
 const BULLET = /^(\s*)([-*+]) (?!\[[ xX]\] )/;
 const NUMBERED = /^(\s*)(\d+)([.)]) /;
 const HEADING = /^(#{1,3}) /;
+const COMMENT = /^\s*\/\//;
+const FENCE = /^\s*```/;
+const CHECK_TRIGGER = "/x";
+
+function modeOf(doc: Text): Mode {
+  return detectMode(doc.line(1).text).mode;
+}
+
+function hasMarker(text: string) {
+  return TASK.test(text) || BULLET.test(text) || NUMBERED.test(text);
+}
+
+// ---------------------------------------------------------------------------
+// Widgets
+// ---------------------------------------------------------------------------
 
 class CheckboxWidget extends WidgetType {
   constructor(readonly checked: boolean, readonly pos: number) {
@@ -40,30 +58,18 @@ class CheckboxWidget extends WidgetType {
   }
 }
 
-class BulletWidget extends WidgetType {
-  eq() {
-    return true;
-  }
-  toDOM() {
-    const el = document.createElement("span");
-    el.className = "cm-bullet";
-    el.textContent = "•";
-    return el;
-  }
-}
-
-class ResultWidget extends WidgetType {
-  constructor(readonly text: string) {
+class TextWidget extends WidgetType {
+  constructor(readonly text: string, readonly cls: string, readonly copy = false) {
     super();
   }
-  eq(o: ResultWidget) {
-    return o.text === this.text;
+  eq(o: TextWidget) {
+    return o.text === this.text && o.cls === this.cls;
   }
   toDOM() {
     const el = document.createElement("span");
-    el.className = "cm-result";
+    el.className = this.cls;
     el.textContent = this.text;
-    el.title = "Clic per copiare";
+    if (this.copy) el.dataset.copy = "1";
     return el;
   }
   ignoreEvent() {
@@ -71,81 +77,159 @@ class ResultWidget extends WidgetType {
   }
 }
 
-const bullet = Decoration.replace({ widget: new BulletWidget() });
+const bullet = Decoration.replace({ widget: new TextWidget("•", "cm-bullet") });
 const doneLine = Decoration.line({ class: "cm-task-done" });
 const titleLine = Decoration.line({ class: "cm-title-line" });
 const resultLine = Decoration.line({ class: "cm-has-result" });
+const commentLine = Decoration.line({ class: "cm-comment" });
+const codeLine = Decoration.line({ class: "cm-code" });
 const headingLines = [1, 2, 3].map((n) => Decoration.line({ class: `cm-h${n}` }));
-const dimMark = Decoration.mark({ class: "cm-dim" });
+const dim = Decoration.mark({ class: "cm-dim" });
+const keywordMark = Decoration.mark({ class: "cm-keyword" });
+const INLINE: [RegExp, Decoration][] = [
+  [/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, Decoration.mark({ class: "cm-strong" })],
+  [/__(?=\S)(.+?)(?<=\S)__/g, Decoration.mark({ class: "cm-underline" })],
+  [/~~(?=\S)(.+?)(?<=\S)~~/g, Decoration.mark({ class: "cm-strike" })],
+  [/(?<![*\w])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![*\w])/g, Decoration.mark({ class: "cm-em" })],
+];
 
-function buildDecorations(view: EditorView): DecorationSet {
+// ---------------------------------------------------------------------------
+// Decorations
+// ---------------------------------------------------------------------------
+
+interface Built {
+  all: DecorationSet;
+  atomic: DecorationSet;
+}
+
+function build(view: EditorView): Built {
   const doc = view.state.doc;
-  const results = evaluate(doc.toString());
-  const b = new RangeSetBuilder<Decoration>();
+  const text = doc.toString();
+  const first = doc.line(1).text;
+  const { mode } = detectMode(first);
+  const results = mode === "list" || mode === "code" ? [] : evaluate(text);
+  const deco: Range<Decoration>[] = [];
+  const atomic: Range<Decoration>[] = [];
+  let inFence = false;
 
   for (const { from, to } of view.visibleRanges) {
     let pos = from;
     while (pos <= to) {
       const line = doc.lineAt(pos);
-      const text = line.text;
-      const res = results[line.number - 1];
+      const s = line.text;
+      pos = line.to + 1;
 
-      if (line.number === 1 && text.trim() !== "") b.add(line.from, line.from, titleLine);
-      const h = HEADING.exec(text);
-      const task = TASK.exec(text);
-      if (h) b.add(line.from, line.from, headingLines[h[1].length - 1]);
-      if (task && task[3] !== " ") b.add(line.from, line.from, doneLine);
-      if (res?.show) b.add(line.from, line.from, resultLine);
+      if (line.number === 1) {
+        if (s.trim() !== "") deco.push(titleLine.range(line.from));
+        if (mode !== "plain") {
+          const kw = /^\s*[\p{L}]+/u.exec(s)!;
+          deco.push(keywordMark.range(line.from, line.from + kw[0].length));
+          const summary = modeSummary(mode, text);
+          if (summary) {
+            deco.push(resultLine.range(line.from));
+            deco.push(Decoration.widget({ widget: new TextWidget(summary, "cm-result", true), side: 1 }).range(line.to));
+          }
+        }
+        continue;
+      }
+
+      if (FENCE.test(s)) inFence = !inFence;
+      if (mode === "code" || inFence || FENCE.test(s)) {
+        deco.push(codeLine.range(line.from));
+        continue;
+      }
+      if (COMMENT.test(s)) {
+        deco.push(commentLine.range(line.from));
+        continue;
+      }
+
+      const h = HEADING.exec(s);
+      const task = TASK.exec(s);
+      const res = results[line.number - 1];
+      if (h) deco.push(headingLines[h[1].length - 1].range(line.from));
+      if (task && task[3] !== " ") deco.push(doneLine.range(line.from));
+      if (res?.show) deco.push(resultLine.range(line.from));
 
       if (h) {
-        b.add(line.from, line.from + h[0].length, dimMark);
+        deco.push(dim.range(line.from, line.from + h[0].length));
       } else if (task) {
         const start = line.from + task[1].length;
-        b.add(
+        const r = Decoration.replace({ widget: new CheckboxWidget(task[3] !== " ", start) }).range(
           start,
           line.from + task[0].length,
-          Decoration.replace({ widget: new CheckboxWidget(task[3] !== " ", start) }),
         );
+        deco.push(r);
+        atomic.push(r);
       } else {
-        const bl = BULLET.exec(text);
-        if (bl) b.add(line.from + bl[1].length, line.from + bl[1].length + 1, bullet);
+        const bl = BULLET.exec(s);
+        if (bl) {
+          const r = bullet.range(line.from + bl[1].length, line.from + bl[1].length + 1);
+          deco.push(r);
+          atomic.push(r);
+        }
+      }
+
+      for (const [re, mark] of INLINE) {
+        re.lastIndex = 0;
+        for (let m = re.exec(s); m; m = re.exec(s)) {
+          const a = line.from + m.index;
+          const b = a + m[0].length;
+          const marker = (m[0].length - m[1].length) / 2;
+          deco.push(mark.range(a, b));
+          deco.push(dim.range(a, a + marker));
+          deco.push(dim.range(b - marker, b));
+        }
       }
 
       if (res?.show) {
-        b.add(line.to, line.to, Decoration.widget({ widget: new ResultWidget(formatResult(res)), side: 1 }));
+        deco.push(Decoration.widget({ widget: new TextWidget(formatResult(res), "cm-result", true), side: 1 }).range(line.to));
       }
-      pos = line.to + 1;
     }
   }
-  return b.finish();
+  return { all: Decoration.set(deco, true), atomic: Decoration.set(atomic, true) };
+}
+
+function modeSummary(mode: Mode, text: string): string | null {
+  if (mode === "sum" || mode === "avg") {
+    const nums = numbersIn(text);
+    if (!nums.length) return null;
+    const total = nums.reduce((a, b) => a + b, 0);
+    const value = mode === "sum" ? total : total / nums.length;
+    return formatResult({ value, unit: "", pct: false, show: true });
+  }
+  if (mode === "count") {
+    const c = countIn(text);
+    return t("mode.count", { items: c.items, lines: c.lines, words: c.words, chars: c.chars });
+  }
+  return null;
 }
 
 const decorations = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    atomic: DecorationSet;
     constructor(view: EditorView) {
-      this.decorations = buildDecorations(view);
+      ({ all: this.decorations, atomic: this.atomic } = build(view));
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.viewportChanged) this.decorations = buildDecorations(u.view);
+      if (u.docChanged || u.viewportChanged) ({ all: this.decorations, atomic: this.atomic } = build(u.view));
     }
   },
   {
     decorations: (v) => v.decorations,
-    provide: (p) =>
-      EditorView.atomicRanges.of((view) => view.plugin(p)?.decorations ?? Decoration.none),
+    provide: (p) => EditorView.atomicRanges.of((view) => view.plugin(p)?.atomic ?? Decoration.none),
     eventHandlers: {
       mousedown(e, view) {
-        const t = e.target as HTMLElement;
-        if (t.classList.contains("cm-task")) {
-          toggleTaskAt(view, Number(t.dataset.pos));
+        const el = e.target as HTMLElement;
+        if (el.classList.contains("cm-task")) {
+          toggleTaskAt(view, Number(el.dataset.pos));
           e.preventDefault();
           return true;
         }
-        if (t.classList.contains("cm-result")) {
-          void navigator.clipboard?.writeText(t.textContent ?? "");
-          t.classList.add("cm-result-copied");
-          setTimeout(() => t.classList.remove("cm-result-copied"), 700);
+        if (el.dataset.copy) {
+          void navigator.clipboard?.writeText(el.textContent ?? "");
+          el.classList.add("cm-result-copied");
+          setTimeout(() => el.classList.remove("cm-result-copied"), 700);
           e.preventDefault();
           return true;
         }
@@ -155,6 +239,61 @@ const decorations = ViewPlugin.fromClass(
   },
 );
 
+// ---------------------------------------------------------------------------
+// Automatic lists: "list" keyword, "[] " shorthand, "/x" check trigger
+// ---------------------------------------------------------------------------
+
+const autoLists = EditorState.transactionFilter.of((tr) => {
+  if (!tr.docChanged) return tr;
+  const doc = tr.newDoc;
+  const mode = modeOf(doc);
+  const becameList = mode === "list" && modeOf(tr.startState.doc) !== "list";
+  const touched = new Set<number>();
+  if (becameList) {
+    for (let n = 2; n <= doc.lines; n++) touched.add(n);
+  } else {
+    tr.changes.iterChangedRanges((_fa, _ta, fb, tb) => {
+      const a = doc.lineAt(fb).number;
+      const b = doc.lineAt(Math.min(tb, doc.length)).number;
+      for (let n = a; n <= b; n++) if (n > 1) touched.add(n);
+    });
+  }
+
+  const changes: ChangeSpec[] = [];
+  for (const n of [...touched].sort((a, b) => a - b)) {
+    const line = doc.line(n);
+    const s = line.text;
+    if (mode === "code" || FENCE.test(s)) continue;
+
+    const bare = BARE_TASK.exec(s);
+    const task = TASK.exec(s);
+    const endsWithTrigger = s.trimEnd().endsWith(CHECK_TRIGGER);
+    const needsMarker =
+      mode === "list" && !bare && s.trim() !== "" && !hasMarker(s) && !HEADING.test(s) && !COMMENT.test(s);
+    const end = line.from + s.trimEnd().length;
+
+    if (bare) {
+      // "[] item" → "- [ ] item": plain Markdown, rendered as a checkbox by Joplin too.
+      const checked = endsWithTrigger ? bare[2] === " " : bare[2] !== " ";
+      changes.push({ from: line.from + bare[1].length, to: line.from + bare[0].length, insert: checked ? "- [x] " : "- [ ] " });
+      if (endsWithTrigger) changes.push({ from: end - CHECK_TRIGGER.length, to: end });
+    } else if (needsMarker) {
+      const indent = /^\s*/.exec(s)![0].length;
+      changes.push({ from: line.from + indent, insert: endsWithTrigger ? "- [x] " : "- [ ] " });
+      if (endsWithTrigger) changes.push({ from: end - CHECK_TRIGGER.length, to: end });
+    } else if (task && endsWithTrigger) {
+      const at = line.from + task[1].length + 3;
+      changes.push({ from: at, to: at + 1, insert: task[3] === " " ? "x" : " " });
+      changes.push({ from: end - CHECK_TRIGGER.length, to: end });
+    }
+  }
+  return changes.length ? [tr, { changes, sequential: true }] : tr;
+});
+
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+
 function toggleTaskAt(view: EditorView, pos: number) {
   const line = view.state.doc.lineAt(pos);
   const m = TASK.exec(line.text);
@@ -163,26 +302,109 @@ function toggleTaskAt(view: EditorView, pos: number) {
   view.dispatch({ changes: { from: at, to: at + 1, insert: m[3] === " " ? "x" : " " } });
 }
 
-/** Mod-Enter: toggle the checkbox of the current line (creating one if needed). */
-export function toggleTask(view: EditorView): boolean {
-  const { state } = view;
-  const changes = [];
-  const seen = new Set<number>();
+function selectedLines(state: EditorState) {
+  const seen = new Map<number, ReturnType<Text["line"]>>();
   for (const r of state.selection.ranges) {
-    const line = state.doc.lineAt(r.head);
-    if (seen.has(line.number)) continue;
-    seen.add(line.number);
+    const a = state.doc.lineAt(r.from).number;
+    const b = state.doc.lineAt(r.to).number;
+    for (let n = a; n <= b; n++) seen.set(n, state.doc.line(n));
+  }
+  return [...seen.values()];
+}
+
+/** Mod-Shift-K: check off the current line (making it a checkbox if needed). */
+export function checkLine(view: EditorView): boolean {
+  const changes: ChangeSpec[] = [];
+  for (const line of selectedLines(view.state)) {
     const task = TASK.exec(line.text);
     if (task) {
       const at = line.from + task[1].length + 3;
       changes.push({ from: at, to: at + 1, insert: task[3] === " " ? "x" : " " });
     } else {
-      const bl = BULLET.exec(line.text);
-      const indent = /^\s*/.exec(line.text)![0];
-      if (bl) changes.push({ from: line.from + bl[0].length, insert: "[ ] " });
-      else changes.push({ from: line.from + indent.length, insert: "- [ ] " });
+      const bl = BULLET.exec(line.text) ?? NUMBERED.exec(line.text);
+      const indent = /^\s*/.exec(line.text)![0].length;
+      changes.push({ from: line.from + indent, to: bl ? line.from + bl[0].length : undefined, insert: "- [x] " });
     }
   }
+  view.dispatch({ changes });
+  return true;
+}
+
+/** Mod-Shift-M: checkbox → bullet → numbered → checkbox. */
+function cycleMarker(view: EditorView): boolean {
+  const changes: ChangeSpec[] = [];
+  let n = 0;
+  for (const line of selectedLines(view.state)) {
+    const indent = /^\s*/.exec(line.text)![0].length;
+    const task = TASK.exec(line.text);
+    const num = NUMBERED.exec(line.text);
+    const bl = BULLET.exec(line.text);
+    const cur = task ?? num ?? bl;
+    const next = task ? "- " : bl ? `${++n}. ` : "- [ ] ";
+    changes.push({ from: line.from + indent, to: cur ? line.from + cur[0].length : line.from + indent, insert: next });
+  }
+  view.dispatch({ changes });
+  return true;
+}
+
+/** Wraps the selection (or the word at the cursor) in a Markdown marker; toggles. */
+function wrap(marker: string) {
+  return (view: EditorView): boolean => {
+    const { state } = view;
+    const k = marker.length;
+    const tr = state.changeByRange((range) => {
+      let { from, to } = range;
+      if (from === to) {
+        const w = state.wordAt(from);
+        if (w) ({ from, to } = w);
+      }
+      if (state.sliceDoc(from - k, from) === marker && state.sliceDoc(to, to + k) === marker) {
+        return {
+          changes: [
+            { from: from - k, to: from },
+            { from: to, to: to + k },
+          ],
+          range: EditorSelection.range(from - k, to - k),
+        };
+      }
+      return {
+        changes: [
+          { from, insert: marker },
+          { from: to, insert: marker },
+        ],
+        range: EditorSelection.range(from + k, to + k),
+      };
+    });
+    view.dispatch(tr);
+    return true;
+  };
+}
+
+/** Mod-Shift-H: # → ## → ### → no heading. */
+function cycleHeading(view: EditorView): boolean {
+  const changes: ChangeSpec[] = [];
+  for (const line of selectedLines(view.state)) {
+    const h = HEADING.exec(line.text);
+    const level = h ? h[1].length : 0;
+    const next = level >= 3 ? "" : "#".repeat(level + 1) + " ";
+    changes.push({ from: line.from, to: line.from + (h ? h[0].length : 0), insert: next });
+  }
+  view.dispatch({ changes });
+  return true;
+}
+
+/** Mod-/: toggle "// " at the start of the selected lines. */
+function toggleComment(view: EditorView): boolean {
+  const lines = selectedLines(view.state);
+  const allCommented = lines.every((l) => COMMENT.test(l.text));
+  const changes: ChangeSpec[] = lines.map((l) => {
+    const indent = /^\s*/.exec(l.text)![0].length;
+    if (allCommented) {
+      const m = /^\s*\/\/ ?/.exec(l.text)!;
+      return { from: l.from + indent, to: l.from + m[0].length };
+    }
+    return { from: l.from + indent, insert: "// " };
+  });
   view.dispatch({ changes });
   return true;
 }
@@ -191,17 +413,16 @@ export function toggleTask(view: EditorView): boolean {
 function continueList(view: EditorView): boolean {
   const { state } = view;
   const sel = state.selection.main;
-  if (!sel.empty) return false;
+  if (!sel.empty || modeOf(state.doc) === "code") return false;
   const line = state.doc.lineAt(sel.head);
   const task = TASK.exec(line.text);
   const bl = BULLET.exec(line.text);
   const num = NUMBERED.exec(line.text);
   const m = task ?? bl ?? num;
-  if (!m) return false;
+  if (!m || line.number === 1) return false;
   if (sel.head < line.from + m[0].length) return false;
 
   if (line.text.trim() === m[0].trim()) {
-    // Empty item → remove the marker.
     view.dispatch({ changes: { from: line.from, to: line.to, insert: "" } });
     return true;
   }
@@ -217,11 +438,28 @@ function continueList(view: EditorView): boolean {
   return true;
 }
 
+// ---------------------------------------------------------------------------
+
 export interface EditorOptions {
   parent: HTMLElement;
   doc: string;
   onChange: (text: string) => void;
+  /** A line starting with "timer" was entered; resolve true if it was a timer command. */
+  onTimer?: (line: string) => Promise<boolean>;
+  /** An image was pasted: resolve with the recognised text. */
+  onImage?: (image: Blob) => Promise<string | null>;
   extraKeys?: { key: string; run: () => boolean }[];
+}
+
+/** Inserts text at the cursor (used for OCR results). */
+export function insertText(view: EditorView, text: string) {
+  const { from, to } = view.state.selection.main;
+  view.dispatch({
+    changes: { from, to, insert: text },
+    selection: { anchor: from + text.length },
+    scrollIntoView: true,
+  });
+  view.focus();
 }
 
 const theme = EditorView.theme({
@@ -231,28 +469,82 @@ const theme = EditorView.theme({
 });
 
 export function createEditor(o: EditorOptions): EditorView {
+  const timerEnter = (view: EditorView): boolean => {
+    if (!o.onTimer) return false;
+    const line = view.state.doc.lineAt(view.state.selection.main.head);
+    // In list notes the line may already carry a "- [ ] " marker.
+    const command = line.text.replace(/^\s*(?:[-*+]\s+(?:\[[ xX]\]\s+)?)?/, "");
+    if (!/^timer\b/i.test(command)) return false;
+    const text = line.text;
+    void o.onTimer(command).then((handled) => {
+      if (!handled) {
+        view.dispatch(view.state.replaceSelection("\n"));
+        return;
+      }
+      // The command line is consumed.
+      const cur = view.state.doc.line(Math.min(line.number, view.state.doc.lines));
+      if (cur.text !== text) return;
+      const from = cur.number > 1 ? cur.from - 1 : cur.from;
+      const to = cur.number > 1 ? cur.to : Math.min(cur.to + 1, view.state.doc.length);
+      view.dispatch({ changes: { from, to } });
+    });
+    return true;
+  };
+
   const extensions: Extension[] = [
     theme,
     history(),
     EditorView.lineWrapping,
     EditorState.allowMultipleSelections.of(true),
-    placeholder("Scrivi qualcosa…  (la prima riga è il titolo)"),
+    placeholder(t("note.placeholder")),
     decorations,
+    autoLists,
     keymap.of([
       ...(o.extraKeys ?? []),
-      { key: "Enter", run: continueList },
-      { key: "Mod-Enter", run: toggleTask },
-      indentWithTab,
+      { key: "Enter", run: (v) => timerEnter(v) || continueList(v) },
+      { key: "Mod-Shift-k", run: checkLine },
+      { key: "Mod-Enter", run: checkLine },
+      { key: "Mod-Shift-m", run: cycleMarker },
+      { key: "Mod-b", run: wrap("**") },
+      { key: "Mod-i", run: wrap("*") },
+      { key: "Mod-u", run: wrap("__") },
+      { key: "Mod-Shift-x", run: wrap("~~") },
+      { key: "Mod-Shift-h", run: cycleHeading },
+      { key: "Mod-/", run: toggleComment },
+      { key: "Tab", run: indentMore, shift: indentLess },
       ...defaultKeymap,
       ...historyKeymap,
     ]),
     EditorView.updateListener.of((u) => {
       if (u.docChanged) o.onChange(u.state.doc.toString());
     }),
+    EditorView.domEventHandlers({
+      paste(e, view) {
+        const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+        if (!file || !o.onImage) return false;
+        e.preventDefault();
+        void o.onImage(file).then((text) => text && insertText(view, text));
+        return true;
+      },
+    }),
     EditorView.contentAttributes.of({ autocapitalize: "sentences", spellcheck: "true" }),
   ];
-  return new EditorView({
+  const view = new EditorView({
     parent: o.parent,
     state: EditorState.create({ doc: o.doc, extensions }),
   });
+  // A "list" note written elsewhere (Joplin, CLI, an AI agent) may lack the
+  // "- [ ] " markers: add them so every app sees a real checklist.
+  if (modeOf(view.state.doc) === "list") {
+    const changes: ChangeSpec[] = [];
+    for (let n = 2; n <= view.state.doc.lines; n++) {
+      const line = view.state.doc.line(n);
+      const s = line.text;
+      if (s.trim() !== "" && !hasMarker(s) && !BARE_TASK.test(s) && !HEADING.test(s) && !COMMENT.test(s) && !FENCE.test(s)) {
+        changes.push({ from: line.from + /^\s*/.exec(s)![0].length, insert: "- [ ] " });
+      }
+    }
+    if (changes.length) view.dispatch({ changes });
+  }
+  return view;
 }

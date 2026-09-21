@@ -1,48 +1,32 @@
-mod secrets;
+mod ocr;
 mod theme;
+mod timer;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use omanote_core::api::JoplinServer;
+use omanote_core::config::Config;
 use omanote_core::e2ee::KeyRing;
+use omanote_core::secrets;
 use omanote_core::store::{Folder, Note, NoteSummary, Store};
 use omanote_core::sync::{unlock_keys, SyncInfo, SyncReport, Synchronizer};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-
-const SECRET_SERVER: &str = "server_password";
-const SECRET_MASTER: &str = "master_password";
 
 #[cfg(mobile)]
 const CLIENT_TYPE: i64 = omanote_core::api::LOCK_CLIENT_MOBILE;
 #[cfg(not(mobile))]
 const CLIENT_TYPE: i64 = omanote_core::api::LOCK_CLIENT_DESKTOP;
 
-fn default_hotkey() -> String {
-    "CommandOrControl+Shift+Space".into()
-}
-fn default_interval() -> u64 {
-    120
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-struct Config {
-    #[serde(default)]
-    server_url: String,
-    #[serde(default)]
-    email: String,
-    /// Joplin notebook used as Omanote's root (its sub-notebooks are the folders).
-    #[serde(default)]
-    root_folder_id: String,
-    #[serde(default)]
-    client_id: String,
-    #[serde(default = "default_hotkey")]
-    hotkey: String,
-    #[serde(default = "default_interval")]
-    sync_interval_secs: u64,
-}
+// Errors reach the UI as `CODE` or `CODE|detail`; the UI translates the code.
+const E_LOGIN: &str = "LOGIN_FAILED";
+const E_E2EE_REQUIRED: &str = "E2EE_REQUIRED";
+const E_BAD_MASTER: &str = "BAD_MASTER_PASSWORD";
+const E_SYNC_FIRST: &str = "SYNC_FIRST";
+const E_NO_NOTEBOOK: &str = "NO_NOTEBOOK";
+const E_ROOT_NOTEBOOK: &str = "ROOT_NOTEBOOK";
 
 #[derive(Default)]
 struct SyncCtx {
@@ -56,6 +40,9 @@ struct AppState {
     store: Arc<Mutex<Store>>,
     config: Mutex<Config>,
     sync: tokio::sync::Mutex<SyncCtx>,
+    timer: Mutex<Option<timer::Timer>>,
+    /// UI language, for the few strings produced by Rust (notifications).
+    lang: Mutex<String>,
 }
 
 impl AppState {
@@ -68,8 +55,7 @@ impl AppState {
     }
 
     fn save_config(&self, c: Config) -> Result<(), String> {
-        std::fs::write(self.dir.join("config.json"), serde_json::to_string_pretty(&c).unwrap())
-            .map_err(|e| e.to_string())?;
+        c.save(&self.dir).map_err(err)?;
         *self.config.lock().unwrap() = c;
         Ok(())
     }
@@ -87,6 +73,10 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+fn now_ms() -> i64 {
+    omanote_core::item::now_ms()
+}
+
 #[derive(Serialize)]
 struct Status {
     configured: bool,
@@ -97,6 +87,11 @@ struct Status {
     locked: bool,
     hotkey: String,
     mobile: bool,
+    /// "macos", "linux", "ios", "android", …
+    platform: &'static str,
+    /// Running on Omarchy (the global hotkey is then a Hyprland binding).
+    omarchy: bool,
+    data_dir: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -120,7 +115,7 @@ async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
         return Ok(None);
     }
     if ctx.api.is_none() {
-        let Some(pw) = secrets::get(&state.dir, SECRET_SERVER) else { return Ok(None) };
+        let Some(pw) = secrets::get(&state.dir, secrets::SERVER_PASSWORD) else { return Ok(None) };
         ctx.api = Some(JoplinServer::new(&cfg.server_url, &cfg.email, &pw));
     }
 
@@ -138,7 +133,7 @@ async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
     let result = async {
         let fetched = sync.fetch_info().await?;
         if fetched.e2ee_enabled() && sync.keys.active_id.is_none() {
-            if let Some(master) = secrets::get(&state.dir, SECRET_MASTER) {
+            if let Some(master) = secrets::get(&state.dir, secrets::MASTER_PASSWORD) {
                 unlock_keys(&fetched, &master, sync.keys);
             }
         }
@@ -174,13 +169,14 @@ fn spawn_sync(app: &AppHandle) {
 }
 
 // ---------------------------------------------------------------------------
-// Commands
+// Account & notebooks
 // ---------------------------------------------------------------------------
 
-/// The palette Omanote should use: `Some` only on Omarchy systems.
-#[tauri::command]
-fn get_system_theme() -> Option<theme::OmarchyTheme> {
-    theme::current()
+fn is_omarchy() -> bool {
+    cfg!(target_os = "linux")
+        && std::env::var_os("HOME")
+            .map(|h| PathBuf::from(h).join(".local/share/omarchy").exists())
+            .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -197,7 +193,15 @@ async fn get_status(state: State<'_, AppState>) -> Result<Status, String> {
         locked: e2ee && ctx.keys.active_id.is_none(),
         hotkey: c.hotkey,
         mobile: cfg!(mobile),
+        platform: std::env::consts::OS,
+        omarchy: is_omarchy(),
+        data_dir: state.dir.display().to_string(),
     })
+}
+
+#[tauri::command]
+fn set_language(state: State<'_, AppState>, lang: String) {
+    *state.lang.lock().unwrap() = lang;
 }
 
 #[tauri::command]
@@ -211,7 +215,7 @@ async fn setup(
 ) -> Result<(), String> {
     let server_url = server_url.trim().trim_end_matches('/').to_string();
     let mut api = JoplinServer::new(&server_url, email.trim(), &password);
-    api.login().await.map_err(|e| format!("Accesso non riuscito: {e}"))?;
+    api.login().await.map_err(|e| format!("{E_LOGIN}|{e}"))?;
 
     let mut keys = KeyRing::new();
     let info = {
@@ -227,11 +231,11 @@ async fn setup(
     let master = master_password.filter(|m| !m.is_empty());
     if info.e2ee_enabled() {
         let Some(m) = &master else {
-            return Err("E2EE_REQUIRED".into());
+            return Err(E_E2EE_REQUIRED.into());
         };
         unlock_keys(&info, m, &mut keys);
         if keys.active_id.is_none() {
-            return Err("Password master E2EE non corretta".into());
+            return Err(E_BAD_MASTER.into());
         }
     }
 
@@ -246,8 +250,8 @@ async fn setup(
     if cfg.client_id.is_empty() {
         cfg.client_id = omanote_core::item::new_id();
     }
-    secrets::set(&state.dir, SECRET_SERVER, Some(&password))?;
-    secrets::set(&state.dir, SECRET_MASTER, master.as_deref())?;
+    secrets::set(&state.dir, secrets::SERVER_PASSWORD, Some(&password))?;
+    secrets::set(&state.dir, secrets::MASTER_PASSWORD, master.as_deref())?;
     state.save_config(cfg)?;
 
     {
@@ -263,13 +267,13 @@ async fn unlock(app: AppHandle, state: State<'_, AppState>, master_password: Str
     {
         let mut guard = state.sync.lock().await;
         let ctx = &mut *guard;
-        let info = ctx.info.clone().ok_or("Sincronizza prima di sbloccare")?;
+        let info = ctx.info.clone().ok_or(E_SYNC_FIRST)?;
         unlock_keys(&info, &master_password, &mut ctx.keys);
         if ctx.keys.active_id.is_none() {
-            return Err("Password master E2EE non corretta".into());
+            return Err(E_BAD_MASTER.into());
         }
     }
-    secrets::set(&state.dir, SECRET_MASTER, Some(&master_password))?;
+    secrets::set(&state.dir, secrets::MASTER_PASSWORD, Some(&master_password))?;
     spawn_sync(&app);
     Ok(())
 }
@@ -277,8 +281,8 @@ async fn unlock(app: AppHandle, state: State<'_, AppState>, master_password: Str
 #[tauri::command]
 async fn logout(state: State<'_, AppState>) -> Result<(), String> {
     *state.sync.lock().await = SyncCtx::default();
-    secrets::set(&state.dir, SECRET_SERVER, None)?;
-    secrets::set(&state.dir, SECRET_MASTER, None)?;
+    secrets::set(&state.dir, secrets::SERVER_PASSWORD, None)?;
+    secrets::set(&state.dir, secrets::MASTER_PASSWORD, None)?;
     state.db().reset().map_err(err)?;
     let mut cfg = state.config();
     cfg.server_url.clear();
@@ -292,12 +296,14 @@ async fn sync_now(app: AppHandle) -> Result<Option<SyncReport>, String> {
     do_sync(&app).await
 }
 
+/// Chooses (or creates) the Joplin notebook Omanote works in. It can be
+/// changed at any time: notes stay where they are in Joplin.
 #[tauri::command]
 fn set_root_folder(app: AppHandle, state: State<'_, AppState>, folder_id: Option<String>, new_title: Option<String>) -> Result<String, String> {
     let id = match (folder_id, new_title) {
         (Some(id), _) if !id.is_empty() => id,
-        (_, Some(t)) => state.db().create_folder(&t, "").map_err(err)?.id,
-        _ => return Err("Scegli o crea un notebook".into()),
+        (_, Some(t)) if !t.trim().is_empty() => state.db().create_folder(&t, "").map_err(err)?.id,
+        _ => return Err(E_NO_NOTEBOOK.into()),
     };
     let mut cfg = state.config();
     cfg.root_folder_id = id.clone();
@@ -305,6 +311,10 @@ fn set_root_folder(app: AppHandle, state: State<'_, AppState>, folder_id: Option
     spawn_sync(&app);
     Ok(id)
 }
+
+// ---------------------------------------------------------------------------
+// Notes & folders
+// ---------------------------------------------------------------------------
 
 #[tauri::command]
 fn list_folders(state: State<'_, AppState>) -> Result<Vec<Folder>, String> {
@@ -336,7 +346,7 @@ fn get_note(state: State<'_, AppState>, id: String) -> Result<Option<Note>, Stri
 fn create_note(state: State<'_, AppState>, folder_id: Option<String>, text: String) -> Result<Note, String> {
     let parent = folder_id.filter(|f| !f.is_empty()).unwrap_or_else(|| state.config().root_folder_id);
     if parent.is_empty() {
-        return Err("Nessun notebook selezionato".into());
+        return Err(E_NO_NOTEBOOK.into());
     }
     state.db().create_note(&parent, &text).map_err(err)
 }
@@ -349,6 +359,11 @@ fn update_note(state: State<'_, AppState>, id: String, text: String) -> Result<N
 #[tauri::command]
 fn move_note(state: State<'_, AppState>, id: String, folder_id: String) -> Result<(), String> {
     state.db().move_note(&id, &folder_id).map_err(err)
+}
+
+#[tauri::command]
+fn promote_note(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.db().promote(&id).map_err(err)
 }
 
 #[tauri::command]
@@ -375,7 +390,7 @@ fn move_folder(state: State<'_, AppState>, id: String, parent_id: String) -> Res
 #[tauri::command]
 fn trash_folder(state: State<'_, AppState>, id: String) -> Result<(), String> {
     if id == state.config().root_folder_id {
-        return Err("Non puoi eliminare il notebook principale di Omanote".into());
+        return Err(E_ROOT_NOTEBOOK.into());
     }
     let db = state.db();
     let tree = db.folder_subtree(&id).map_err(err)?;
@@ -389,8 +404,207 @@ fn trash_folder(state: State<'_, AppState>, id: String) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
-// Desktop: window toggling, tray, global hotkey
+// Timer
 // ---------------------------------------------------------------------------
+
+fn notification_text(lang: &str, event: &str, title: &str) -> String {
+    let (done, work, rest) = match lang {
+        "it" => ("Tempo scaduto", "Fine lavoro: pausa!", "Fine pausa: al lavoro!"),
+        "es" => ("Se acabó el tiempo", "Fin del trabajo: ¡descanso!", "Fin del descanso: ¡a trabajar!"),
+        "fr" => ("Temps écoulé", "Fin du travail : pause !", "Fin de la pause : au travail !"),
+        "de" => ("Zeit abgelaufen", "Arbeitszeit vorbei: Pause!", "Pause vorbei: weiter geht's!"),
+        "pt" => ("O tempo acabou", "Fim do trabalho: pausa!", "Fim da pausa: ao trabalho!"),
+        "nl" => ("De tijd is om", "Werk klaar: pauze!", "Pauze voorbij: aan het werk!"),
+        "pl" => ("Czas minął", "Koniec pracy: przerwa!", "Koniec przerwy: do pracy!"),
+        _ => ("Time's up", "Work done: take a break!", "Break over: back to work!"),
+    };
+    let msg = match event {
+        "work_done" => work,
+        "rest_done" => rest,
+        _ => done,
+    };
+    if title.is_empty() {
+        msg.to_string()
+    } else {
+        format!("{title} — {msg}")
+    }
+}
+
+fn emit_timer(app: &AppHandle, t: Option<&timer::Timer>) {
+    let tick = t.map(|t| t.tick(now_ms()));
+    #[cfg(desktop)]
+    if let Some(tray) = app.tray_by_id("main") {
+        let _ = tray.set_title(tick.as_ref().map(|t| t.label.as_str()));
+    }
+    let _ = app.emit("timer", tick);
+}
+
+/// Runs a `timer …` line. Returns false if the line is not a timer command.
+#[tauri::command]
+fn timer_command(app: AppHandle, state: State<'_, AppState>, line: String) -> bool {
+    let Some(cmd) = timer::parse(&line) else { return false };
+    let now = now_ms();
+    let mut slot = state.timer.lock().unwrap();
+    match cmd {
+        timer::Command::Pause => {
+            if let Some(t) = slot.as_mut() {
+                t.toggle_pause(now);
+            }
+        }
+        timer::Command::Restart => {
+            if let Some(t) = slot.as_mut() {
+                t.restart(now);
+            }
+        }
+        timer::Command::Stop => *slot = None,
+        start => *slot = timer::Timer::start(&start, now),
+    }
+    emit_timer(&app, slot.as_ref());
+    true
+}
+
+#[tauri::command]
+fn timer_toggle(app: AppHandle, state: State<'_, AppState>) {
+    let mut slot = state.timer.lock().unwrap();
+    if let Some(t) = slot.as_mut() {
+        t.toggle_pause(now_ms());
+    }
+    emit_timer(&app, slot.as_ref());
+}
+
+#[tauri::command]
+fn timer_stop(app: AppHandle, state: State<'_, AppState>) {
+    let mut slot = state.timer.lock().unwrap();
+    *slot = None;
+    emit_timer(&app, None);
+}
+
+#[tauri::command]
+fn timer_state(state: State<'_, AppState>) -> Option<timer::Tick> {
+    state.timer.lock().unwrap().as_ref().map(|t| t.tick(now_ms()))
+}
+
+fn spawn_timer_loop(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+            let state = app.state::<AppState>();
+            let (finished, snapshot) = {
+                let mut slot = state.timer.lock().unwrap();
+                let Some(t) = slot.as_mut() else { continue };
+                if !t.running {
+                    continue;
+                }
+                (t.advance(now_ms()), t.clone())
+            };
+            emit_timer(&app, Some(&snapshot));
+            if let Some(event) = finished {
+                use tauri_plugin_notification::NotificationExt;
+                let lang = state.lang.lock().unwrap().clone();
+                let _ = app
+                    .notification()
+                    .builder()
+                    .title("Omanote")
+                    .body(notification_text(&lang, event, &snapshot.title))
+                    .sound("default")
+                    .show();
+                let _ = app.emit("timer-finished", event);
+                if event == "done" {
+                    // A finished countdown disappears after a short while.
+                    let app2 = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(Duration::from_secs(8)).await;
+                        let st = app2.state::<AppState>();
+                        let mut slot = st.timer.lock().unwrap();
+                        if slot.as_ref().is_some_and(|t| !t.running && t.kind == timer::Kind::Countdown) {
+                            *slot = None;
+                            emit_timer(&app2, None);
+                        }
+                    });
+                }
+            }
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// OCR
+// ---------------------------------------------------------------------------
+
+/// Text from an image sent as the raw request body (paste / drop in the UI).
+#[tauri::command]
+async fn ocr_image(request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("OCR_FAILED|expected raw image bytes".into());
+    };
+    let bytes = bytes.clone();
+    tauri::async_runtime::spawn_blocking(move || ocr::recognize(&bytes)).await.map_err(err)?
+}
+
+/// Text from an image file dropped on the window.
+#[tauri::command]
+async fn ocr_file(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|e| format!("OCR_FAILED|{e}"))?;
+        ocr::recognize(&bytes)
+    })
+    .await
+    .map_err(err)?
+}
+
+/// Select a region of the screen and return its text (desktop).
+#[tauri::command]
+async fn capture_text(app: AppHandle) -> Result<Option<String>, String> {
+    #[cfg(desktop)]
+    let window = app.get_webview_window("main");
+    #[cfg(desktop)]
+    if let Some(w) = &window {
+        let _ = w.hide();
+    }
+    let res = tauri::async_runtime::spawn_blocking(|| {
+        std::thread::sleep(Duration::from_millis(250));
+        match ocr::capture_region()? {
+            Some(png) => ocr::recognize(&png).map(Some),
+            None => Ok(None),
+        }
+    })
+    .await
+    .map_err(err)?;
+    #[cfg(desktop)]
+    if let Some(w) = &window {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    let _ = &app;
+    res
+}
+
+// ---------------------------------------------------------------------------
+// Window (desktop): pin, hide, tray, global hotkey, single instance
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn toggle_pin(window: tauri::WebviewWindow) -> Result<bool, String> {
+    #[cfg(desktop)]
+    {
+        let pinned = !window.is_always_on_top().map_err(err)?;
+        window.set_always_on_top(pinned).map_err(err)?;
+        Ok(pinned)
+    }
+    #[cfg(mobile)]
+    {
+        let _ = window;
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+fn hide_window(window: tauri::WebviewWindow) {
+    #[cfg(desktop)]
+    let _ = window.hide();
+    #[cfg(mobile)]
+    let _ = window;
+}
 
 #[cfg(desktop)]
 fn show_window(app: &AppHandle, quick_note: bool) {
@@ -410,8 +624,23 @@ fn toggle_window(app: &AppHandle) {
         if w.is_visible().unwrap_or(false) && w.is_focused().unwrap_or(false) {
             let _ = w.hide();
         } else {
-            show_window(app, true);
+            show_window(app, false);
         }
+    }
+}
+
+/// `omanote --toggle` (Hyprland binding on Omarchy), `--new`, `--capture`.
+#[cfg(desktop)]
+fn handle_args(app: &AppHandle, args: &[String]) {
+    if args.iter().any(|a| a == "--toggle") {
+        toggle_window(app);
+    } else if args.iter().any(|a| a == "--new") {
+        show_window(app, true);
+    } else if args.iter().any(|a| a == "--capture") {
+        show_window(app, false);
+        let _ = app.emit("capture-text", ());
+    } else {
+        show_window(app, false);
     }
 }
 
@@ -421,12 +650,13 @@ fn setup_desktop(app: &tauri::App) -> tauri::Result<()> {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
-    let new_note = MenuItem::with_id(app, "new", "Nuova nota", true, None::<&str>)?;
-    let show = MenuItem::with_id(app, "show", "Mostra Omanote", true, None::<&str>)?;
-    let sync = MenuItem::with_id(app, "sync", "Sincronizza ora", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Esci", true, None::<&str>)?;
+    let new_note = MenuItem::with_id(app, "new", "+  Omanote", true, None::<&str>)?;
+    let show = MenuItem::with_id(app, "show", "Omanote", true, None::<&str>)?;
+    let capture = MenuItem::with_id(app, "capture", "⌖  OCR", true, None::<&str>)?;
+    let sync = MenuItem::with_id(app, "sync", "⟳  Sync", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "⏻  Quit", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&new_note, &show, &sync, &sep, &quit])?;
+    let menu = Menu::with_items(app, &[&new_note, &show, &capture, &sync, &sep, &quit])?;
 
     let mut tray = TrayIconBuilder::with_id("main")
         .tooltip("Omanote")
@@ -435,6 +665,10 @@ fn setup_desktop(app: &tauri::App) -> tauri::Result<()> {
         .on_menu_event(|app, e| match e.id().as_ref() {
             "new" => show_window(app, true),
             "show" => show_window(app, false),
+            "capture" => {
+                show_window(app, false);
+                let _ = app.emit("capture-text", ());
+            }
             "sync" => spawn_sync(app),
             "quit" => app.exit(0),
             _ => {}
@@ -447,12 +681,10 @@ fn setup_desktop(app: &tauri::App) -> tauri::Result<()> {
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
-    #[cfg(target_os = "macos")]
-    {
-        tray = tray.icon_as_template(false);
-    }
     tray.build(app)?;
 
+    // Wayland (Omarchy) does not let apps grab global keys: there the hotkey
+    // is a Hyprland binding running `omanote --toggle` (see Settings).
     let hotkey = app.state::<AppState>().config().hotkey;
     app.handle().plugin(
         tauri_plugin_global_shortcut::Builder::new()
@@ -463,36 +695,67 @@ fn setup_desktop(app: &tauri::App) -> tauri::Result<()> {
             })
             .build(),
     )?;
-    if let Err(e) = app.global_shortcut().register(hotkey.as_str()) {
-        log::warn!("cannot register global shortcut {hotkey}: {e}");
+    if std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        if let Err(e) = app.global_shortcut().register(hotkey.as_str()) {
+            log::warn!("cannot register global shortcut {hotkey}: {e}");
+        }
     }
     Ok(())
+}
+
+/// Other processes (CLI, MCP server, AI agents) write to the same database:
+/// refresh the UI when they do.
+fn spawn_external_change_watch(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut last = app.state::<AppState>().db().data_version().unwrap_or(0);
+        loop {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let v = app.state::<AppState>().db().data_version().unwrap_or(last);
+            if v != last {
+                last = v;
+                let _ = app.emit("data-changed", ());
+            }
+        }
+    });
+}
+
+/// The palette Omanote should use: `Some` only on Omarchy systems.
+#[tauri::command]
+fn get_system_theme() -> Option<theme::OmarchyTheme> {
+    theme::current()
 }
 
 // ---------------------------------------------------------------------------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default();
+
+    // Must be the first plugin: a second launch forwards its args and exits.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            handle_args(app, &args);
+        }));
+    }
+
+    let app = builder
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let store = Store::open(dir.join("omanote.sqlite")).map_err(|e| e.to_string())?;
-            let config: Config = std::fs::read_to_string(dir.join("config.json"))
-                .ok()
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_else(|| Config {
-                    hotkey: default_hotkey(),
-                    sync_interval_secs: default_interval(),
-                    ..Default::default()
-                });
+            let store = Store::open(dir.join(omanote_core::config::DB_FILE)).map_err(|e| e.to_string())?;
+            let config = Config::load(&dir);
             let interval = config.sync_interval_secs.max(30);
             app.manage(AppState {
                 dir,
                 store: Arc::new(Mutex::new(store)),
                 config: Mutex::new(config),
                 sync: tokio::sync::Mutex::new(SyncCtx::default()),
+                timer: Mutex::new(None),
+                lang: Mutex::new("en".into()),
             });
 
             #[cfg(desktop)]
@@ -514,6 +777,9 @@ pub fn run() {
                     }
                 });
             }
+
+            spawn_timer_loop(app.handle().clone());
+            spawn_external_change_watch(app.handle().clone());
 
             // Periodic background sync.
             let handle = app.handle().clone();
@@ -538,6 +804,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_status,
             get_system_theme,
+            set_language,
             setup,
             unlock,
             logout,
@@ -550,11 +817,21 @@ pub fn run() {
             create_note,
             update_note,
             move_note,
+            promote_note,
             trash_note,
             create_folder,
             rename_folder,
             move_folder,
             trash_folder,
+            timer_command,
+            timer_toggle,
+            timer_stop,
+            timer_state,
+            ocr_image,
+            ocr_file,
+            capture_text,
+            toggle_pin,
+            hide_window,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Omanote");

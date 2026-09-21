@@ -84,6 +84,8 @@ pub struct DirtyItem {
 impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let conn = Connection::open(path)?;
+        // WAL + busy timeout: the app, the CLI and the MCP server can share the file.
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
         conn.execute_batch(SCHEMA)?;
         Ok(Self { conn })
@@ -408,6 +410,34 @@ impl Store {
         it.set("parent_id", parent_id);
         touch_system(&mut it);
         self.put_local(&it)
+    }
+
+    /// Brings a note to the front of the stack ("promote").
+    pub fn promote(&self, id: &str) -> Result<()> {
+        let (mut it, enc, ..) = self.raw(id)?.ok_or_else(|| Error::Sync(format!("note {id} not found")))?;
+        if enc {
+            return Err(Error::Crypto("note is still encrypted".into()));
+        }
+        touch(&mut it);
+        self.put_local(&it)
+    }
+
+    /// Appends a line of text at the end of a note.
+    pub fn append_to_note(&self, id: &str, text: &str) -> Result<Note> {
+        let note = self.note(id)?.ok_or_else(|| Error::Sync(format!("note {id} not found")))?;
+        let joined = if note.text.is_empty() { text.to_string() } else { format!("{}\n{text}", note.text.trim_end_matches('\n')) };
+        self.update_note_text(id, &joined)
+    }
+
+    /// Changes whenever *another* connection (the CLI, an AI agent) commits.
+    pub fn data_version(&self) -> Result<i64> {
+        Ok(self.conn.query_row("PRAGMA data_version", [], |r| r.get(0))?)
+    }
+
+    /// Looks a folder up by id or (case-insensitive) title.
+    pub fn find_folder(&self, key: &str) -> Result<Option<Folder>> {
+        let k = key.to_lowercase();
+        Ok(self.folders()?.into_iter().find(|f| f.id == key || f.title.to_lowercase() == k))
     }
 
     /// Moves an item to Joplin's trash (sets `deleted_time`, like Joplin ≥ 3.0).

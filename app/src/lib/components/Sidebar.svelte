@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type Folder, type NoteSummary, when } from "../api";
+  import { i18n, t } from "../i18n.svelte";
 
   let {
     folders,
@@ -59,7 +60,7 @@
   }
 
   async function removeFolder(f: Folder) {
-    if (!confirm(`Spostare "${f.title}" e le sue note nel cestino di Joplin?`)) return;
+    if (!confirm(t("nav.trashFolderConfirm", { name: f.title }))) return;
     await api.trashFolder(f.id);
     if (selected === f.id) onSelectFolder("");
     onChanged();
@@ -69,12 +70,12 @@
 <div class="scrim" onclick={onClose} role="presentation"></div>
 <aside>
   <div class="head">
-    <strong>Cartelle</strong>
-    <button title="Nuova cartella" onclick={() => ((adding = true), (newName = ""))}>＋</button>
+    <strong>{t("nav.folders")}</strong>
+    <button title={t("nav.newFolder")} onclick={() => ((adding = true), (newName = ""))}>＋</button>
   </div>
 
   <button class="folder" class:sel={selected === ""} onclick={() => onSelectFolder("")}>
-    <span>Tutte le note</span>
+    <span>{t("nav.allNotes")}</span>
     <span class="count">{notes.length}</span>
   </button>
 
@@ -87,37 +88,39 @@
           <span>{f.icon} {f.title}</span>
           <span class="count">{f.note_count}</span>
         </button>
-        <button class="mini" title="Rinomina" onclick={() => ((renaming = f.id), (renameName = f.title))}>✎</button>
-        <button class="mini" title="Cestino" onclick={() => removeFolder(f)}>🗑</button>
+        <button class="mini" title={t("nav.rename")} onclick={() => ((renaming = f.id), (renameName = f.title))}>✎</button>
+        <button class="mini" title={t("nav.trash")} onclick={() => removeFolder(f)}>🗑</button>
       {/if}
     </div>
   {/each}
 
   {#if adding}
-    <input placeholder="Nome cartella" bind:value={newName} onblur={addFolder} onkeydown={(e) => e.key === "Enter" && addFolder()} />
+    <input placeholder={t("nav.folderName")} bind:value={newName} onblur={addFolder} onkeydown={(e) => e.key === "Enter" && addFolder()} />
   {/if}
 
   <div class="notes">
     {#each notes as n (n.id)}
       <button class="note" class:sel={n.id === currentId} onclick={() => onSelectNote(n.id)}>
-        <span class="t">{n.encrypted ? "🔒 cifrata" : n.title || "Senza titolo"}{n.is_conflict ? " ⚠︎" : ""}</span>
+        <span class="t">{n.encrypted ? `🔒 ${t("note.encrypted")}` : n.title || t("note.untitled")}{n.is_conflict ? " ⚠︎" : ""}</span>
         <span class="p">{n.preview.replace(/\n/g, " ").slice(0, 60)}</span>
-        <span class="w">{when(n.updated_time)}</span>
+        <span class="w">{when(n.updated_time, i18n.lang)}</span>
       </button>
     {/each}
   </div>
 
-  <button class="settings" onclick={onSettings}>⚙︎ Impostazioni</button>
+  <button class="settings" onclick={onSettings}>⚙ {t("nav.settings")}</button>
 </aside>
 
 <style>
   .scrim {
     position: fixed;
+    z-index: 10;
     inset: 0;
     background: rgba(0, 0, 0, 0.25);
   }
   aside {
     position: fixed;
+    z-index: 11;
     top: 0;
     bottom: 0;
     left: 0;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type Folder } from "../api";
+  import { errText, t } from "../i18n.svelte";
 
   let { onDone }: { onDone: () => void } = $props();
 
@@ -23,12 +24,11 @@
       folders = (await api.folders()).filter((f) => f.parent_id === "");
       step = "folder";
     } catch (e) {
-      const msg = String(e);
-      if (msg.includes("E2EE_REQUIRED")) {
+      if (String(e).startsWith("E2EE_REQUIRED")) {
         needsMaster = true;
-        error = "Su questo server la crittografia E2EE è attiva: inserisci la password master di Joplin.";
+        error = t("setup.e2ee");
       } else {
-        error = msg;
+        error = errText(e);
       }
     } finally {
       busy = false;
@@ -42,7 +42,7 @@
       await api.setRootFolder(chosen || undefined, chosen ? undefined : newTitle);
       onDone();
     } catch (e) {
-      error = String(e);
+      error = errText(e);
     } finally {
       busy = false;
     }
@@ -53,19 +53,19 @@
   <div class="card">
     <h1>Omanote</h1>
     {#if step === "login"}
-      <p class="sub">Note veloci, sincronizzate con il tuo Joplin Server.</p>
-      <label>Indirizzo del server<input bind:value={serverUrl} placeholder="https://joplin.example.com" autocomplete="off" /></label>
-      <label>Email<input bind:value={email} placeholder="io@example.com" autocomplete="off" /></label>
-      <label>Password<input type="password" bind:value={password} /></label>
+      <p class="sub">{t("app.tagline")}</p>
+      <label>{t("setup.server")}<input bind:value={serverUrl} placeholder="https://joplin.example.com" autocomplete="off" /></label>
+      <label>{t("setup.email")}<input bind:value={email} placeholder="io@example.com" autocomplete="off" /></label>
+      <label>{t("setup.password")}<input type="password" bind:value={password} /></label>
       {#if needsMaster}
-        <label>Password master E2EE<input type="password" bind:value={master} /></label>
+        <label>{t("setup.master")}<input type="password" bind:value={master} /></label>
       {/if}
       <button class="primary" onclick={login} disabled={busy || !serverUrl || !email || !password}>
-        {busy ? "Connessione…" : "Connetti"}
+        {busy ? t("setup.connecting") : t("setup.connect")}
       </button>
-      <p class="hint">Le password restano sul dispositivo, nel portachiavi di sistema.</p>
+      <p class="hint">{t("setup.keychain")}</p>
     {:else}
-      <p class="sub">In quale notebook di Joplin vuoi tenere le note di Omanote?</p>
+      <p class="sub">{t("setup.pickNotebook")}</p>
       <div class="list">
         {#each folders as f (f.id)}
           <button class="row" class:sel={chosen === f.id} onclick={() => (chosen = f.id)}>
@@ -73,13 +73,13 @@
           </button>
         {/each}
         <button class="row" class:sel={chosen === ""} onclick={() => (chosen = "")}>
-          <span>➕ Crea un nuovo notebook</span>
+          <span>＋ {t("setup.createNotebook")}</span>
         </button>
       </div>
       {#if chosen === ""}
-        <label>Nome del nuovo notebook<input bind:value={newTitle} /></label>
+        <label>{t("setup.notebookName")}<input bind:value={newTitle} /></label>
       {/if}
-      <button class="primary" onclick={pickFolder} disabled={busy}>{busy ? "Attendi…" : "Inizia"}</button>
+      <button class="primary" onclick={pickFolder} disabled={busy}>{busy ? t("setup.wait") : t("setup.start")}</button>
     {/if}
     {#if error}<p class="error">{error}</p>{/if}
   </div>
@@ -88,6 +88,7 @@
 <style>
   .overlay {
     position: fixed;
+    z-index: 20;
     inset: 0;
     background: var(--bg);
     display: grid;
@@ -119,7 +120,7 @@
   }
   .primary {
     background: var(--accent);
-    color: #fff;
+    color: var(--bg);
     padding: 10px;
     font-weight: 600;
     margin-top: 6px;

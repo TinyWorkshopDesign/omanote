@@ -1,9 +1,12 @@
 //! Credentials storage: the OS keychain on macOS/iOS/Linux, a private file
-//! inside the app sandbox on Android.
+//! inside the app sandbox on Android. Shared by the app, the CLI and the MCP server.
 
 use std::path::Path;
 
 const SERVICE: &str = "app.omanote";
+
+pub const SERVER_PASSWORD: &str = "server_password";
+pub const MASTER_PASSWORD: &str = "master_password";
 
 #[cfg(not(target_os = "android"))]
 pub fn get(_dir: &Path, key: &str) -> Option<String> {

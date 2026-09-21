@@ -1,4 +1,4 @@
-import { evaluate, formatResult } from "../src/lib/calc.ts";
+import { countIn, detectMode, evaluate, formatResult, numbersIn } from "../src/lib/calc.ts";
 import assert from "node:assert/strict";
 
 const show = (text: string) => evaluate(text).map((r) => (r && r.show ? formatResult(r, "it-IT") : null));
@@ -22,7 +22,19 @@ const cases: [string, (string | null)[]][] = [
   ["media\n4\n6\nmedia", [null, null, null, "5"]],
   ["10 €\n5 €\ntotale\ntotale * 2", [null, null, "15,00 €", "30,00 €"]],
 ];
+cases.push(
+  ["// 2 + 2\n3 + 3", [null, "6"]],
+  ["10 €\n5 €\nsumme", [null, null, "15,00 €"]],
+  ["30% von 200", ["60"]],
+);
 for (const [input, expected] of cases) {
   assert.deepEqual(show(input), expected, input);
 }
-console.log(`calc: ${cases.length} casi ok`);
+assert.deepEqual(detectMode("list: Spesa"), { mode: "list", title: "Spesa" });
+assert.deepEqual(detectMode("Lista"), { mode: "list", title: "" });
+assert.deepEqual(detectMode("summe"), { mode: "sum", title: "" });
+assert.equal(detectMode("Lista della spesa").mode, "plain");
+assert.deepEqual(numbersIn("sum\n- [ ] latte 1,50\n2. pane 2\n// 100\nuova x6"), [1.5, 2, 6]);
+assert.deepEqual(countIn("count\nuno due\n\ntre\n// no"), { items: 2, lines: 3, words: 3, chars: 10 });
+
+console.log(`calc: ${cases.length} casi + modalità ok`);
