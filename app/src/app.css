@@ -255,10 +255,19 @@ input:focus {
   border: 1px solid var(--line);
 }
 
-.cm-image[data-missing]::after {
-  content: attr(data-missing);
+.cm-image-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px dashed var(--line);
   color: var(--muted);
   font-size: 0.85em;
+}
+
+.ico {
+  vertical-align: -0.15em;
+  flex: none;
 }
 
 .cm-image-remove {

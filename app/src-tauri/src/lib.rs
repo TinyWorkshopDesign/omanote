@@ -613,16 +613,6 @@ fn add_image(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Re
     state.db().add_resource(bytes, &mime, &name).map_err(err)
 }
 
-/// Stores an image file dropped on the window as an attachment.
-#[tauri::command]
-fn add_image_file(state: State<'_, AppState>, path: String) -> Result<String, String> {
-    let bytes = std::fs::read(&path).map_err(err)?;
-    let name = std::path::Path::new(&path)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "image".into());
-    state.db().add_resource(&bytes, image_mime(&name), &name).map_err(err)
-}
 
 /// Local path of an attachment, downloading it from Joplin Server if needed.
 #[tauri::command]
@@ -662,16 +652,6 @@ async fn ocr_image(request: tauri::ipc::Request<'_>) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || ocr::recognize(&bytes)).await.map_err(err)?
 }
 
-/// Text from an image file dropped on the window.
-#[tauri::command]
-async fn ocr_file(path: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let bytes = std::fs::read(&path).map_err(|e| format!("OCR_FAILED|{e}"))?;
-        ocr::recognize(&bytes)
-    })
-    .await
-    .map_err(err)?
-}
 
 /// Select a region of the screen and return its text (desktop).
 #[tauri::command]
@@ -1015,9 +995,7 @@ pub fn run() {
             timer_state,
             ocr_image,
             add_image,
-            add_image_file,
             resource_path,
-            ocr_file,
             capture_text,
             toggle_pin,
             hide_window,
