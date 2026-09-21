@@ -140,6 +140,13 @@ function build(view: EditorView): Built {
             deco.push(resultLine.range(line.from));
             deco.push(Decoration.widget({ widget: new TextWidget(summary, "cm-result", true), side: 1 }).range(line.to));
           }
+        } else {
+          // A quick note is often just "2+2" or "x = 5": the first line computes too.
+          const res = results[0];
+          if (res?.show) {
+            deco.push(resultLine.range(line.from));
+            deco.push(Decoration.widget({ widget: new TextWidget(formatResult(res), "cm-result", true), side: 1 }).range(line.to));
+          }
         }
         continue;
       }
