@@ -198,6 +198,17 @@ input:focus {
   white-space: nowrap;
 }
 
+.cm-result-inline {
+  margin-left: 0.5ch;
+  padding: 0 5px;
+  color: var(--result);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--result) 12%, transparent);
+  cursor: copy;
+}
+
+.cm-result-inline.cm-result-copied,
 .cm-result-copied {
   color: var(--bg);
   background: var(--result);

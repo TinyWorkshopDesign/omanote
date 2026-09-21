@@ -19,14 +19,17 @@ crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
   corrente evidenziata, azioni su ogni cartella, trascina una nota su una cartella per spostarla.
 - Parole chiave sulla prima riga (anche tradotte: `lista`, `somma`, `media`…):
   - `list` / `list: Titolo`: ogni riga diventa una casella; `/x` a fine riga la spunta;
-  - `math`: calcoli in linea (attivi comunque in ogni nota);
+  - `math`: risultati automatici anche senza `=`;
   - `sum`, `avg`: somma o media di tutti i numeri della nota;
   - `count`: elementi, righe, parole, caratteri;
   - `code`: niente formattazione.
 - Caselle `[] ` o `- [ ] `, elenchi puntati e numerati che si continuano con Invio, `//` per
   commentare una riga, markdown semplice (`**grassetto**`, `*corsivo*`, `__sottolineato__`, `~~barrato~~`).
-- Calcoli: `2+3*4`, `iva = 22%`, `100 € + iva`, `20% di 50`, `totale`, `media`, `sqrt(16)`, `ans`.
-  Clic sul risultato per copiarlo.
+- Calcoli: scrivi `=` alla fine della riga e il risultato compare subito dopo: `2+3*4=`,
+  `100 € + iva =`, `20% di 50 =`, `sqrt(16) =`. Senza `=` la riga resta testo. Le variabili
+  (`iva = 22%`) si memorizzano senza mostrare nulla; `totale =` / `media =` sommano il blocco
+  sopra. Nelle note che iniziano con `math` i risultati compaiono sempre. Clic sul risultato
+  per copiarlo.
 - **Timer** su qualsiasi riga, poi Invio: `timer` (cronometro), `timer 5` / `timer 3:30` (conto
   alla rovescia), `timer 9am` / `timer 21:15` (fino a un orario), `timer 5: Pasta` (con nome),
   `timer 25 5` / `timer pomo` (pomodoro), `timer p` / `r` / `s` (pausa, riavvia, stop). Il

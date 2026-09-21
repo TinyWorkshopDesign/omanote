@@ -366,6 +366,17 @@ fn set_root_folder(app: AppHandle, state: State<'_, AppState>, folder_id: Option
     Ok(id)
 }
 
+/// In "all of Joplin" mode: the notebook where new notes go (the tree stays whole).
+#[tauri::command]
+fn set_notes_home(state: State<'_, AppState>, folder_id: String) -> Result<(), String> {
+    if folder_id.is_empty() {
+        return Err(E_NO_NOTEBOOK.into());
+    }
+    let mut cfg = state.config();
+    cfg.root_folder_id = folder_id;
+    state.save_config(cfg)
+}
+
 /// Shows every Joplin notebook; new notes keep going to the working notebook.
 #[tauri::command]
 fn set_whole_joplin(state: State<'_, AppState>, enabled: bool) -> Result<(), String> {
@@ -994,6 +1005,7 @@ pub fn run() {
             sync_now,
             set_root_folder,
             set_whole_joplin,
+            set_notes_home,
             list_folders,
             list_notes,
             search_notes,

@@ -158,6 +158,7 @@ const en = {
   "set.wholeJoplin": "All of Joplin",
   "set.wholeJoplinHint": "Every Joplin notebook, as folders. New notes go to “{name}”.",
   "set.newNotesHere": "new notes",
+  "ctx.useForNewNotes": "Use for new notes",
 };
 
 export type Key = keyof typeof en;
@@ -294,6 +295,7 @@ const it: Dict = {
   "set.wholeJoplin": "Tutto Joplin",
   "set.wholeJoplinHint": "Tutti i notebook di Joplin, come cartelle. Le nuove note vanno in «{name}».",
   "set.newNotesHere": "nuove note",
+  "ctx.useForNewNotes": "Usa per le nuove note",
 };
 
 const es: Dict = {
@@ -425,6 +427,7 @@ const es: Dict = {
   "set.wholeJoplin": "Todo Joplin",
   "set.wholeJoplinHint": "Todas las libretas de Joplin, como carpetas. Las notas nuevas van a «{name}».",
   "set.newNotesHere": "notas nuevas",
+  "ctx.useForNewNotes": "Usar para las notas nuevas",
 };
 
 const fr: Dict = {
@@ -557,6 +560,7 @@ const fr: Dict = {
   "set.wholeJoplin": "Tout Joplin",
   "set.wholeJoplinHint": "Tous les carnets Joplin, comme dossiers. Les nouvelles notes vont dans « {name} ».",
   "set.newNotesHere": "nouvelles notes",
+  "ctx.useForNewNotes": "Utiliser pour les nouvelles notes",
 };
 
 const de: Dict = {
@@ -689,6 +693,7 @@ const de: Dict = {
   "set.wholeJoplin": "Ganz Joplin",
   "set.wholeJoplinHint": "Alle Joplin-Notizbücher als Ordner. Neue Notizen landen in „{name}“.",
   "set.newNotesHere": "neue Notizen",
+  "ctx.useForNewNotes": "Für neue Notizen verwenden",
 };
 
 const pt: Dict = {
@@ -820,6 +825,7 @@ const pt: Dict = {
   "set.wholeJoplin": "Todo o Joplin",
   "set.wholeJoplinHint": "Todos os cadernos do Joplin, como pastas. As notas novas vão para «{name}».",
   "set.newNotesHere": "notas novas",
+  "ctx.useForNewNotes": "Usar para notas novas",
 };
 
 const nl: Dict = {
@@ -952,6 +958,7 @@ const nl: Dict = {
   "set.wholeJoplin": "Heel Joplin",
   "set.wholeJoplinHint": "Alle Joplin-notitieboeken als mappen. Nieuwe notities gaan naar “{name}”.",
   "set.newNotesHere": "nieuwe notities",
+  "ctx.useForNewNotes": "Gebruiken voor nieuwe notities",
 };
 
 const pl: Dict = {
@@ -1084,6 +1091,7 @@ const pl: Dict = {
   "set.wholeJoplin": "Cały Joplin",
   "set.wholeJoplinHint": "Wszystkie notesy Joplin jako foldery. Nowe notatki trafiają do „{name}”.",
   "set.newNotesHere": "nowe notatki",
+  "ctx.useForNewNotes": "Używaj dla nowych notatek",
 };
 
 const DICTS: Record<Lang, Dict> = { en, it, es, fr, de, pt, nl, pl };

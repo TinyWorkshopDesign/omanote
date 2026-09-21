@@ -97,9 +97,12 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
   counts();
   switch (cmd) {
     case "get_status":
-      return status;
+      return { ...status }; // a fresh object, like the real backend
     case "list_folders":
       return folders;
+    case "set_notes_home":
+      status.root_folder_id = a.folderId ?? status.root_folder_id;
+      return null;
     case "set_whole_joplin":
       status.whole_joplin = Boolean((args as { enabled?: boolean }).enabled);
       return null;

@@ -15,7 +15,8 @@ const INSTRUCTIONS: &str = "Omanote is a quick-notes app synced with Joplin Serv
 Notes are plain Markdown: the first line is the title. Checklists use '- [ ] item' / '- [x] item'. \
 A first line of 'list', 'sum', 'avg', 'count', 'math' or 'code' (optionally 'list: Title') turns on \
 the matching note mode. Notes live in folders under the user's working notebook. \
-Note ids can be shortened to a unique prefix. Changes are saved locally and synced by the app; \
+End a line with '=' to have Omanote show its result ('2+2=', 'total ='); variables like 'vat = 22%' are \
+remembered. Note ids can be shortened to a unique prefix. Changes are saved locally and synced by the app; \
 call `sync` to push them to Joplin Server immediately.";
 
 fn tools() -> Value {

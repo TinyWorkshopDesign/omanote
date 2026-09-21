@@ -664,6 +664,7 @@
     onSelectFolder={selectFolder}
     onNewNote={newNoteIn}
     onDeleteNote={(id) => void trashNoteById(id)}
+    onHomeChanged={() => void refreshStatus()}
     onChanged={() => void treeChanged()}
     mac={status?.platform === "macos"}
     onClose={() => (sidebar = false)}

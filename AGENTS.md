@@ -13,7 +13,8 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 - Sync with Joplin Server incl. E2EE (both directions) and conflicts, tested against
   `joplin/server` in Docker with the official Joplin CLI (`crates/omanote-core/examples/sync_e2e.rs`).
 - Scratchpad behaviour: first-line keywords, lists with `/x` and `[] `, double Enter ends a
-  list, inline math and variables (also in list notes, only `code` notes are raw), timers,
+  list, inline math and variables (also in list notes, only `code` notes are raw; a result
+  shows right after a trailing "=" — "2+2=" — while "math" notes show every result), timers,
   swipe navigation, auto-deleted empty notes, keyboard shortcuts.
 - OCR with Apple Vision (tested in the real app); tesseract/grim/slurp path for Linux.
 - 8 LTR languages; Omarchy look (JetBrains Mono, 22 bundled themes, live system theme).
@@ -42,7 +43,8 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 - Whole-Joplin mode (`Config.whole_joplin`, Settings → "Tutto Joplin"): the tree root is
   Joplin's top level (`tree_root()` = "") so every notebook shows as a folder; new notes and
   notes dropped at the top level still go to `root_folder_id` (Joplin notes need a notebook).
-  `create_folder` with parent "" makes a top-level notebook.
+  `create_folder` with parent "" makes a top-level notebook. The notebook for new notes is
+  changed with `set_notes_home` (Settings button or tree menu "Usa per le nuove note").
 - Local mode: "use without a server" creates a local notebook (`Config.local_only`);
   connecting a Joplin Server later uploads those notes instead of resetting the store
   (only switching from one server/account to another resets it). Verified with
