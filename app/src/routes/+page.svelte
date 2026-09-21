@@ -501,13 +501,42 @@
     view?.focus();
   }
 
+  // A file dropped outside the editor text (margins, below the last line) must
+  // never reach the webview's default action, which would open the image in
+  // place of the app. The editor handles drops on the text itself first.
+  function windowDragOver(e: DragEvent) {
+    if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+  }
+
+  function windowDrop(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes("Files")) return;
+    const handled = e.defaultPrevented;
+    e.preventDefault();
+    if (handled) return;
+    const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    // Insert at the text position nearest to the drop point (below the last line → end).
+    if (view) {
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }, false);
+      view.dispatch({ selection: { anchor: pos } });
+    }
+    void handleImages(files);
+  }
+
   function pointer(e: MouseEvent) {
     nearTop = e.clientY < 72;
     nearBottom = e.clientY > window.innerHeight - 70;
   }
 </script>
 
-<svelte:window onkeydown={windowKey} onbeforeunload={() => void flush()} onmousemove={pointer} />
+<svelte:window
+  onkeydown={windowKey}
+  onbeforeunload={() => void flush()}
+  onmousemove={pointer}
+  ondragenter={windowDragOver}
+  ondragover={windowDragOver}
+  ondrop={windowDrop}
+/>
 
 <div class="app" style="--editor-size: {fontSize}px">
   <header class:shown={barVisible} class:mac={status?.platform === "macos"} data-tauri-drag-region>
