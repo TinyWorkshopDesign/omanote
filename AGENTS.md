@@ -16,6 +16,13 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   list, inline math and variables (also in list notes, only `code` notes are raw; a result
   shows right after a trailing "=" — "2+2=" — while "math" notes show every result), timers,
   swipe navigation, auto-deleted empty notes, keyboard shortcuts.
+- Editor rendering: `@codemirror/lang-markdown` (CommonMark + GFM) with a `HighlightStyle`
+  for headings/emphasis/code/quotes, plus a live-preview plugin in `editor.ts` that hides
+  Markdown marks, renders Joplin rich-text HTML (`<span style="color">` across lines, `<img
+  src=":/id" width>`, simple tags, `&nbsp;`/entities, `\` escapes, `++underline++`) and
+  inline attachment images (several per line). Raw syntax reappears on the lines holding the
+  cursor; images stay visible there too. Underline is `++…++` (Joplin), not `__…__`
+  (Markdown bold).
 - OCR with Apple Vision (tested in the real app); tesseract/grim/slurp path for Linux.
 - 8 LTR languages; Omarchy look (JetBrains Mono, 22 bundled themes, live system theme).
 - Navigation: tree panel (`Sidebar.svelte`: notebook → folders → notes, expand/collapse,

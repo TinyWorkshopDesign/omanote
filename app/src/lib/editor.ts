@@ -1,11 +1,13 @@
-// CodeMirror 6 setup for Omanote: plain-text notes (Joplin Markdown) that
-// behave as a scratchpad — first-line keywords (list, math, sum, avg, count,
-// code), live checkboxes, simple Markdown, inline math, timers, OCR paste.
+// CodeMirror 6 setup for Omanote: Joplin Markdown notes that behave like
+// Scratchpad behaviour — first-line keywords (list, math, sum, avg, count, code), live
+// checkboxes, inline math, timers, image paste/drop — with a live preview:
+// real Markdown (headings, emphasis, code, quotes, links), Joplin's rich-text
+// HTML (coloured <span>s, <img>, &nbsp;) and attachments, whose raw syntax
+// reappears on the lines the cursor is on.
 
 import {
   EditorSelection,
   EditorState,
-  StateField,
   type ChangeSpec,
   type Extension,
   type Range,
@@ -22,6 +24,9 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from "@codemirror/commands";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 import { countIn, detectMode, evaluate, formatResult, numbersIn, type Mode } from "./calc";
 import { t } from "./i18n.svelte";
 import { icons } from "./icons";
@@ -30,7 +35,7 @@ const TASK = /^(\s*)([-*+]) \[( |x|X)\] /;
 const BARE_TASK = /^(\s*)\[( |x|X)?\] /; // "[] " / "[x] " shorthand, normalised to "- [ ] "
 const BULLET = /^(\s*)([-*+]) (?!\[[ xX]\] )/;
 const NUMBERED = /^(\s*)(\d+)([.)]) /;
-const HEADING = /^(#{1,3}) /;
+const HEADING = /^(#{1,6}) /;
 const COMMENT = /^\s*\/\//;
 const FENCE = /^\s*```/;
 const CHECK_TRIGGER = "/x";
@@ -103,15 +108,7 @@ const titleLine = Decoration.line({ class: "cm-title-line" });
 const resultLine = Decoration.line({ class: "cm-has-result" });
 const commentLine = Decoration.line({ class: "cm-comment" });
 const codeLine = Decoration.line({ class: "cm-code" });
-const headingLines = [1, 2, 3].map((n) => Decoration.line({ class: `cm-h${n}` }));
-const dim = Decoration.mark({ class: "cm-dim" });
 const keywordMark = Decoration.mark({ class: "cm-keyword" });
-const INLINE: [RegExp, Decoration][] = [
-  [/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, Decoration.mark({ class: "cm-strong" })],
-  [/__(?=\S)(.+?)(?<=\S)__/g, Decoration.mark({ class: "cm-underline" })],
-  [/~~(?=\S)(.+?)(?<=\S)~~/g, Decoration.mark({ class: "cm-strike" })],
-  [/(?<![*\w])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![*\w])/g, Decoration.mark({ class: "cm-em" })],
-];
 
 // ---------------------------------------------------------------------------
 // Decorations
@@ -169,15 +166,11 @@ function build(view: EditorView): Built {
         continue;
       }
 
-      const h = HEADING.exec(s);
       const task = TASK.exec(s);
       const res = results[line.number - 1];
-      if (h) deco.push(headingLines[h[1].length - 1].range(line.from));
       if (task && task[3] !== " ") deco.push(doneLine.range(line.from));
 
-      if (h) {
-        deco.push(dim.range(line.from, line.from + h[0].length));
-      } else if (task) {
+      if (task) {
         const start = line.from + task[1].length;
         const r = Decoration.replace({ widget: new CheckboxWidget(task[3] !== " ", start) }).range(
           start,
@@ -191,18 +184,6 @@ function build(view: EditorView): Built {
           const r = bullet.range(line.from + bl[1].length, line.from + bl[1].length + 1);
           deco.push(r);
           atomic.push(r);
-        }
-      }
-
-      for (const [re, mark] of INLINE) {
-        re.lastIndex = 0;
-        for (let m = re.exec(s); m; m = re.exec(s)) {
-          const a = line.from + m.index;
-          const b = a + m[0].length;
-          const marker = (m[0].length - m[1].length) / 2;
-          deco.push(mark.range(a, b));
-          deco.push(dim.range(a, a + marker));
-          deco.push(dim.range(b - marker, b));
         }
       }
 
@@ -490,41 +471,43 @@ function continueList(view: EditorView): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Images: a line "![name](:/<resource id>)" (Joplin attachment) shows the image
+// Live preview
 // ---------------------------------------------------------------------------
-
-const IMAGE_LINE = /^\s*!\[([^\]]*)\]\(:\/([0-9a-fA-F]{32})\)\s*$/;
 
 type ResolveImage = (id: string) => Promise<string | null>;
 
+/** An attachment shown in place of `![alt](:/id)` or `<img src=":/id">`. */
 class ImageWidget extends WidgetType {
   constructor(
     readonly id: string,
     readonly alt: string,
+    readonly width: number,
+    readonly len: number,
     readonly resolve: ResolveImage,
   ) {
     super();
   }
   eq(o: ImageWidget) {
-    return o.id === this.id && o.alt === this.alt;
+    return o.id === this.id && o.alt === this.alt && o.width === this.width && o.len === this.len;
   }
   toDOM(view: EditorView) {
-    const wrap = document.createElement("div");
+    const wrap = document.createElement("span");
     wrap.className = "cm-image";
     const img = document.createElement("img");
     img.alt = this.alt;
+    if (this.width) img.style.width = `min(${this.width}px, 100%)`;
     const remove = document.createElement("button");
     remove.className = "cm-image-remove";
     remove.textContent = "✕";
     remove.title = this.alt;
     remove.onmousedown = (e) => {
+      // Removes the reference only; the attachment stays in Joplin.
       e.preventDefault();
-      // Remove the whole line (and its line break); the attachment stays in Joplin.
       const pos = view.posAtDOM(wrap);
-      const line = view.state.doc.lineAt(pos);
-      const to = Math.min(line.to + 1, view.state.doc.length);
-      const from = to === line.to && line.from > 0 ? line.from - 1 : line.from;
-      view.dispatch({ changes: { from, to } });
+      const doc = view.state.doc.toString();
+      // Replacing widget: pos is the start; trailing widget: pos is the end.
+      const from = doc.slice(pos, pos + this.len).toLowerCase().includes(this.id) ? pos : pos - this.len;
+      view.dispatch({ changes: { from, to: from + this.len } });
     };
     wrap.append(img, remove);
     const missing = () => {
@@ -540,37 +523,171 @@ class ImageWidget extends WidgetType {
       .catch(missing);
     return wrap;
   }
-  get estimatedHeight() {
-    return 200;
-  }
   ignoreEvent() {
     return true;
   }
 }
 
-function imageDecorations(doc: Text, resolve: ResolveImage): DecorationSet {
-  const ranges: Range<Decoration>[] = [];
-  for (let n = 1; n <= doc.lines; n++) {
-    const line = doc.line(n);
-    if (!line.text.includes("](:/")) continue;
-    const m = IMAGE_LINE.exec(line.text);
-    if (m) {
-      ranges.push(
-        Decoration.replace({ widget: new ImageWidget(m[2].toLowerCase(), m[1], resolve), block: true }).range(line.from, line.to),
-      );
-    }
+const hide = Decoration.replace({});
+const htmlDim = Decoration.mark({ class: "cm-html" });
+const underline = Decoration.mark({ class: "cm-underline" });
+const ENTITIES: Record<string, string> = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", "#39": "'" };
+
+const RE_IMAGE_MD = /!\[([^\]\n]*)\]\(:\/([0-9a-fA-F]{32})\)/g;
+const RE_IMAGE_HTML = /<img\b[^>\n]*?\bsrc=["']:\/([0-9a-fA-F]{32})["'][^>\n]*>/g;
+const RE_SPAN = /<span\b([^>\n]*)>([\s\S]*?)<\/span>/g;
+const RE_TAG = /<\/?(?:u|b|strong|i|em|s|mark|sup|sub|div|p|font|br)\b[^>\n]*\/?>/gi;
+const RE_ENTITY = /&(nbsp|amp|lt|gt|quot|apos|#39);/g;
+const RE_ESCAPE = /\\([\\`*_{}[\]()#+\-.!|$<>~])/g;
+const RE_INS = /\+\+(?=\S)([^+\n]+?)\+\+/g;
+
+/** Lines touched by the selection: there the raw syntax stays visible. */
+function activeLines(state: EditorState): Set<number> {
+  const lines = new Set<number>();
+  if (!state.selection) return lines;
+  for (const r of state.selection.ranges) {
+    const a = state.doc.lineAt(r.from).number;
+    const b = state.doc.lineAt(r.to).number;
+    for (let n = a; n <= b; n++) lines.add(n);
   }
-  return Decoration.set(ranges);
+  return lines;
 }
 
-/** Block widgets must come from a state field (not a view plugin). */
-function imageField(resolve: ResolveImage) {
-  return StateField.define<DecorationSet>({
-    create: (state) => imageDecorations(state.doc, resolve),
-    update: (deco, tr) => (tr.docChanged ? imageDecorations(tr.state.doc, resolve) : deco),
-    provide: (f) => [EditorView.decorations.from(f), EditorView.atomicRanges.of((v) => v.state.field(f))],
-  });
+function buildPreview(view: EditorView, resolve: ResolveImage, focused: boolean): DecorationSet {
+  const { state } = view;
+  const doc = state.doc;
+  const active = focused ? activeLines(state) : new Set<number>();
+  const mode = modeOf(doc);
+  const out: Range<Decoration>[] = [];
+  const touchesActive = (from: number, to: number) => {
+    const a = doc.lineAt(from).number;
+    const b = doc.lineAt(to).number;
+    for (let n = a; n <= b; n++) if (active.has(n)) return true;
+    return false;
+  };
+
+  if (mode === "code") return Decoration.none;
+
+  for (const { from, to } of view.visibleRanges) {
+    // Markdown markers (# ** ` > ~~) disappear off the cursor lines.
+    syntaxTree(state).iterate({
+      from,
+      to,
+      enter: (node) => {
+        const name = node.name;
+        if (name === "FencedCode" || name === "CodeBlock") return false;
+        const markers = ["HeaderMark", "EmphasisMark", "StrikethroughMark", "CodeMark"];
+        if (!markers.includes(name)) return;
+        if (touchesActive(node.from, node.to)) return;
+        if (doc.lineAt(node.from).number === 1) return; // the Joplin title is plain text
+        let end = node.to;
+        if (name === "HeaderMark" && doc.sliceString(end, end + 1) === " ") end++;
+        out.push(hide.range(node.from, end));
+      },
+    });
+
+    // Joplin's rich-text HTML and attachments (regexes over the visible text).
+    const start = doc.lineAt(from).from;
+    const text = doc.sliceString(start, to);
+    const at = (i: number) => start + i;
+
+    const images: [number, number, string, string, number][] = [];
+    for (const m of text.matchAll(RE_IMAGE_MD)) images.push([m.index!, m.index! + m[0].length, m[2], m[1], 0]);
+    for (const m of text.matchAll(RE_IMAGE_HTML)) {
+      const alt = /\balt=["']([^"']*)["']/.exec(m[0])?.[1] ?? "";
+      const width = Number(/\bwidth=["']?(\d+)/.exec(m[0])?.[1] ?? 0);
+      images.push([m.index!, m.index! + m[0].length, m[1], alt, width]);
+    }
+    for (const [a, b, id, alt, width] of images) {
+      const widget = new ImageWidget(id.toLowerCase(), alt, width, b - a, resolve);
+      // On the cursor line the source stays editable and the picture follows it.
+      if (touchesActive(at(a), at(b))) out.push(Decoration.widget({ widget, side: 1 }).range(at(b)));
+      else out.push(Decoration.replace({ widget }).range(at(a), at(b)));
+    }
+
+    for (const m of text.matchAll(RE_SPAN)) {
+      const a = m.index!;
+      const open = m[0].indexOf(">") + 1;
+      const close = m[0].length - "</span>".length;
+      const color = /(?:^|[;\s"])color:\s*([^;"]+)/i.exec(m[1])?.[1]?.trim();
+      const bg = /background(?:-color)?:\s*([^;"]+)/i.exec(m[1])?.[1]?.trim();
+      const style = [color && `color: ${color}`, bg && `background-color: ${bg}`].filter(Boolean).join("; ");
+      if (open < close && style) {
+        out.push(Decoration.mark({ attributes: { style } }).range(at(a + open), at(a + close)));
+      }
+      const raw = touchesActive(at(a), at(a + m[0].length));
+      out.push((raw ? htmlDim : hide).range(at(a), at(a + open)));
+      out.push((raw ? htmlDim : hide).range(at(a + close), at(a + m[0].length)));
+    }
+
+    for (const m of text.matchAll(RE_TAG)) {
+      const a = at(m.index!);
+      const b = a + m[0].length;
+      out.push((touchesActive(a, b) ? htmlDim : hide).range(a, b));
+    }
+
+    for (const m of text.matchAll(RE_ENTITY)) {
+      const a = at(m.index!);
+      const b = a + m[0].length;
+      if (touchesActive(a, b)) continue;
+      out.push(Decoration.replace({ widget: new TextWidget(ENTITIES[m[1]] ?? "", "cm-entity") }).range(a, b));
+    }
+
+    for (const m of text.matchAll(RE_ESCAPE)) {
+      const a = at(m.index!);
+      if (!touchesActive(a, a + 2)) out.push(hide.range(a, a + 1));
+    }
+
+    // "++text++" is Joplin's underline.
+    for (const m of text.matchAll(RE_INS)) {
+      const a = at(m.index!);
+      const b = a + m[0].length;
+      out.push(underline.range(a + 2, b - 2));
+      if (!touchesActive(a, b)) out.push(hide.range(a, a + 2), hide.range(b - 2, b));
+    }
+  }
+  return Decoration.set(out, true);
 }
+
+/** The user is in the editor (even if the whole window is momentarily unfocused). */
+function editing(view: EditorView): boolean {
+  return view.hasFocus || document.activeElement === view.contentDOM;
+}
+
+function preview(resolve: ResolveImage) {
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = buildPreview(view, resolve, editing(view));
+      }
+      update(u: ViewUpdate) {
+        if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
+          this.decorations = buildPreview(u.view, resolve, editing(u.view));
+        }
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
+}
+
+/** Markdown look (Omarchy palette): headings scale, marks stay muted. */
+const markdownStyle = HighlightStyle.define([
+  { tag: tags.heading1, fontSize: "1.6em", fontWeight: "700", color: "var(--accent)" },
+  { tag: tags.heading2, fontSize: "1.35em", fontWeight: "700", color: "var(--accent)" },
+  { tag: tags.heading3, fontSize: "1.15em", fontWeight: "700", color: "var(--accent)" },
+  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: "700", color: "var(--accent)" },
+  { tag: tags.strong, fontWeight: "700" },
+  { tag: tags.emphasis, fontStyle: "italic" },
+  { tag: tags.strikethrough, textDecoration: "line-through", color: "var(--muted)" },
+  { tag: tags.link, color: "var(--accent)" },
+  { tag: tags.url, color: "var(--muted)", textDecoration: "underline" },
+  { tag: tags.monospace, color: "var(--result)" },
+  { tag: tags.quote, color: "var(--muted)", fontStyle: "italic" },
+  { tag: tags.contentSeparator, color: "var(--muted)" },
+  { tag: tags.processingInstruction, color: "var(--muted)" },
+  { tag: tags.escape, color: "var(--muted)" },
+]);
 
 /**
  * Inserts an attachment reference on a line of its own at the cursor. Line 1 is
@@ -654,7 +771,9 @@ export function createEditor(o: EditorOptions): EditorView {
   };
 
   const extensions: Extension[] = [
-    imageField(o.resolveImage ?? (async () => null)),
+    markdown({ base: markdownLanguage }),
+    syntaxHighlighting(markdownStyle),
+    preview(o.resolveImage ?? (async () => null)),
     theme,
     history(),
     EditorView.lineWrapping,
@@ -670,7 +789,7 @@ export function createEditor(o: EditorOptions): EditorView {
       { key: "Mod-Shift-m", run: cycleMarker },
       { key: "Mod-b", run: wrap("**") },
       { key: "Mod-i", run: wrap("*") },
-      { key: "Mod-u", run: wrap("__") },
+      { key: "Mod-u", run: wrap("++") }, // Joplin's underline
       { key: "Mod-Shift-x", run: wrap("~~") },
       { key: "Mod-Shift-h", run: cycleHeading },
       { key: "Mod-/", run: toggleComment },
