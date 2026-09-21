@@ -53,7 +53,7 @@ impl Ctx {
     }
 
     fn tree(&self) -> Result<Vec<String>, String> {
-        self.db().folder_subtree(&self.cfg.root_folder_id).map_err(e)
+        self.db().folder_subtree(self.cfg.tree_root()).map_err(e)
     }
 
     pub fn folders(&self) -> Result<Vec<FolderOut>, String> {
@@ -71,7 +71,9 @@ impl Ctx {
             }
         }
         let mut out = Vec::new();
-        if let Some(root) = all.iter().find(|f| f.id == self.cfg.root_folder_id) {
+        if self.cfg.whole_joplin {
+            walk(&all, "", 0, &mut out);
+        } else if let Some(root) = all.iter().find(|f| f.id == self.cfg.root_folder_id) {
             out.push(FolderOut {
                 id: root.id.clone(),
                 parent_id: root.parent_id.clone(),

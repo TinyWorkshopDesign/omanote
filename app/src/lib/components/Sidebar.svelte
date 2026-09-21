@@ -11,6 +11,7 @@
   let {
     folders,
     rootId,
+    noteHome,
     currentId,
     scope,
     version,
@@ -24,7 +25,10 @@
     onSettings,
   }: {
     folders: Folder[];
+    /** Top of the tree: the working notebook, or "" for all of Joplin. */
     rootId: string;
+    /** Notebook for notes that would land at Joplin's top level (not allowed there). */
+    noteHome: string;
     currentId: string | null;
     /** Folder the note stack is limited to ("" = whole notebook). */
     scope: string;
@@ -175,6 +179,8 @@
   // ---------------------------------------------------------------- actions
 
   async function move(kind: TreeKind, id: string, dest: string) {
+    // Joplin notes always live in a notebook: the top level sends them home.
+    if (kind === "note" && dest === "") dest = noteHome;
     if (kind === "note") {
       if (noteOf(id)?.parent_id === dest) return;
       await api.moveNote(id, dest);
@@ -208,12 +214,13 @@
       return;
     }
     if (c.kind === "note") {
+      const home = dest === "" ? noteHome : dest;
       const full = await api.note(c.id);
       if (!full) return;
-      const sameFolder = noteOf(c.id)?.parent_id === dest;
+      const sameFolder = noteOf(c.id)?.parent_id === home;
       const [first, ...rest] = full.text.split("\n");
       const text = sameFolder ? [`${first} ${t("ctx.copySuffix")}`, ...rest].join("\n") : full.text;
-      await api.createNote(dest, text);
+      await api.createNote(home, text);
     } else {
       if (isInside(dest, c.id)) return;
       await copyFolder(c.id, dest, folderOf(c.id)?.parent_id === dest);
@@ -240,7 +247,8 @@
     const name = newName.trim();
     adding = null;
     newName = "";
-    if (!parent || !name) return;
+    // parent "" is Joplin's top level (a new notebook): only null means cancelled.
+    if (parent === null || !name) return;
     await api.createFolder(name, parent);
     if (parent !== rootId) toggle(parent, true);
     onChanged();
@@ -408,7 +416,7 @@
           <span class="meta">{n ? when(n.updated_time, i18n.lang) : ""}</span>
         {:else}
           {@const f = r.kind === "root" ? root : folderOf(r.id)}
-          <span class="label">{f?.icon ? `${f.icon} ` : ""}{f?.title ?? "Omanote"}</span>
+          <span class="label">{f?.icon ? `${f.icon} ` : ""}{f?.title ?? (rootId === "" ? "Joplin" : "Omanote")}</span>
           <span class="meta">{r.kind === "root" ? notes.length : countIn(r.id)}</span>
         {/if}
 

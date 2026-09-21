@@ -77,6 +77,8 @@
     const start = Math.max(0, Math.min(stackPos - Math.floor(size / 2), slots - size));
     return Array.from({ length: size }, (_, i) => start + i);
   });
+  /** Top of the tree: the working notebook, or "" when showing all of Joplin. */
+  const treeRoot = $derived(status?.whole_joplin ? "" : (status?.root_folder_id ?? ""));
   const overlayOpen = $derived(sidebar || !!palette || settings);
   const bottomVisible = $derived(!overlayOpen && (nearBottom || bottomFlash));
 
@@ -245,7 +247,7 @@
 
   /** "+" on a folder in the tree: new note there, and that folder becomes the stack. */
   function newNoteIn(folderId: string) {
-    selectedFolder = folderId === status?.root_folder_id ? "" : folderId;
+    selectedFolder = folderId === treeRoot ? "" : folderId;
     newNote();
   }
 
@@ -255,7 +257,7 @@
     if (window.innerWidth < 760) sidebar = false;
     if (current?.id !== id) await open(id);
     if (current && selectedFolder && current.parent_id !== selectedFolder) {
-      selectedFolder = current.parent_id === status?.root_folder_id ? "" : current.parent_id;
+      selectedFolder = current.parent_id === treeRoot ? "" : current.parent_id;
       await refresh();
     }
   }
@@ -362,7 +364,7 @@
   /** Folder picked in the tree: the note stack now shows that folder (tree stays open). */
   async function selectFolder(id: string) {
     await flush();
-    selectedFolder = id === status?.root_folder_id ? "" : id;
+    selectedFolder = id === treeRoot ? "" : id;
     await refresh();
     if (current && notes.some((n) => n.id === current!.id)) return;
     if (notes.length) await open(notes[0].id);
@@ -653,7 +655,8 @@
 {#if sidebar}
   <Sidebar
     {folders}
-    rootId={status?.root_folder_id ?? ""}
+    rootId={treeRoot}
+    noteHome={status?.root_folder_id ?? ""}
     currentId={current?.id ?? null}
     scope={selectedFolder}
     version={treeVersion}

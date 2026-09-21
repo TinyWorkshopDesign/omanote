@@ -79,6 +79,7 @@ const status: Status = {
   platform: "macos",
   omarchy: false,
   local: false,
+  whole_joplin: false,
   data_dir: "~/Library/Application Support/app.omanote",
 };
 
@@ -99,8 +100,11 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       return status;
     case "list_folders":
       return folders;
+    case "set_whole_joplin":
+      status.whole_joplin = Boolean((args as { enabled?: boolean }).enabled);
+      return null;
     case "list_notes": {
-      const ids = a.folderId ? [a.folderId] : subtree(status.root_folder_id);
+      const ids = a.folderId ? [a.folderId] : subtree(status.whole_joplin ? "" : status.root_folder_id);
       return notes.filter((n) => ids.includes(n.parent_id)).map(summary).sort((x, y) => y.updated_time - x.updated_time);
     }
     case "search_notes":
@@ -136,7 +140,7 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       return null;
     }
     case "create_folder": {
-      const f = { id: id32(), parent_id: a.parentId || status.root_folder_id, title: a.title ?? "", icon: "", note_count: 0 };
+      const f = { id: id32(), parent_id: a.parentId ?? status.root_folder_id, title: a.title ?? "", icon: "", note_count: 0 };
       folders.push(f);
       return f;
     }

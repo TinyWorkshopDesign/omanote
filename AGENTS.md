@@ -39,6 +39,10 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   (`Synchronizer::fetch_resource`, served via Tauri's asset protocol scoped to
   `$APPDATA/resources`). Verified both ways against Joplin CLI with identical SHA-256
   (`crates/omanote-core/examples/resources_e2e.rs`). Images never go on line 1 (title).
+- Whole-Joplin mode (`Config.whole_joplin`, Settings → "Tutto Joplin"): the tree root is
+  Joplin's top level (`tree_root()` = "") so every notebook shows as a folder; new notes and
+  notes dropped at the top level still go to `root_folder_id` (Joplin notes need a notebook).
+  `create_folder` with parent "" makes a top-level notebook.
 - Local mode: "use without a server" creates a local notebook (`Config.local_only`);
   connecting a Joplin Server later uploads those notes instead of resetting the store
   (only switching from one server/account to another resets it). Verified with

@@ -37,6 +37,10 @@ pub struct Config {
     /// server later uploads the local notes instead of discarding them.
     #[serde(default)]
     pub local_only: bool,
+    /// Work on every Joplin notebook instead of `root_folder_id` only. New notes
+    /// still go to `root_folder_id` (Joplin notes always live in a notebook).
+    #[serde(default)]
+    pub whole_joplin: bool,
 }
 
 impl Default for Config {
@@ -49,11 +53,17 @@ impl Default for Config {
             hotkey: default_hotkey(),
             sync_interval_secs: default_interval(),
             local_only: false,
+            whole_joplin: false,
         }
     }
 }
 
 impl Config {
+    /// Top of the tree Omanote shows: the working notebook, or "" (all of Joplin).
+    pub fn tree_root(&self) -> &str {
+        if self.whole_joplin { "" } else { &self.root_folder_id }
+    }
+
     /// Ready to use: connected to a server, or explicitly in local mode.
     pub fn is_configured(&self) -> bool {
         !self.server_url.is_empty() || self.local_only
