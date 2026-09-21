@@ -68,7 +68,8 @@ const summary = (n: (typeof notes)[number]): NoteSummary => ({
 const subtree = (root: string): string[] => [root, ...folders.filter((f) => f.parent_id === root).flatMap((f) => subtree(f.id))];
 
 const status: Status = {
-  configured: true,
+  // `?setup` in the URL starts from the first-run setup screen.
+  configured: !(typeof location !== "undefined" && new URLSearchParams(location.search).has("setup")),
   server_url: "http://localhost:22300",
   email: "demo@omanote",
   root_folder_id: "r".repeat(32),
@@ -103,6 +104,13 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
     case "set_notes_home":
       status.root_folder_id = a.folderId ?? status.root_folder_id;
       return null;
+    case "setup":
+      return null;
+    case "set_root_folder":
+      status.root_folder_id = a.folderId || status.root_folder_id;
+      status.whole_joplin = false;
+      status.configured = true;
+      return a.folderId ?? status.root_folder_id;
     case "set_whole_joplin":
       status.whole_joplin = Boolean((args as { enabled?: boolean }).enabled);
       return null;
