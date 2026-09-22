@@ -77,9 +77,12 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 - Items the sync cannot read are skipped; their errors now go to
   `<data dir>/sync-errors.log` (last ~500 lines). `fetch_resource` fetches an unknown
   resource item from the server on demand, and Settings → "Risincronizza tutto"
-  (`resync_all`) clears the delta cursor to re-examine every item. Open question
-  (2026-09-22): the owner's real account had note images whose resource items were never
-  stored locally — check `sync-errors.log` to find out why.
+  (`resync_all`) clears the delta cursor to re-examine every item. Solved (2026-09-22):
+  the owner's images and folders "missing" in Omanote were not on the server at all: the
+  server had been recreated, and Joplin desktop never re-uploads items its `sync_items`
+  table already marks as synced. Fix on the Joplin side: Sync → Advanced → "Re-upload local
+  data to sync target". `cargo run -p omanote-core --example diagnose` lists what the server
+  really holds (read-only GETs) to tell such cases from Omanote bugs.
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
 - Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (private for now, to be made
   public), branch `main`. Share code between machines with git, never through Syncthing:
