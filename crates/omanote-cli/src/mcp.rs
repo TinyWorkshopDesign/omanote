@@ -1,7 +1,8 @@
 //! Minimal MCP server (JSON-RPC 2.0, one message per line on stdio).
 //!
-//! Register it with an agent, e.g. Claude Code:
-//! `claude mcp add omanote -- omanote-cli mcp`
+//! Any MCP client can launch it, e.g. Claude Code:
+//! `claude mcp add omanote -- omanote-cli mcp` (or `omanote mcp` with the app binary).
+//! Settings → AI in the app lists the setup for other agents.
 
 use std::io::{BufRead, Write};
 

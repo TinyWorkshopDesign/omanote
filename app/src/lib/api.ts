@@ -122,6 +122,7 @@ export const api = {
   moveFolder: (id: string, parentId: string) => invoke<void>("move_folder", { id, parentId }),
   trashFolder: (id: string) => invoke<void>("trash_folder", { id }),
   trash: () => invoke<TrashItem[]>("list_trash"),
+  cliPath: () => invoke<string>("cli_path"),
   restore: (id: string) => invoke<void>("restore_item", { id }),
   purge: (id: string) => invoke<void>("purge_item", { id }),
   emptyTrash: () => invoke<number>("empty_trash"),

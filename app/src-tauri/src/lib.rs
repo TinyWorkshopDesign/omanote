@@ -529,6 +529,17 @@ fn trash_folder(state: State<'_, AppState>, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Path of this binary, which also runs the terminal and MCP commands
+/// (`<path> mcp`): what AI agents are told to launch.
+#[tauri::command]
+fn cli_path() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| std::fs::canonicalize(p).ok())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "omanote".into())
+}
+
 #[tauri::command]
 fn list_trash(state: State<'_, AppState>) -> Result<Vec<TrashItem>, String> {
     let cfg = state.config();
@@ -1132,6 +1143,7 @@ pub fn run() {
             move_folder,
             trash_folder,
             list_trash,
+            cli_path,
             restore_item,
             purge_item,
             empty_trash,

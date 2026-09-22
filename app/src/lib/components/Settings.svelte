@@ -54,7 +54,37 @@
 
   const notebooks = $derived(folders.filter((f) => f.parent_id === ""));
   const hyprBinding = "bindd = SUPER ALT, N, Omanote, exec, omanote --toggle";
-  const mcpCommand = "claude mcp add omanote -- omanote-cli mcp";
+
+  // AI agents: the app binary itself runs the MCP server (`<path> mcp`) and the
+  // terminal commands, so nothing else has to be installed.
+  let cli = $state("omanote");
+  $effect(() => {
+    if (!status.mobile) api.cliPath().then((p) => (cli = p)).catch(() => {});
+  });
+  const sh = (p: string) => (/^[\w@%+=:,./-]+$/.test(p) ? p : `'${p.replace(/'/g, `'\\''`)}'`);
+  interface Agent {
+    name: string;
+    /** "run": a terminal command; otherwise the file to paste the snippet into. */
+    where: "run" | string;
+    text: string;
+  }
+  const agents = $derived.by((): Agent[] => {
+    const c = sh(cli);
+    const json = JSON.stringify({ mcpServers: { omanote: { command: cli, args: ["mcp"] } } }, null, 2);
+    return [
+      { name: "Claude Code", where: "run", text: `claude mcp add omanote -- ${c} mcp` },
+      { name: "Codex", where: "run", text: `codex mcp add omanote -- ${c} mcp` },
+      { name: "Gemini CLI", where: "run", text: `gemini mcp add -s user omanote ${c} mcp` },
+      { name: "VS Code", where: "run", text: `code --add-mcp '${JSON.stringify({ name: "omanote", command: cli, args: ["mcp"] })}'` },
+      { name: "Cursor", where: "~/.cursor/mcp.json", text: json },
+      { name: "Claude Desktop", where: "claude_desktop_config.json", text: json },
+      { name: "Hermes", where: "~/.hermes/config.yaml", text: `mcp_servers:\n  omanote:\n    command: ${JSON.stringify(cli)}\n    args: ["mcp"]` },
+      { name: "Zed", where: "~/.config/zed/settings.json", text: JSON.stringify({ context_servers: { omanote: { command: cli, args: ["mcp"] } } }, null, 2) },
+      { name: t("set.agentOther"), where: "mcp.json", text: json },
+    ];
+  });
+  let agentIndex = $state(0);
+  const agent = $derived(agents[agentIndex]);
 
   // Shortcuts (Ctrl instead of ⌘ outside Apple platforms). None of
   // them collide with Omarchy, whose own bindings all use the Super key.
@@ -226,11 +256,22 @@
     <section>
       <h3>{t("set.ai")}</h3>
       <p class="hint">{t("set.aiHint")}</p>
-      <div class="code">
-        <code>{mcpCommand}</code>
-        <button onclick={() => copy(mcpCommand)}>{copied === mcpCommand ? t("set.copied") : t("set.copy")}</button>
+      <div class="agents" role="tablist">
+        {#each agents as a, i (a.name)}
+          <button role="tab" aria-selected={i === agentIndex} class:on={i === agentIndex} onclick={() => (agentIndex = i)}>{a.name}</button>
+        {/each}
       </div>
-      <p class="hint mono">omanote-cli list · show · search · new · append · edit · move · sync</p>
+      <p class="hint">{agent.where === "run" ? t("set.agentRun") : t("set.agentPaste", { file: agent.where })}</p>
+      <div class="code">
+        <code class:block={agent.text.includes("\n")}>{agent.text}</code>
+        <button onclick={() => copy(agent.text)}>{copied === agent.text ? t("set.copied") : t("set.copy")}</button>
+      </div>
+      <p class="hint">{t("set.agentCli")}</p>
+      <div class="code">
+        <code>{sh(cli)} search budget --json</code>
+        <button onclick={() => copy(`${sh(cli)} --help`)}>{copied === `${sh(cli)} --help` ? t("set.copied") : t("set.copy")}</button>
+      </div>
+      <p class="hint mono">list · show · search · new · append · edit · move · trash · sync · mcp</p>
     </section>
   {/if}
 
@@ -245,11 +286,11 @@
       <div class="field">
         <span>{t("set.e2ee")}</span><span class="muted">{status.e2ee ? t("set.on") : t("set.off")}</span>
       </div>
-      <div class="field">
+      <div class="field stack">
         <span class="hint">{t("set.resyncHint")}</span>
         <button class="outline" disabled={resyncing} onclick={resync}>{resyncing ? t("setup.wait") : t("set.resync")}</button>
       </div>
-      <div class="field">
+      <div class="field stack">
         <span class="hint">{t("set.reuploadHint")}</span>
         <button class="outline" disabled={reuploading} onclick={reupload}>{reuploading ? t("setup.wait") : t("set.reupload")}</button>
       </div>
@@ -460,6 +501,30 @@
     display: flex;
     gap: 6px;
     align-items: stretch;
+  }
+  .field.stack {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .code code.block {
+    white-space: pre;
+  }
+  .agents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 4px 0;
+  }
+  .agents button {
+    padding: 3px 8px;
+    font-size: 0.75rem;
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .agents button.on {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .code code {
     flex: 1;
