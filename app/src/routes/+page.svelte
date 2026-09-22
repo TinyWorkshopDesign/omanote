@@ -807,9 +807,8 @@
   .dot.syncing {
     color: var(--accent);
   }
-  /* Quarter turns only: the pixel arrows stay sharp. */
-  .dot.syncing :global(svg) {
-    animation: spin 1s steps(4) infinite;
+  .dot.syncing :global(.ico) {
+    animation: spin 1.2s linear infinite;
   }
   @keyframes spin {
     to {
