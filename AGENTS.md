@@ -4,7 +4,7 @@ Omanote is a quick-notes scratchpad for Linux, macOS, iOS and Android that syncs
 with an unmodified **Joplin Server** and looks like **Omarchy**. Read this before
 changing code.
 
-## Project status (2026-09-21)
+## Project status (2026-09-22)
 
 Owner: Michele Belleri (writes in Italian; UI text and commits are in Italian, code
 and comments in English). Working and verified on macOS with a real Joplin Server.
