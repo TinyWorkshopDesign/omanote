@@ -124,6 +124,17 @@ impl<'a> Synchronizer<'a> {
     }
 
     pub async fn sync(&mut self) -> Result<SyncReport> {
+        self.sync_with(false).await
+    }
+
+    /// Joplin's "Re-upload local data to sync target": after fetching remote changes,
+    /// every local item is sent again, attachment files included. Repairs a server that
+    /// lost data; items the server already has in the same version are skipped.
+    pub async fn reupload_all(&mut self) -> Result<SyncReport> {
+        self.sync_with(true).await
+    }
+
+    async fn sync_with(&mut self, reupload: bool) -> Result<SyncReport> {
         let info = self.fetch_info().await?;
         let mut report = SyncReport::default();
 
@@ -136,7 +147,7 @@ impl<'a> Synchronizer<'a> {
         }
 
         self.api.acquire_lock(self.client_type, &self.client_id).await?;
-        let result = self.run(&info, &mut report).await;
+        let result = self.run(&info, &mut report, reupload).await;
         let _ = self.api.release_lock(self.client_type, &self.client_id).await;
         result?;
 
@@ -144,7 +155,15 @@ impl<'a> Synchronizer<'a> {
         Ok(report)
     }
 
-    async fn run(&mut self, info: &SyncInfo, report: &mut SyncReport) -> Result<()> {
+    async fn run(&mut self, info: &SyncInfo, report: &mut SyncReport, reupload: bool) -> Result<()> {
+        if reupload {
+            if report.needs_password {
+                return Err(Error::MasterKeyNotLoaded(info.active_key_id().unwrap_or_default().to_string()));
+            }
+            self.download(report).await?;
+            self.db().mark_all_for_reupload()?;
+            return self.upload(info, report).await;
+        }
         // Uploading needs the key when E2EE is on; downloading still works.
         if !report.needs_password {
             self.upload(info, report).await?;
@@ -203,6 +222,14 @@ impl<'a> Synchronizer<'a> {
                 None => None,
             };
 
+            if let Some((r, _)) = &remote {
+                if r.time("updated_time") == d.raw.time("updated_time") && d.sync_time > 0 {
+                    // The server already has this version (e.g. during a re-upload).
+                    self.db().mark_synced(&id, d.raw.time("updated_time"))?;
+                    continue;
+                }
+            }
+
             let conflict = match &remote {
                 // Missing remotely: new item, or deleted elsewhere while edited here → recreate it.
                 None => false,
@@ -220,8 +247,12 @@ impl<'a> Synchronizer<'a> {
                 continue;
             }
 
-            if d.raw.item_type() == TYPE_RESOURCE && d.sync_time == 0 {
-                // New attachment: the file goes up first, like Joplin does.
+            if d.raw.item_type() == TYPE_RESOURCE && (d.sync_time == 0 || remote.is_none()) {
+                // New (or lost on the server) attachment: the file goes up first, like Joplin does.
+                if self.db().resource_file(&id)?.is_none() {
+                    report.errors.push(format!("{name}: attachment file not available locally"));
+                    continue;
+                }
                 let mut it = d.raw.clone();
                 self.upload_blob(info, &mut it).await?;
                 self.upload_one(info, &it, report).await?;

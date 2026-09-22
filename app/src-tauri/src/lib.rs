@@ -10,7 +10,7 @@ use omanote_core::api::JoplinServer;
 use omanote_core::config::Config;
 use omanote_core::e2ee::KeyRing;
 use omanote_core::secrets;
-use omanote_core::store::{Folder, Note, NoteSummary, Store};
+use omanote_core::store::{Folder, Note, NoteSummary, Store, TrashItem};
 use omanote_core::sync::{unlock_keys, SyncInfo, SyncReport, Synchronizer};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -145,9 +145,19 @@ struct SyncEvent {
 // ---------------------------------------------------------------------------
 
 async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
+    run_sync(app, false).await
+}
+
+/// `reupload`: Joplin's "re-upload local data" (waits for a running sync to finish).
+async fn run_sync(app: &AppHandle, reupload: bool) -> Result<Option<SyncReport>, String> {
     let state = app.state::<AppState>();
-    let Ok(mut ctx) = state.sync.try_lock() else {
-        return Ok(None); // already syncing
+    let mut ctx = if reupload {
+        state.sync.lock().await
+    } else {
+        let Ok(ctx) = state.sync.try_lock() else {
+            return Ok(None); // already syncing
+        };
+        ctx
     };
     let cfg = state.config();
     if cfg.server_url.is_empty() {
@@ -177,7 +187,11 @@ async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
             }
         }
         *info = Some(fetched);
-        sync.sync().await
+        if reupload {
+            sync.reupload_all().await
+        } else {
+            sync.sync().await
+        }
     }
     .await;
     *state.e2ee_state.lock().unwrap() = e2ee_flags(&ctx);
@@ -377,6 +391,13 @@ async fn resync_all(app: AppHandle, state: State<'_, AppState>) -> Result<Option
     do_sync(&app).await
 }
 
+/// Repair for a server that lost data: sends every local item again, like Joplin
+/// desktop's "Re-upload local data to sync target".
+#[tauri::command]
+async fn reupload_local(app: AppHandle) -> Result<Option<SyncReport>, String> {
+    run_sync(&app, true).await
+}
+
 /// Chooses (or creates) the Joplin notebook Omanote works in. It can be
 /// changed at any time: notes stay where they are in Joplin.
 #[tauri::command]
@@ -506,6 +527,33 @@ fn trash_folder(state: State<'_, AppState>, id: String) -> Result<(), String> {
         db.trash(f).map_err(err)?;
     }
     Ok(())
+}
+
+#[tauri::command]
+fn list_trash(state: State<'_, AppState>) -> Result<Vec<TrashItem>, String> {
+    let cfg = state.config();
+    if cfg.root_folder_id.is_empty() {
+        return Ok(vec![]);
+    }
+    state.db().trashed(cfg.tree_root()).map_err(err)
+}
+
+#[tauri::command]
+fn restore_item(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let home = state.config().root_folder_id;
+    state.db().restore(&id, &home).map_err(err)
+}
+
+/// Deletes a trashed note or folder for good (also on the server at the next sync).
+#[tauri::command]
+fn purge_item(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.db().purge(&id).map_err(err)
+}
+
+#[tauri::command]
+fn empty_trash(state: State<'_, AppState>) -> Result<usize, String> {
+    let root = state.config().tree_root().to_string();
+    state.db().empty_trash(&root).map_err(err)
 }
 
 // ---------------------------------------------------------------------------
@@ -1083,6 +1131,11 @@ pub fn run() {
             rename_folder,
             move_folder,
             trash_folder,
+            list_trash,
+            restore_item,
+            purge_item,
+            empty_trash,
+            reupload_local,
             timer_command,
             timer_toggle,
             timer_stop,

@@ -3,7 +3,8 @@
   // notes). Notes and folders can be dragged onto folders, cut / copied /
   // pasted (⌘X ⌘C ⌘V or right-click), renamed and trashed; arrows move the
   // selection. Rows are divs, not buttons: WebKit does not drag buttons.
-  import { api, type Folder, type NoteSummary, when } from "../api";
+  // Joplin's trash sits below the tree: restore, delete for good, empty.
+  import { api, type Folder, type NoteSummary, type TrashItem, when } from "../api";
   import { i18n, t, MOD } from "../i18n.svelte";
   import { icons } from "../icons";
   import { treeClipboard, type TreeKind } from "../treeClipboard.svelte";
@@ -48,7 +49,7 @@
     onSettings: () => void;
   } = $props();
 
-  type RowKind = TreeKind | "root";
+  type RowKind = TreeKind | "root" | "trash" | "titem";
   interface Row {
     kind: RowKind;
     id: string;
@@ -60,9 +61,11 @@
   }
 
   const EXPANDED_KEY = "omanote.expanded";
+  const TRASH_KEY = "__trash";
   const DRAG_TYPE = "text/omanote-item";
 
   let notes = $state<NoteSummary[]>([]);
+  let trash = $state<TrashItem[]>([]);
   let expanded = $state<Set<string>>(loadExpanded());
   let selected = $state<Sel | null>(null);
   let adding = $state<string | null>(null); // parent id of the folder being created
@@ -99,6 +102,24 @@
   $effect(() => {
     void version;
     api.notes().then((n) => (notes = n));
+    api.trash().then((t) => (trash = t));
+  });
+
+  const trashOf = (id: string) => trash.find((x) => x.id === id);
+
+  /** Trash rows: what was trashed on its own at the top, the content of trashed folders inside them. */
+  const trashRows = $derived.by(() => {
+    const out: Row[] = [];
+    if (!expanded.has(TRASH_KEY)) return out;
+    const ids = new Set(trash.map((x) => x.id));
+    const walk = (items: TrashItem[], depth: number) => {
+      for (const it of [...items].sort((a, b) => Number(b.is_folder) - Number(a.is_folder))) {
+        out.push({ kind: "titem", id: it.id, depth });
+        if (it.is_folder && expanded.has(it.id)) walk(trash.filter((x) => x.parent_id === it.id), depth + 1);
+      }
+    };
+    walk(trash.filter((x) => !ids.has(x.parent_id)), 1);
+    return out;
   });
 
   // Reveal the open note: expand every folder above it, select it.
@@ -175,6 +196,7 @@
   }
 
   function title(sel: Sel): string {
+    if (sel.kind === "titem") return trashOf(sel.id)?.title || t("note.untitled");
     if (sel.kind === "note") return noteOf(sel.id)?.title || t("note.untitled");
     return (sel.kind === "root" ? root : folderOf(sel.id))?.title ?? "";
   }
@@ -232,7 +254,28 @@
     onChanged();
   }
 
+  async function restore(sel: Sel) {
+    await api.restore(sel.id);
+    selected = null;
+    onChanged();
+  }
+
+  async function purge(sel: Sel) {
+    if (!confirm(t("trash.purgeConfirm", { name: title(sel) }))) return;
+    await api.purge(sel.id);
+    selected = null;
+    onChanged();
+  }
+
+  async function emptyTrash() {
+    if (!trash.length || !confirm(t("trash.emptyConfirm"))) return;
+    await api.emptyTrash();
+    selected = null;
+    onChanged();
+  }
+
   async function remove(sel: Sel) {
+    if (sel.kind === "titem") return purge(sel);
     if (sel.kind === "note") {
       if (!confirm(t("ctx.deleteNoteConfirm", { name: title(sel) }))) return;
       onDeleteNote(sel.id);
@@ -276,7 +319,10 @@
 
   function activate(r: Row) {
     selected = { kind: r.kind, id: r.id };
-    if (r.kind === "note") onOpenNote(r.id);
+    if (r.kind === "trash") toggle(TRASH_KEY);
+    else if (r.kind === "titem") {
+      if (trashOf(r.id)?.is_folder) toggle(r.id);
+    } else if (r.kind === "note") onOpenNote(r.id);
     else if (r.kind === "root") onSelectFolder("");
     else {
       toggle(r.id, true);
@@ -287,7 +333,7 @@
   // ------------------------------------------------------------ drag & drop
 
   function dragStart(e: DragEvent, r: Row) {
-    if (r.kind === "root" || !e.dataTransfer) return;
+    if (r.kind === "root" || r.kind === "trash" || r.kind === "titem" || !e.dataTransfer) return;
     e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ kind: r.kind, id: r.id }));
     e.dataTransfer.effectAllowed = "move";
     selected = { kind: r.kind, id: r.id };
@@ -314,6 +360,30 @@
     await move(item.kind, item.id, dropFolderFor(r));
   }
 
+  function trashDragOver(e: DragEvent) {
+    if (!e.dataTransfer?.types.includes(DRAG_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    dropTarget = TRASH_KEY;
+  }
+
+  /** Dropping on the trash row trashes the item (it can be restored). */
+  async function trashDrop(e: DragEvent) {
+    const data = e.dataTransfer?.getData(DRAG_TYPE);
+    dropTarget = null;
+    if (!data) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const item = JSON.parse(data) as { kind: TreeKind; id: string };
+    if (item.kind === "note") onDeleteNote(item.id);
+    else {
+      if (item.id === noteHome) return;
+      await api.trashFolder(item.id);
+      if (scope === item.id) onSelectFolder("");
+      onChanged();
+    }
+  }
+
   // --------------------------------------------------------------- keyboard
 
   function key(e: KeyboardEvent) {
@@ -322,8 +392,12 @@
     const sel = selected;
     const k = e.key.toLowerCase();
     let handled = true;
-    if (mod && k === "x" && sel && sel.kind !== "root") treeClipboard.clip = { mode: "cut", kind: sel.kind, id: sel.id };
-    else if (mod && k === "c" && sel && sel.kind !== "root") treeClipboard.clip = { mode: "copy", kind: sel.kind, id: sel.id };
+    if (sel && (sel.kind === "trash" || sel.kind === "titem")) {
+      if ((k === "delete" || k === "backspace") && sel.kind === "titem") void purge(sel);
+      else if (k === "enter" && sel.kind === "trash") toggle(TRASH_KEY);
+      else handled = false;
+    } else if (mod && k === "x" && sel && sel.kind !== "root") treeClipboard.clip = { mode: "cut", kind: sel.kind as TreeKind, id: sel.id };
+    else if (mod && k === "c" && sel && sel.kind !== "root") treeClipboard.clip = { mode: "copy", kind: sel.kind as TreeKind, id: sel.id };
     else if (mod && k === "v") void paste(sel);
     else if ((k === "delete" || k === "backspace") && sel) void remove(sel);
     else if (k === "enter" && sel) {
@@ -460,6 +534,69 @@
         </div>
       {/if}
     {/each}
+
+    <div
+      class="row trash"
+      class:sel={selected?.kind === "trash"}
+      class:drop={dropTarget === TRASH_KEY}
+      style="--depth: 0"
+      data-id={TRASH_KEY}
+      role="treeitem"
+      aria-selected={selected?.kind === "trash"}
+      aria-expanded={expanded.has(TRASH_KEY)}
+      tabindex="-1"
+      ondragover={trashDragOver}
+      ondragleave={() => (dropTarget = null)}
+      ondrop={trashDrop}
+      onclick={() => activate({ kind: "trash", id: TRASH_KEY, depth: 0 })}
+      oncontextmenu={(e) => openMenu(e, { kind: "trash", id: TRASH_KEY })}
+      onkeydown={() => {}}
+    >
+      <span class="glyph">{@html icons.trash}</span>
+      <span class="label">{t("trash.title")}</span>
+      <span class="meta">{trash.filter((x) => !x.is_folder).length}</span>
+      <span class="actions">
+        <button title="⋯" onclick={(e) => (e.stopPropagation(), openMenu(e, { kind: "trash", id: TRASH_KEY }))}>{@html icons.more}</button>
+      </span>
+    </div>
+    {#if expanded.has(TRASH_KEY) && !trash.length}
+      <div class="row empty" style="--depth: 1"><span class="label">{t("trash.none")}</span></div>
+    {/if}
+    {#each trashRows as r (r.id)}
+      {@const it = trashOf(r.id)}
+      {@const isSel = selected?.id === r.id}
+      <div
+        class="row titem"
+        class:folder={it?.is_folder}
+        class:sel={isSel}
+        style="--depth: {r.depth}"
+        data-id={r.id}
+        role="treeitem"
+        aria-selected={isSel}
+        tabindex="-1"
+        onclick={() => activate(r)}
+        oncontextmenu={(e) => openMenu(e, { kind: "titem", id: r.id })}
+        onkeydown={() => {}}
+      >
+        {#if it?.is_folder}
+          <button class="twisty" aria-label={expanded.has(r.id) ? "−" : "+"} onclick={(e) => (e.stopPropagation(), toggle(r.id))}
+            >{@html expanded.has(r.id) ? icons.collapse : icons.expand}</button
+          >
+        {:else}
+          <span class="glyph">{@html icons.note}</span>
+        {/if}
+        <span class="label"
+          >{#if it?.encrypted}{@html icons.lock} {t("note.encrypted")}{:else}{it?.title || t("note.untitled")}{/if}</span
+        >
+        <span class="meta">{it ? when(it.deleted_time, i18n.lang) : ""}</span>
+        <span class="actions">
+          <button title={t("trash.restore")} onclick={(e) => (e.stopPropagation(), void restore({ kind: "titem", id: r.id }))}
+            >{@html icons.restore}</button
+          >
+          <button title="⋯" onclick={(e) => (e.stopPropagation(), openMenu(e, { kind: "titem", id: r.id }))}>{@html icons.more}</button>
+        </span>
+      </div>
+    {/each}
   </div>
 
   <button class="settings" onclick={onSettings}>{@html icons.settings} {t("nav.settings")}</button>
@@ -469,6 +606,13 @@
   {@const m = menu}
   <div class="menu-scrim" onclick={() => (menu = null)} oncontextmenu={(e) => (e.preventDefault(), (menu = null))} role="presentation"></div>
   <div class="menu" style="left: {m.x}px; top: {m.y}px" role="menu">
+    {#if m.target.kind === "trash"}
+      <button role="menuitem" class="danger" disabled={!trash.length} onclick={() => menuAction(() => void emptyTrash())}>{t("trash.empty")}</button>
+    {:else if m.target.kind === "titem"}
+      <button role="menuitem" onclick={() => menuAction((x) => void restore(x))}>{t("trash.restore")}</button>
+      <hr />
+      <button role="menuitem" class="danger" onclick={() => menuAction((x) => void purge(x))}>{t("trash.purge")} <kbd>⌫</kbd></button>
+    {:else}
     {#if m.target.kind === "note"}
       <button role="menuitem" onclick={() => menuAction((x) => onOpenNote(x.id))}>{t("ctx.open")}</button>
     {:else}
@@ -494,6 +638,7 @@
         <button role="menuitem" onclick={() => menuAction((x) => ((renaming = x.id), (renameName = title(x))))}>{t("ctx.rename")}</button>
       {/if}
       <button role="menuitem" class="danger" onclick={() => menuAction((x) => void remove(x))}>{t("ctx.delete")} <kbd>⌫</kbd></button>
+    {/if}
     {/if}
   </div>
 {/if}
@@ -623,6 +768,21 @@
     color: var(--accent);
     border: 1px solid var(--accent);
     vertical-align: 1px;
+  }
+  .trash {
+    border-top: 1px solid var(--line);
+    margin-top: 8px;
+  }
+  .trash .label {
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .titem .label {
+    color: var(--muted);
+  }
+  .empty .label {
+    color: var(--muted);
+    font-style: italic;
   }
   .note.current .label,
   .note.current .glyph {

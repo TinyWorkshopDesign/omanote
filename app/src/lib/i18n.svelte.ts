@@ -162,6 +162,17 @@ const en = {
   "ctx.useForNewNotes": "Use for new notes",
   "set.resync": "Resync everything",
   "set.resyncHint": "Re-examines every item on the server and downloads what is missing.",
+  "set.reupload": "Re-upload local data",
+  "set.reuploadHint": "Sends every note, folder and attachment on this device to the server again, like Joplin desktop. Use it when the server lost data.",
+  "set.reuploadConfirm": "Send all local data to the server again? Items the server already has are left as they are.",
+  "set.reuploadDone": "Uploaded {n} items.",
+  "trash.title": "Trash",
+  "trash.empty": "Empty trash",
+  "trash.emptyConfirm": "Permanently delete everything in the trash? This cannot be undone, in Omanote or in Joplin.",
+  "trash.restore": "Restore",
+  "trash.purge": "Delete permanently",
+  "trash.purgeConfirm": "Permanently delete \"{name}\"? This cannot be undone.",
+  "trash.none": "The trash is empty",
 };
 
 export type Key = keyof typeof en;
@@ -302,6 +313,17 @@ const it: Dict = {
   "ctx.useForNewNotes": "Usa per le nuove note",
   "set.resync": "Risincronizza tutto",
   "set.resyncHint": "Riesamina tutti gli elementi del server e scarica quelli mancanti.",
+  "set.reupload": "Ricarica i dati locali sul server",
+  "set.reuploadHint": "Invia di nuovo al server tutte le note, cartelle e allegati di questo dispositivo, come Joplin desktop. Serve se il server ha perso dei dati.",
+  "set.reuploadConfirm": "Inviare di nuovo al server tutti i dati locali? Gli elementi che il server ha già restano come sono.",
+  "set.reuploadDone": "Caricati {n} elementi.",
+  "trash.title": "Cestino",
+  "trash.empty": "Svuota cestino",
+  "trash.emptyConfirm": "Eliminare definitivamente tutto il cestino? Non si può annullare, né in Omanote né in Joplin.",
+  "trash.restore": "Ripristina",
+  "trash.purge": "Elimina definitivamente",
+  "trash.purgeConfirm": "Eliminare definitivamente \"{name}\"? Non si può annullare.",
+  "trash.none": "Il cestino è vuoto",
 };
 
 const es: Dict = {
@@ -437,6 +459,17 @@ const es: Dict = {
   "ctx.useForNewNotes": "Usar para las notas nuevas",
   "set.resync": "Resincronizar todo",
   "set.resyncHint": "Vuelve a revisar todos los elementos del servidor y descarga los que faltan.",
+  "set.reupload": "Volver a subir los datos locales",
+  "set.reuploadHint": "Envía de nuevo al servidor todas las notas, carpetas y adjuntos de este dispositivo, como Joplin de escritorio. Úsalo si el servidor perdió datos.",
+  "set.reuploadConfirm": "¿Enviar de nuevo todos los datos locales al servidor? Los elementos que el servidor ya tiene no cambian.",
+  "set.reuploadDone": "{n} elementos subidos.",
+  "trash.title": "Papelera",
+  "trash.empty": "Vaciar papelera",
+  "trash.emptyConfirm": "¿Eliminar definitivamente todo lo que hay en la papelera? No se puede deshacer, ni en Omanote ni en Joplin.",
+  "trash.restore": "Restaurar",
+  "trash.purge": "Eliminar definitivamente",
+  "trash.purgeConfirm": "¿Eliminar definitivamente «{name}»? No se puede deshacer.",
+  "trash.none": "La papelera está vacía",
 };
 
 const fr: Dict = {
@@ -573,6 +606,17 @@ const fr: Dict = {
   "ctx.useForNewNotes": "Utiliser pour les nouvelles notes",
   "set.resync": "Tout resynchroniser",
   "set.resyncHint": "Réexamine tous les éléments du serveur et télécharge ceux qui manquent.",
+  "set.reupload": "Renvoyer les données locales",
+  "set.reuploadHint": "Renvoie au serveur toutes les notes, dossiers et pièces jointes de cet appareil, comme Joplin bureau. À utiliser si le serveur a perdu des données.",
+  "set.reuploadConfirm": "Renvoyer toutes les données locales au serveur ? Les éléments que le serveur possède déjà restent inchangés.",
+  "set.reuploadDone": "{n} éléments envoyés.",
+  "trash.title": "Corbeille",
+  "trash.empty": "Vider la corbeille",
+  "trash.emptyConfirm": "Supprimer définitivement tout le contenu de la corbeille ? C'est irréversible, dans Omanote comme dans Joplin.",
+  "trash.restore": "Restaurer",
+  "trash.purge": "Supprimer définitivement",
+  "trash.purgeConfirm": "Supprimer définitivement « {name} » ? C'est irréversible.",
+  "trash.none": "La corbeille est vide",
 };
 
 const de: Dict = {
@@ -709,6 +753,17 @@ const de: Dict = {
   "ctx.useForNewNotes": "Für neue Notizen verwenden",
   "set.resync": "Alles neu synchronisieren",
   "set.resyncHint": "Prüft alle Elemente auf dem Server und lädt fehlende herunter.",
+  "set.reupload": "Lokale Daten erneut hochladen",
+  "set.reuploadHint": "Sendet alle Notizen, Ordner und Anhänge dieses Geräts erneut an den Server, wie Joplin Desktop. Hilft, wenn der Server Daten verloren hat.",
+  "set.reuploadConfirm": "Alle lokalen Daten erneut an den Server senden? Elemente, die der Server schon hat, bleiben unverändert.",
+  "set.reuploadDone": "{n} Elemente hochgeladen.",
+  "trash.title": "Papierkorb",
+  "trash.empty": "Papierkorb leeren",
+  "trash.emptyConfirm": "Alles im Papierkorb endgültig löschen? Das lässt sich weder in Omanote noch in Joplin rückgängig machen.",
+  "trash.restore": "Wiederherstellen",
+  "trash.purge": "Endgültig löschen",
+  "trash.purgeConfirm": "„{name}“ endgültig löschen? Das lässt sich nicht rückgängig machen.",
+  "trash.none": "Der Papierkorb ist leer",
 };
 
 const pt: Dict = {
@@ -844,6 +899,17 @@ const pt: Dict = {
   "ctx.useForNewNotes": "Usar para notas novas",
   "set.resync": "Ressincronizar tudo",
   "set.resyncHint": "Revê todos os elementos do servidor e descarrega os que faltam.",
+  "set.reupload": "Reenviar os dados locais",
+  "set.reuploadHint": "Envia de novo para o servidor todas as notas, pastas e anexos deste dispositivo, como o Joplin desktop. Use se o servidor perdeu dados.",
+  "set.reuploadConfirm": "Enviar de novo todos os dados locais para o servidor? Os elementos que o servidor já tem ficam como estão.",
+  "set.reuploadDone": "{n} elementos enviados.",
+  "trash.title": "Lixo",
+  "trash.empty": "Esvaziar o lixo",
+  "trash.emptyConfirm": "Eliminar definitivamente tudo o que está no lixo? Não é possível anular, nem no Omanote nem no Joplin.",
+  "trash.restore": "Restaurar",
+  "trash.purge": "Eliminar definitivamente",
+  "trash.purgeConfirm": "Eliminar definitivamente \"{name}\"? Não é possível anular.",
+  "trash.none": "O lixo está vazio",
 };
 
 const nl: Dict = {
@@ -980,6 +1046,17 @@ const nl: Dict = {
   "ctx.useForNewNotes": "Gebruiken voor nieuwe notities",
   "set.resync": "Alles opnieuw synchroniseren",
   "set.resyncHint": "Controleert alle items op de server en downloadt wat ontbreekt.",
+  "set.reupload": "Lokale gegevens opnieuw uploaden",
+  "set.reuploadHint": "Stuurt alle notities, mappen en bijlagen van dit apparaat opnieuw naar de server, zoals Joplin desktop. Gebruik dit als de server gegevens kwijt is.",
+  "set.reuploadConfirm": "Alle lokale gegevens opnieuw naar de server sturen? Items die de server al heeft, blijven zoals ze zijn.",
+  "set.reuploadDone": "{n} items geüpload.",
+  "trash.title": "Prullenbak",
+  "trash.empty": "Prullenbak legen",
+  "trash.emptyConfirm": "Alles in de prullenbak definitief verwijderen? Dit kan niet ongedaan worden gemaakt, in Omanote noch in Joplin.",
+  "trash.restore": "Terugzetten",
+  "trash.purge": "Definitief verwijderen",
+  "trash.purgeConfirm": "\"{name}\" definitief verwijderen? Dit kan niet ongedaan worden gemaakt.",
+  "trash.none": "De prullenbak is leeg",
 };
 
 const pl: Dict = {
@@ -1116,6 +1193,17 @@ const pl: Dict = {
   "ctx.useForNewNotes": "Używaj dla nowych notatek",
   "set.resync": "Synchronizuj wszystko ponownie",
   "set.resyncHint": "Sprawdza wszystkie elementy na serwerze i pobiera brakujące.",
+  "set.reupload": "Wyślij ponownie dane lokalne",
+  "set.reuploadHint": "Wysyła ponownie na serwer wszystkie notatki, foldery i załączniki z tego urządzenia, jak Joplin desktop. Przydaje się, gdy serwer utracił dane.",
+  "set.reuploadConfirm": "Wysłać ponownie wszystkie dane lokalne na serwer? Elementy, które serwer już ma, pozostaną bez zmian.",
+  "set.reuploadDone": "Wysłano elementów: {n}.",
+  "trash.title": "Kosz",
+  "trash.empty": "Opróżnij kosz",
+  "trash.emptyConfirm": "Trwale usunąć całą zawartość kosza? Tego nie można cofnąć ani w Omanote, ani w Joplin.",
+  "trash.restore": "Przywróć",
+  "trash.purge": "Usuń trwale",
+  "trash.purgeConfirm": "Trwale usunąć „{name}”? Tego nie można cofnąć.",
+  "trash.none": "Kosz jest pusty",
 };
 
 const DICTS: Record<Lang, Dict> = { en, it, es, fr, de, pt, nl, pl };
