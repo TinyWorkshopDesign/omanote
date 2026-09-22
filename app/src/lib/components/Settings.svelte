@@ -37,6 +37,19 @@
       resyncing = false;
     }
   }
+  let reuploading = $state(false);
+
+  async function reupload() {
+    if (!confirm(t("set.reuploadConfirm"))) return;
+    reuploading = true;
+    try {
+      const r = await api.reuploadLocal();
+      if (r) alert(t("set.reuploadDone", { n: String(r.uploaded) }));
+      onRootChanged();
+    } finally {
+      reuploading = false;
+    }
+  }
   let copied = $state("");
 
   const notebooks = $derived(folders.filter((f) => f.parent_id === ""));
@@ -235,6 +248,10 @@
       <div class="field">
         <span class="hint">{t("set.resyncHint")}</span>
         <button class="outline" disabled={resyncing} onclick={resync}>{resyncing ? t("setup.wait") : t("set.resync")}</button>
+      </div>
+      <div class="field">
+        <span class="hint">{t("set.reuploadHint")}</span>
+        <button class="outline" disabled={reuploading} onclick={reupload}>{reuploading ? t("setup.wait") : t("set.reupload")}</button>
       </div>
       <button
         class="danger"

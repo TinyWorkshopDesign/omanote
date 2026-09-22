@@ -806,7 +806,15 @@
   }
   .dot.syncing {
     color: var(--accent);
-    animation: pulse 1s infinite;
+  }
+  /* Quarter turns only: the pixel arrows stay sharp. */
+  .dot.syncing :global(svg) {
+    animation: spin 1s steps(4) infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .dot.error {
     color: var(--danger);

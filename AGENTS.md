@@ -39,6 +39,17 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   ../design/icon.png` from `app/`; `design/tray.svg` → `app/src-tauri/icons/tray.png`
   (macOS template image). Render SVGs with `@resvg/resvg-js`.
 - `omanote-cli` + MCP server tested on real synced data.
+- Trash (Joplin ≥ 3 semantics, `store.trashed/restore/purge/empty_trash`): a "Cestino" row
+  at the bottom of the tree panel lists trashed notes and folders (content of a trashed
+  folder nested inside it); restore brings a folder back with its content, a note whose
+  folder is gone goes to `root_folder_id`, a folder whose parent is gone to the top level;
+  "delete permanently" / "empty trash" delete on the server at the next sync (verified with
+  the Joplin CLI). Dropping a tree item on the trash row trashes it.
+- Re-upload of local data (Settings, `reupload_local` → `Synchronizer::reupload_all`), like
+  Joplin desktop's: download first, then every readable item is marked dirty with
+  `sync_time = updated_time` and uploaded (attachment blobs too when the server lacks the
+  item); items the server has in the same version are skipped. Verified by wiping the
+  Docker server (`crates/omanote-core/examples/reupload_e2e.rs`).
 - Images as Joplin attachments: paste/drop asks "Image or Text (OCR)" (keys I / T / Esc).
   Drops are handled by the editor as DOM files (`dragDropEnabled: false` in tauri.conf.json:
   Tauri's native interception only yields file paths, which images dragged from browsers
@@ -71,7 +82,7 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   SDK is not installed on the dev Mac.
 
 **Known gaps / next steps**
-- Tags are synced but not shown; no in-app trash view.
+- Tags are synced but not shown.
 - Mobile: timer notifications are not scheduled, so they do not fire while the app is
   suspended; OCR on Android missing (ML Kit plugin planned).
 - Items the sync cannot read are skipped; their errors now go to

@@ -48,6 +48,15 @@ export interface Folder {
   note_count: number;
 }
 
+export interface TrashItem {
+  id: string;
+  parent_id: string;
+  title: string;
+  is_folder: boolean;
+  deleted_time: number;
+  encrypted: boolean;
+}
+
 export interface NoteSummary {
   id: string;
   parent_id: string;
@@ -93,6 +102,7 @@ export const api = {
   logout: () => invoke<void>("logout"),
   syncNow: () => invoke<SyncReport | null>("sync_now"),
   resyncAll: () => invoke<SyncReport | null>("resync_all"),
+  reuploadLocal: () => invoke<SyncReport | null>("reupload_local"),
   setRootFolder: (folderId?: string, newTitle?: string) =>
     invoke<string>("set_root_folder", { folderId: folderId ?? null, newTitle: newTitle ?? null }),
   setWholeJoplin: (enabled: boolean) => invoke<void>("set_whole_joplin", { enabled }),
@@ -111,6 +121,10 @@ export const api = {
   renameFolder: (id: string, title: string) => invoke<void>("rename_folder", { id, title }),
   moveFolder: (id: string, parentId: string) => invoke<void>("move_folder", { id, parentId }),
   trashFolder: (id: string) => invoke<void>("trash_folder", { id }),
+  trash: () => invoke<TrashItem[]>("list_trash"),
+  restore: (id: string) => invoke<void>("restore_item", { id }),
+  purge: (id: string) => invoke<void>("purge_item", { id }),
+  emptyTrash: () => invoke<number>("empty_trash"),
   promoteNote: (id: string) => invoke<void>("promote_note", { id }),
   setLanguage: (lang: string) => invoke<void>("set_language", { lang }),
   // timer

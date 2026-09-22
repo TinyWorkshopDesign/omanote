@@ -2,6 +2,7 @@
 //! serialisation (`raw`), so unknown fields round-trip untouched; a few
 //! columns are denormalised for fast listing.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
@@ -70,6 +71,17 @@ pub struct Folder {
     pub title: String,
     pub icon: String,
     pub note_count: i64,
+}
+
+/// A note or folder in Joplin's trash.
+#[derive(Debug, Clone, Serialize)]
+pub struct TrashItem {
+    pub id: String,
+    pub parent_id: String,
+    pub title: String,
+    pub is_folder: bool,
+    pub deleted_time: i64,
+    pub encrypted: bool,
 }
 
 pub struct Store {
@@ -276,6 +288,16 @@ impl Store {
             out.push(DirtyItem { raw: RawItem::parse(&raw)?, sync_time });
         }
         Ok(out)
+    }
+
+    /// Marks every readable item for upload, as if edited now but without changing it:
+    /// `sync_time = updated_time`, so only a server copy that is really newer counts
+    /// as a conflict. Used by the re-upload of local data.
+    pub fn mark_all_for_reupload(&self) -> Result<usize> {
+        Ok(self.conn.execute(
+            "UPDATE items SET dirty = 1, sync_time = updated_time WHERE encrypted = 0 AND type IN (1, 2, 4, 5, 6)",
+            [],
+        )?)
     }
 
     /// Marks an uploaded item as clean, unless it was edited again meanwhile.
@@ -530,6 +552,126 @@ impl Store {
         self.set_pending_deletions(&ids)?;
         self.remove(id)
     }
+
+    // -- trash -------------------------------------------------------------
+
+    /// `(id, parent_id, deleted)` of every folder, trashed ones included.
+    fn all_folders(&self) -> Result<Vec<(String, String, bool)>> {
+        let mut st = self.conn.prepare("SELECT id, parent_id, deleted_time > 0 FROM items WHERE type = 2")?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Items (notes and folders, trashed or not) below folder `id`, deepest last.
+    fn descendants(&self, id: &str) -> Result<Vec<String>> {
+        let mut st = self.conn.prepare(
+            "WITH RECURSIVE t(id, type) AS (SELECT id, type FROM items WHERE parent_id = ?1 AND type IN (1, 2)
+                 UNION ALL SELECT i.id, i.type FROM items i JOIN t ON i.parent_id = t.id WHERE t.type = 2 AND i.type IN (1, 2))
+             SELECT id FROM t",
+        )?;
+        let rows = st.query_map([id], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Trashed notes and folders whose parent chain reaches `root` ("" = all of Joplin),
+    /// most recently deleted first. `parent_id` of an item inside a trashed folder is
+    /// that folder, so the UI can nest them like Joplin's trash does.
+    pub fn trashed(&self, root: &str) -> Result<Vec<TrashItem>> {
+        let parents: HashMap<String, String> =
+            self.all_folders()?.into_iter().map(|(id, parent, _)| (id, parent)).collect();
+        let under_root = |start: &str| {
+            let mut id = start.to_string();
+            for _ in 0..64 {
+                if id == root {
+                    return true;
+                }
+                match parents.get(&id) {
+                    Some(p) => id = p.clone(),
+                    None => return root.is_empty(),
+                }
+            }
+            false
+        };
+        let mut st = self.conn.prepare(
+            "SELECT id, parent_id, type, title, deleted_time, encrypted FROM items
+             WHERE type IN (1, 2) AND deleted_time > 0 ORDER BY deleted_time DESC, title COLLATE NOCASE",
+        )?;
+        let rows = st.query_map([], |r| {
+            Ok(TrashItem {
+                id: r.get(0)?,
+                parent_id: r.get(1)?,
+                is_folder: r.get::<_, i64>(2)? == TYPE_FOLDER,
+                title: r.get(3)?,
+                deleted_time: r.get(4)?,
+                encrypted: r.get::<_, i64>(5)? != 0,
+            })
+        })?;
+        let mut out = Vec::new();
+        for it in rows {
+            let it = it?;
+            if under_root(&it.parent_id) {
+                out.push(it);
+            }
+        }
+        Ok(out)
+    }
+
+    fn set_deleted(&self, id: &str, deleted: i64, parent: Option<&str>) -> Result<()> {
+        let (mut it, enc, ..) = self.raw(id)?.ok_or_else(|| Error::Sync(format!("item {id} not found")))?;
+        if enc {
+            return Err(Error::Crypto("item is still encrypted".into()));
+        }
+        it.set("deleted_time", deleted.to_string());
+        if let Some(p) = parent {
+            it.set("parent_id", p);
+        }
+        touch_system(&mut it);
+        self.put_local(&it)
+    }
+
+    /// Takes an item out of the trash, like Joplin: a folder comes back with everything
+    /// trashed inside it. When the original parent is gone or still in the trash, a folder
+    /// goes to the top level and a note to `fallback_folder`.
+    pub fn restore(&self, id: &str, fallback_folder: &str) -> Result<()> {
+        let (it, ..) = self.raw(id)?.ok_or_else(|| Error::Sync(format!("item {id} not found")))?;
+        let folders = self.all_folders()?;
+        let parent = it.get("parent_id").to_string();
+        let parent_alive = folders.iter().any(|(f, _, deleted)| *f == parent && !deleted);
+        if it.item_type() == TYPE_FOLDER {
+            let top = parent.is_empty() || parent_alive;
+            self.set_deleted(id, 0, (!top).then_some(""))?;
+            for child in self.descendants(id)? {
+                if matches!(self.raw(&child)?, Some((c, false, ..)) if c.get("deleted_time").parse::<i64>().unwrap_or(0) > 0) {
+                    self.set_deleted(&child, 0, None)?;
+                }
+            }
+            Ok(())
+        } else {
+            self.set_deleted(id, 0, (!parent_alive).then_some(fallback_folder))
+        }
+    }
+
+    /// Deletes a trashed item for good (a folder with all it contains), locally now and
+    /// on the server at the next sync.
+    pub fn purge(&self, id: &str) -> Result<()> {
+        for child in self.descendants(id)?.iter().rev() {
+            self.delete_permanently(child)?;
+        }
+        self.delete_permanently(id)
+    }
+
+    /// Permanently deletes everything in the trash under `root` ("" = all of Joplin).
+    pub fn empty_trash(&self, root: &str) -> Result<usize> {
+        let items = self.trashed(root)?;
+        let mut n = 0;
+        for it in &items {
+            if self.raw(&it.id)?.is_some() {
+                self.purge(&it.id)?;
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
 }
 
 /// Joplin stores a folder icon as JSON: `{"emoji":"🏦","name":"bank","type":1}`
@@ -608,6 +750,45 @@ mod tests {
 
         s.trash(&n.id).unwrap();
         assert_eq!(s.notes_in(&tree).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn trash_restore_purge() {
+        let s = Store::open_in_memory().unwrap();
+        let home = s.create_folder("Omanote", "").unwrap();
+        let work = s.create_folder("Lavoro", "").unwrap();
+        let sub = s.create_folder("Progetti", &work.id).unwrap();
+        let a = s.create_note(&sub.id, "A").unwrap();
+        let b = s.create_note(&home.id, "B").unwrap();
+        for id in [&a.id, &sub.id, &work.id, &b.id] {
+            s.trash(id).unwrap();
+        }
+        assert_eq!(s.trashed("").unwrap().len(), 4);
+        assert_eq!(s.trashed(&home.id).unwrap().len(), 1);
+
+        // A folder comes back with what was trashed inside it.
+        s.restore(&work.id, &home.id).unwrap();
+        assert_eq!(s.notes_in(&s.folder_subtree(&work.id).unwrap()).unwrap().len(), 1);
+        assert_eq!(s.trashed("").unwrap().len(), 1);
+
+        // A note whose folder is still trashed goes to the fallback folder.
+        s.trash(&sub.id).unwrap();
+        s.trash(&a.id).unwrap();
+        s.purge(&sub.id).unwrap();
+        assert!(s.raw(&a.id).unwrap().is_none());
+        assert_eq!(s.pending_deletions().unwrap().len(), 2);
+        s.restore(&b.id, &home.id).unwrap();
+        assert!(s.trashed("").unwrap().is_empty());
+
+        let c = s.create_note(&work.id, "C").unwrap();
+        s.trash(&work.id).unwrap();
+        s.trash(&c.id).unwrap();
+        s.purge(&work.id).unwrap();
+        s.restore(&home.id, &home.id).unwrap();
+        let d = s.create_note(&home.id, "D").unwrap();
+        s.trash(&d.id).unwrap();
+        assert_eq!(s.empty_trash("").unwrap(), 1);
+        assert!(s.raw(&c.id).unwrap().is_none());
     }
 
     #[test]
