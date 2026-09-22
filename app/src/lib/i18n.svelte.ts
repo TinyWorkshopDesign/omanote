@@ -159,6 +159,8 @@ const en = {
   "set.wholeJoplinHint": "Every Joplin notebook, as folders. New notes go to “{name}”.",
   "set.newNotesHere": "new notes",
   "ctx.useForNewNotes": "Use for new notes",
+  "set.resync": "Resync everything",
+  "set.resyncHint": "Re-examines every item on the server and downloads what is missing.",
 };
 
 export type Key = keyof typeof en;
@@ -296,6 +298,8 @@ const it: Dict = {
   "set.wholeJoplinHint": "Tutti i notebook di Joplin, come cartelle. Le nuove note vanno in «{name}».",
   "set.newNotesHere": "nuove note",
   "ctx.useForNewNotes": "Usa per le nuove note",
+  "set.resync": "Risincronizza tutto",
+  "set.resyncHint": "Riesamina tutti gli elementi del server e scarica quelli mancanti.",
 };
 
 const es: Dict = {
@@ -428,6 +432,8 @@ const es: Dict = {
   "set.wholeJoplinHint": "Todas las libretas de Joplin, como carpetas. Las notas nuevas van a «{name}».",
   "set.newNotesHere": "notas nuevas",
   "ctx.useForNewNotes": "Usar para las notas nuevas",
+  "set.resync": "Resincronizar todo",
+  "set.resyncHint": "Vuelve a revisar todos los elementos del servidor y descarga los que faltan.",
 };
 
 const fr: Dict = {
@@ -561,6 +567,8 @@ const fr: Dict = {
   "set.wholeJoplinHint": "Tous les carnets Joplin, comme dossiers. Les nouvelles notes vont dans « {name} ».",
   "set.newNotesHere": "nouvelles notes",
   "ctx.useForNewNotes": "Utiliser pour les nouvelles notes",
+  "set.resync": "Tout resynchroniser",
+  "set.resyncHint": "Réexamine tous les éléments du serveur et télécharge ceux qui manquent.",
 };
 
 const de: Dict = {
@@ -694,6 +702,8 @@ const de: Dict = {
   "set.wholeJoplinHint": "Alle Joplin-Notizbücher als Ordner. Neue Notizen landen in „{name}“.",
   "set.newNotesHere": "neue Notizen",
   "ctx.useForNewNotes": "Für neue Notizen verwenden",
+  "set.resync": "Alles neu synchronisieren",
+  "set.resyncHint": "Prüft alle Elemente auf dem Server und lädt fehlende herunter.",
 };
 
 const pt: Dict = {
@@ -826,6 +836,8 @@ const pt: Dict = {
   "set.wholeJoplinHint": "Todos os cadernos do Joplin, como pastas. As notas novas vão para «{name}».",
   "set.newNotesHere": "notas novas",
   "ctx.useForNewNotes": "Usar para notas novas",
+  "set.resync": "Ressincronizar tudo",
+  "set.resyncHint": "Revê todos os elementos do servidor e descarrega os que faltam.",
 };
 
 const nl: Dict = {
@@ -959,6 +971,8 @@ const nl: Dict = {
   "set.wholeJoplinHint": "Alle Joplin-notitieboeken als mappen. Nieuwe notities gaan naar “{name}”.",
   "set.newNotesHere": "nieuwe notities",
   "ctx.useForNewNotes": "Gebruiken voor nieuwe notities",
+  "set.resync": "Alles opnieuw synchroniseren",
+  "set.resyncHint": "Controleert alle items op de server en downloadt wat ontbreekt.",
 };
 
 const pl: Dict = {
@@ -1092,6 +1106,8 @@ const pl: Dict = {
   "set.wholeJoplinHint": "Wszystkie notesy Joplin jako foldery. Nowe notatki trafiają do „{name}”.",
   "set.newNotesHere": "nowe notatki",
   "ctx.useForNewNotes": "Używaj dla nowych notatek",
+  "set.resync": "Synchronizuj wszystko ponownie",
+  "set.resyncHint": "Sprawdza wszystkie elementy na serwerze i pobiera brakujące.",
 };
 
 const DICTS: Record<Lang, Dict> = { en, it, es, fr, de, pt, nl, pl };

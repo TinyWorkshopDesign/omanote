@@ -92,6 +92,7 @@ export const api = {
   unlock: (master_password: string) => invoke<void>("unlock", { masterPassword: master_password }),
   logout: () => invoke<void>("logout"),
   syncNow: () => invoke<SyncReport | null>("sync_now"),
+  resyncAll: () => invoke<SyncReport | null>("resync_all"),
   setRootFolder: (folderId?: string, newTitle?: string) =>
     invoke<string>("set_root_folder", { folderId: folderId ?? null, newTitle: newTitle ?? null }),
   setWholeJoplin: (enabled: boolean) => invoke<void>("set_whole_joplin", { enabled }),

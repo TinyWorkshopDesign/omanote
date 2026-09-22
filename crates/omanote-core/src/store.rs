@@ -161,6 +161,12 @@ impl Store {
         Ok(id)
     }
 
+    /// Forgets the delta position: the next sync re-examines every item on the
+    /// server and downloads what is missing or outdated (a repair tool).
+    pub fn reset_delta(&self) -> Result<()> {
+        self.kv_delete("delta_cursor")
+    }
+
     /// Wipes all local data (used when switching server/account).
     pub fn reset(&self) -> Result<()> {
         self.conn.execute_batch("DELETE FROM items; DELETE FROM kv;")?;
