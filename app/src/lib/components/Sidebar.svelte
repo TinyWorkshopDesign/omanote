@@ -366,7 +366,7 @@
 <aside class:mac>
   <div class="head">
     <strong>{t("nav.folders")}</strong>
-    <button class="close" onclick={onClose} aria-label={t("act.close")}>✕</button>
+    <button class="close" onclick={onClose} aria-label={t("act.close")}>{@html icons.close}</button>
   </div>
 
   <div class="tree" role="tree" tabindex="0" bind:this={tree} onkeydown={key}>
@@ -399,10 +399,10 @@
           <button
             class="twisty"
             aria-label={expanded.has(r.id) ? "−" : "+"}
-            onclick={(e) => (e.stopPropagation(), toggle(r.id))}>{expanded.has(r.id) ? "▾" : "▸"}</button
+            onclick={(e) => (e.stopPropagation(), toggle(r.id))}>{@html expanded.has(r.id) ? icons.collapse : icons.expand}</button
           >
         {:else if r.kind === "note"}
-          <span class="glyph">·</span>
+          <span class="glyph">{@html icons.note}</span>
         {/if}
 
         {#if renaming === r.id}
@@ -421,7 +421,7 @@
         {:else if r.kind === "note"}
           {@const n = noteOf(r.id)}
           <span class="label">
-            {#if n?.encrypted}{@html icons.lock} {t("note.encrypted")}{:else}{n?.title || t("note.untitled")}{/if}{n?.is_conflict ? " ⚠︎" : ""}
+            {#if n?.encrypted}{@html icons.lock} {t("note.encrypted")}{:else}{n?.title || t("note.untitled")}{/if}{#if n?.is_conflict}{" "}{@html icons.warn}{/if}
           </span>
           <span class="meta">{n ? when(n.updated_time, i18n.lang) : ""}</span>
         {:else}
@@ -436,10 +436,10 @@
 
         <span class="actions" class:always={r.kind === "root"}>
           {#if r.kind !== "note"}
-            <button title={t("ctx.newNote")} onclick={(e) => (e.stopPropagation(), onNewNote(r.id))}>＋</button>
-            <button title={t("ctx.newFolder")} onclick={(e) => (e.stopPropagation(), startNewFolder(r.id))}>▣</button>
+            <button title={t("ctx.newNote")} onclick={(e) => (e.stopPropagation(), onNewNote(r.id))}>{@html icons.plus}</button>
+            <button title={t("ctx.newFolder")} onclick={(e) => (e.stopPropagation(), startNewFolder(r.id))}>{@html icons.folderAdd}</button>
           {/if}
-          <button title="⋯" onclick={(e) => (e.stopPropagation(), openMenu(e, { kind: r.kind, id: r.id }))}>⋯</button>
+          <button title="⋯" onclick={(e) => (e.stopPropagation(), openMenu(e, { kind: r.kind, id: r.id }))}>{@html icons.more}</button>
         </span>
       </div>
 
@@ -462,7 +462,7 @@
     {/each}
   </div>
 
-  <button class="settings" onclick={onSettings}>⚙ {t("nav.settings")}</button>
+  <button class="settings" onclick={onSettings}>{@html icons.settings} {t("nav.settings")}</button>
 </aside>
 
 {#if menu}
@@ -580,11 +580,13 @@
   .twisty {
     width: 22px;
     padding: 4px 0;
+    font-size: var(--ico-s, 16px);
     color: var(--muted);
     flex: none;
   }
   .glyph {
     width: 22px;
+    font-size: var(--ico-s, 16px);
     flex: none;
     text-align: center;
     color: var(--muted);
@@ -634,7 +636,7 @@
   .actions button {
     padding: 3px 5px;
     color: var(--muted);
-    font-size: 0.85rem;
+    font-size: var(--ico-s, 16px);
   }
   .actions button:hover {
     color: var(--accent);

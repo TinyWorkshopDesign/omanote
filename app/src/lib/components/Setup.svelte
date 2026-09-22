@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { icons } from "../icons";
   import { api, type Folder } from "../api";
   import { errText, t } from "../i18n.svelte";
 
@@ -26,6 +27,9 @@
   let folders = $state<Folder[]>([]);
   let chosen = $state("");
   let newTitle = $state("Omanote");
+  /** "All of Joplin": every notebook shows as a folder; `chosen` is where new notes go. */
+  let whole = $state(false);
+  const homeName = $derived(folders.find((f) => f.id === chosen)?.title ?? newTitle);
 
   async function login() {
     busy = true;
@@ -60,11 +64,18 @@
     }
   }
 
+  function toggleWhole() {
+    whole = !whole;
+    // New notes need a notebook: prefer an existing one to creating another.
+    if (whole && !chosen && folders.length) chosen = folders[0].id;
+  }
+
   async function pickFolder() {
     busy = true;
     error = "";
     try {
       await api.setRootFolder(chosen || undefined, chosen ? undefined : newTitle);
+      if (whole) await api.setWholeJoplin(true);
       onDone();
     } catch (e) {
       error = errText(e);
@@ -103,13 +114,22 @@
     {:else}
       <p class="sub">{t("setup.pickNotebook")}</p>
       <div class="list">
+        <button class="row whole" class:sel={whole} onclick={toggleWhole}>
+          <span>{t("set.wholeJoplin")}</span><span class="count">{folders.length}</span>
+        </button>
+      </div>
+      {#if whole}
+        <p class="hint">{t("set.wholeJoplinHint", { name: homeName })}</p>
+        <p class="sub">{t("setup.newNotesIn")}</p>
+      {/if}
+      <div class="list">
         {#each folders as f (f.id)}
           <button class="row" class:sel={chosen === f.id} onclick={() => (chosen = f.id)}>
             <span>{f.icon ? `${f.icon} ` : ""}{f.title}{f.id === localRoot ? ` · ${t("setup.keepLocal")}` : ""}</span><span class="count">{f.note_count}</span>
           </button>
         {/each}
         <button class="row" class:sel={chosen === ""} onclick={() => (chosen = "")}>
-          <span>＋ {t("setup.createNotebook")}</span>
+          <span>{@html icons.plus} {t("setup.createNotebook")}</span>
         </button>
       </div>
       {#if chosen === ""}
@@ -200,6 +220,9 @@
   }
   .row.sel {
     background: var(--accent-soft);
+  }
+  .row.whole {
+    font-weight: 700;
   }
   .count {
     color: var(--muted);

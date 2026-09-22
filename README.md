@@ -58,7 +58,7 @@ crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
 - Eliminare una nota la sposta nel cestino di Joplin.
 
 **Omarchy**
-- Segue il tema di sistema (`~/.config/omarchy/current/theme`) e cambia al volo con il menu
+- Segue il tema di sistema (`~/.local/state/omarchy/current/theme`) e cambia al volo con il menu
   temi; altrove include i 22 temi di Omarchy. Font JetBrains Mono.
 - Scorciatoie da tastiera con `Ctrl` al posto di `⌘`: nessun conflitto con Omarchy, che usa `Super`.
 - Scorciatoia globale su Hyprland, in `~/.config/hypr/bindings.conf`:
@@ -67,7 +67,11 @@ crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
   bindd = SUPER ALT, N, Omanote, exec, omanote --toggle
   ```
 
-  (`omanote --new` apre una nota nuova, `omanote --capture` avvia l'OCR dello schermo.)
+  (`omanote --new` apre una nota nuova, `omanote --capture` avvia l'OCR dello schermo,
+  `omanote --open <id>` apre una nota.)
+- **Plugin per la barra di Omarchy** (`omarchy-plugin/`): icona pixel nella barra; clic per
+  scrivere al volo una nota o cercare e aprire le recenti, clic destro per mostrare/nascondere
+  l'app, clic centrale per una nota nuova. Si installa con `omarchy-plugin/install.sh`.
   Su macOS la scorciatoia globale è `⌥A`.
 
 **AI friendly**
