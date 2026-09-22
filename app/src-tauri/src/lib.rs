@@ -85,6 +85,23 @@ async fn secret(dir: &std::path::Path, key: &'static str) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || secrets::get(&dir, key)).await.ok().flatten()
 }
 
+/// Appends problems (items skipped by a sync, failed downloads) to
+/// `<data dir>/sync-errors.log`, keeping the last ~500 lines, so they can be
+/// diagnosed instead of silently disappearing.
+fn log_errors(dir: &std::path::Path, context: &str, lines: &[String]) {
+    if lines.is_empty() {
+        return;
+    }
+    let path = dir.join("sync-errors.log");
+    let mut all: Vec<String> = std::fs::read_to_string(&path)
+        .map(|s| s.lines().map(String::from).collect())
+        .unwrap_or_default();
+    let stamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    all.extend(lines.iter().map(|l| format!("{stamp} [{context}] {l}")));
+    let start = all.len().saturating_sub(500);
+    let _ = std::fs::write(&path, all[start..].join("\n") + "\n");
+}
+
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
@@ -165,6 +182,7 @@ async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
 
     match result {
         Ok(report) => {
+            log_errors(&state.dir, "sync", &report.errors);
             let changed = report.downloaded + report.deleted_local + report.conflicts > 0;
             let _ = app.emit(
                 "sync-status",
@@ -176,6 +194,7 @@ async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
             Ok(Some(report))
         }
         Err(e) => {
+            log_errors(&state.dir, "sync", &[e.to_string()]);
             let _ = app.emit("sync-status", SyncEvent { state: "error", message: e.to_string(), report: None });
             Err(e.to_string())
         }
@@ -346,6 +365,13 @@ fn use_local(state: State<'_, AppState>, notebook: String) -> Result<String, Str
 
 #[tauri::command]
 async fn sync_now(app: AppHandle) -> Result<Option<SyncReport>, String> {
+    do_sync(&app).await
+}
+
+/// Repair: re-examine every item on the server and fetch what is missing.
+#[tauri::command]
+async fn resync_all(app: AppHandle, state: State<'_, AppState>) -> Result<Option<SyncReport>, String> {
+    state.db().reset_delta().map_err(err)?;
     do_sync(&app).await
 }
 
@@ -662,8 +688,13 @@ async fn resource_path(state: State<'_, AppState>, id: String) -> Result<Option<
         client_id: state.config().client_id,
         client_type: CLIENT_TYPE,
     };
-    let path = sync.fetch_resource(&id).await.map_err(err)?;
-    Ok(path.map(|p| p.display().to_string()))
+    match sync.fetch_resource(&id).await {
+        Ok(path) => Ok(path.map(|p| p.display().to_string())),
+        Err(e) => {
+            log_errors(&state.dir, "resource", &[format!("{id}: {e}")]);
+            Err(e.to_string())
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1003,6 +1034,7 @@ pub fn run() {
             unlock,
             logout,
             sync_now,
+            resync_all,
             set_root_folder,
             set_whole_joplin,
             set_notes_home,

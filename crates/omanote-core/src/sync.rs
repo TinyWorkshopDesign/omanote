@@ -264,6 +264,17 @@ impl<'a> Synchronizer<'a> {
         if let Some(p) = self.db().resource_file(id)? {
             return Ok(Some(p));
         }
+        // Not known locally (skipped or missed by the delta): ask the server for it.
+        if self.db().raw(id)?.is_none() {
+            let Some(content) = self.api.get(&format!("{id}.md")).await? else { return Ok(None) };
+            let (remote, encrypted) = self
+                .open_remote(&content)
+                .map_err(|e| Error::Sync(format!("{id}.md: {e}")))?;
+            if remote.item_type() != TYPE_RESOURCE {
+                return Ok(None);
+            }
+            self.db().put_remote(&remote, encrypted)?;
+        }
         let Some((it, encrypted, ..)) = self.db().raw(id)? else { return Ok(None) };
         if encrypted {
             return Err(Error::MasterKeyNotLoaded(id.to_string()));

@@ -25,6 +25,17 @@
   } = $props();
 
   let newNotebook = $state("");
+  let resyncing = $state(false);
+
+  async function resync() {
+    resyncing = true;
+    try {
+      await api.resyncAll();
+      onRootChanged();
+    } finally {
+      resyncing = false;
+    }
+  }
   let copied = $state("");
 
   const notebooks = $derived(folders.filter((f) => f.parent_id === ""));
@@ -219,6 +230,10 @@
       <div class="field"><span>{t("setup.email")}</span><span class="muted">{status.email}</span></div>
       <div class="field">
         <span>{t("set.e2ee")}</span><span class="muted">{status.e2ee ? t("set.on") : t("set.off")}</span>
+      </div>
+      <div class="field">
+        <span class="hint">{t("set.resyncHint")}</span>
+        <button class="outline" disabled={resyncing} onclick={resync}>{resyncing ? t("setup.wait") : t("set.resync")}</button>
       </div>
       <button
         class="danger"
@@ -440,6 +455,15 @@
   .wide {
     align-self: flex-start;
     padding: 7px 12px;
+  }
+  .outline {
+    flex: none;
+    border: 1px solid var(--line);
+    padding: 4px 10px;
+  }
+  .outline:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .danger {
     align-self: flex-start;

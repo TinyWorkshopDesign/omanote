@@ -67,6 +67,12 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 - Tags are synced but not shown; no in-app trash view.
 - Mobile: timer notifications are not scheduled, so they do not fire while the app is
   suspended; OCR on Android missing (ML Kit plugin planned).
+- Items the sync cannot read are skipped; their errors now go to
+  `<data dir>/sync-errors.log` (last ~500 lines). `fetch_resource` fetches an unknown
+  resource item from the server on demand, and Settings → "Risincronizza tutto"
+  (`resync_all`) clears the delta cursor to re-examine every item. Open question
+  (2026-09-22): the owner's real account had note images whose resource items were never
+  stored locally — check `sync-errors.log` to find out why.
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
 - Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (private for now, to be made
   public), branch `main`. Share code between machines with git, never through Syncthing:

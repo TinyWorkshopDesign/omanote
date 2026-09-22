@@ -4,7 +4,23 @@
     {
       "name": "omanote-ui",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "app"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "app"
+      ],
+      "port": 1420
+    },
+    {
+      "name": "omanote-ui-clone",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--prefix",
+        "../omanote/app"
+      ],
       "port": 1420
     }
   ]
