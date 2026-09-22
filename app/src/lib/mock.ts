@@ -155,6 +155,8 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       trashed.push({ item: { id: n.id, parent_id: n.parent_id, title, is_folder: false, deleted_time: Date.now(), encrypted: false }, note: n });
       return null;
     }
+    case "cli_path":
+      return "/Applications/Omanote.app/Contents/MacOS/omanote";
     case "list_trash":
       return trashed.map((x) => x.item);
     case "restore_item": {

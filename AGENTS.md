@@ -186,8 +186,18 @@ connected to the user's real Joplin account.
 
 ## Using Omanote from an agent
 
+The CLI lives in `crates/omanote-cli` as a library (`omanote_cli::main_with`) used by two
+binaries: `omanote-cli`, and the app binary itself, whose `main.rs` hands the commands in
+`omanote_cli::COMMANDS` over before starting Tauri. So `omanote mcp` works wherever the app is
+installed (on macOS `/Applications/Omanote.app/Contents/MacOS/omanote mcp`, nothing else to
+install). The MCP server is generic stdio JSON-RPC: Settings → AI shows ready-made setups
+for Claude Code, Codex, Gemini CLI, VS Code, Cursor, Claude Desktop, Hermes Agent, Zed and
+generic `mcpServers` JSON, built from the real binary path (`cli_path` command).
+
 ```bash
 claude mcp add omanote -- omanote-cli mcp     # MCP tools: list/search/read/create/update/append/move/trash/sync
+codex mcp add omanote -- omanote-cli mcp
+gemini mcp add -s user omanote omanote-cli mcp
 omanote-cli new --folder Lavoro "Riunione\n- [ ] slide"
 omanote-cli search budget --json
 ```

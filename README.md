@@ -75,9 +75,13 @@ crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
   Su macOS la scorciatoia globale è `⌥A`.
 
 **AI friendly**
-- `omanote-cli` lavora sulle stesse note dell'app: `list`, `show`, `search`, `new`, `append`,
-  `edit`, `move`, `trash`, `sync`, con `--json` per gli script.
-- `omanote-cli mcp` è un server MCP: `claude mcp add omanote -- omanote-cli mcp`.
+- La riga di comando lavora sulle stesse note dell'app: `list`, `show`, `search`, `new`,
+  `append`, `edit`, `move`, `trash`, `sync`, con `--json` per gli script. È sia `omanote-cli`
+  sia l'app stessa (`omanote <comando>`): su macOS basta Omanote.app,
+  `/Applications/Omanote.app/Contents/MacOS/omanote list`.
+- `mcp` avvia un server MCP (standard aperto, non legato a un solo agente). In Impostazioni →
+  AI c'è la configurazione pronta da copiare per Claude Code, Codex, Gemini CLI, VS Code,
+  Cursor, Claude Desktop, Hermes, Zed e gli altri client MCP, con il percorso giusto.
 - L'app si aggiorna da sola quando un agente modifica le note.
 - `AGENTS.md` descrive architettura e regole del progetto per chi sviluppa con l'AI.
 
