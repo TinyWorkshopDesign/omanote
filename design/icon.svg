@@ -1,51 +1,37 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Omanote app icon: cyber pencil in terminal green (Omarchy look). -->
+  <!-- Omanote app icon: a pixel pencil in 1-cell lines, drawn on the Omarchy
+       logo grid (square cells, stepped corners) in terminal green. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0f1512"/>
-      <stop offset="1" stop-color="#050807"/>
+      <stop offset="0" stop-color="#101814"/>
+      <stop offset="1" stop-color="#040706"/>
     </linearGradient>
-    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse">
-      <path d="M48 0H0V48" fill="none" stroke="#2bff88" stroke-opacity="0.07" stroke-width="2"/>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#2bff88" stroke-opacity="0.06" stroke-width="2"/>
     </pattern>
     <pattern id="scan" width="8" height="8" patternUnits="userSpaceOnUse">
-      <rect width="8" height="2" fill="#000" fill-opacity="0.35"/>
+      <rect width="8" height="3" fill="#000" fill-opacity="0.32"/>
     </pattern>
     <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feGaussianBlur stdDeviation="10" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <radialGradient id="haze">
-      <stop offset="0" stop-color="#2bff88" stop-opacity="0.10"/>
+      <stop offset="0" stop-color="#2bff88" stop-opacity="0.13"/>
       <stop offset="1" stop-color="#2bff88" stop-opacity="0"/>
     </radialGradient>
-    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="184"/></clipPath>
+    <clipPath id="tile"><path d="M160 96 L864 96 L864 128 L896 128 L896 160 L928 160 L928 864 L896 864 L896 896 L864 896 L864 928 L160 928 L160 896 L128 896 L128 864 L96 864 L96 160 L128 160 L128 128 L160 128Z"/></clipPath>
   </defs>
 
-  <rect x="100" y="100" width="824" height="824" rx="184" fill="url(#bg)"/>
+  <path d="M160 96 L864 96 L864 128 L896 128 L896 160 L928 160 L928 864 L896 864 L896 896 L864 896 L864 928 L160 928 L160 896 L128 896 L128 864 L96 864 L96 160 L128 160 L128 128 L160 128Z" fill="url(#bg)"/>
   <g clip-path="url(#tile)">
-    <rect x="100" y="100" width="824" height="824" fill="url(#grid)"/>
-    <!-- radial phosphor haze -->
-    <circle cx="512" cy="512" r="420" fill="url(#haze)"/>
-
-    <!-- pencil, drawn horizontally then tilted -->
-    <g transform="rotate(-45 512 512)" fill="none" stroke="#2bff88" stroke-width="20"
-       stroke-linejoin="miter" filter="url(#glow)">
-      <!-- tip + graphite -->
-      <path d="M232 512 L372 446 L372 578 Z"/>
-      <path d="M232 512 L284 487 L284 537 Z" fill="#2bff88"/>
-      <!-- body with facet line -->
-      <path d="M372 446 H672 V578 H372"/>
-      <path d="M392 512 H652" stroke-opacity="0.45" stroke-width="10"/>
-      <!-- ferrule -->
-      <path d="M672 446 H726 V578 H672"/>
-      <path d="M699 446 V578" stroke-width="10"/>
-      <!-- eraser -->
-      <path d="M726 446 H770 Q800 446 800 476 V548 Q800 578 770 578 H726" fill="#2bff88" fill-opacity="0.18"/>
+    <rect width="1024" height="1024" fill="url(#grid)"/>
+    <circle cx="512" cy="512" r="430" fill="url(#haze)"/>
+    <g filter="url(#glow)" shape-rendering="crispEdges">
+      <path d="M640 256h32v32h-32zM608 288h96v32h-96zM640 320h96v32h-96zM672 352h96v32h-96zM704 384h32v32h-32z" fill="#2bff88" fill-opacity="0.45"/>
+      <path d="M640 224h32v32h-32zM608 256h32v32h-32zM672 256h32v32h-32zM576 288h32v32h-32zM704 288h32v32h-32zM544 320h32v32h-32zM608 320h32v32h-32zM736 320h32v32h-32zM512 352h32v32h-32zM576 352h32v32h-32zM640 352h32v32h-32zM768 352h32v32h-32zM480 384h32v32h-32zM608 384h32v32h-32zM672 384h32v32h-32zM736 384h32v32h-32zM448 416h32v32h-32zM640 416h32v32h-32zM704 416h32v32h-32zM416 448h32v32h-32zM672 448h32v32h-32zM384 480h32v32h-32zM640 480h32v32h-32zM352 512h32v32h-32zM608 512h32v32h-32zM320 544h32v32h-32zM576 544h32v32h-32zM288 576h32v32h-32zM544 576h32v32h-32zM256 608h32v32h-32zM320 608h32v32h-32zM512 608h32v32h-32zM256 640h32v32h-32zM352 640h32v32h-32zM480 640h32v32h-32zM224 672h32v32h-32zM384 672h32v32h-32zM448 672h32v32h-32zM192 704h32v32h-32zM416 704h32v32h-32zM192 736h96v32h-96zM384 736h32v32h-32zM192 768h96v32h-96zM320 768h64v32h-64zM192 800h128v32h-128z" fill="#2bff88"/>
     </g>
-
-
-    <rect x="100" y="100" width="824" height="824" fill="url(#scan)"/>
+    <rect width="1024" height="1024" fill="url(#scan)"/>
   </g>
-  <rect x="102" y="102" width="820" height="820" rx="182" fill="none" stroke="#2bff88" stroke-opacity="0.35" stroke-width="4"/>
+  <path d="M160 96 L864 96 L864 128 L896 128 L896 160 L928 160 L928 864 L896 864 L896 896 L864 896 L864 928 L160 928 L160 896 L128 896 L128 864 L96 864 L96 160 L128 160 L128 128 L160 128Z" fill="none" stroke="#2bff88" stroke-opacity="0.4" stroke-width="6" shape-rendering="crispEdges"/>
 </svg>

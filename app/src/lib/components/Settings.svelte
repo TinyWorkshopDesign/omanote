@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { icons } from "../icons";
   import { api, type Folder, type Status } from "../api";
   import { LANGUAGES, MOD, i18n, setLang, t, type Key, type Lang } from "../i18n.svelte";
   import { bundledThemes, setBundledTheme, type ThemeState } from "../theme";
@@ -107,7 +108,7 @@
 <div class="panel" role="dialog" aria-label={t("set.title")}>
   <header>
     <h2>{t("set.title")}</h2>
-    <button onclick={onClose} aria-label={t("act.close")}>✕</button>
+    <button onclick={onClose} aria-label={t("act.close")}>{@html icons.close}</button>
   </header>
 
   <section>
@@ -137,7 +138,7 @@
     {/if}
     <div class="inline">
       <input placeholder={t("setup.notebookName")} bind:value={newNotebook} onkeydown={(e) => e.key === "Enter" && createRoot()} />
-      <button class="accent" onclick={createRoot} disabled={!newNotebook.trim()}>＋</button>
+      <button class="accent" onclick={createRoot} disabled={!newNotebook.trim()}>{@html icons.plus}</button>
     </div>
   </section>
 

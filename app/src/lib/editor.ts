@@ -498,7 +498,7 @@ class ImageWidget extends WidgetType {
     if (this.width) img.style.width = `min(${this.width}px, 100%)`;
     const remove = document.createElement("button");
     remove.className = "cm-image-remove";
-    remove.textContent = "✕";
+    remove.innerHTML = icons.close;
     remove.title = this.alt;
     remove.onmousedown = (e) => {
       // Removes the reference only; the attachment stays in Joplin.

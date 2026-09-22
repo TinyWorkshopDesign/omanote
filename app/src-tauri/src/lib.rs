@@ -46,6 +46,8 @@ struct AppState {
     timer: Mutex<Option<timer::Timer>>,
     /// UI language, for the few strings produced by Rust (notifications).
     lang: Mutex<String>,
+    /// Note requested with `omanote --open <id>` at launch, picked up by the UI once ready.
+    launch_note: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -813,10 +815,25 @@ fn toggle_window(app: &AppHandle) {
     }
 }
 
-/// `omanote --toggle` (Hyprland binding on Omarchy), `--new`, `--capture`.
+/// The id after `--open` (used by the Omarchy bar plugin to open a note).
+fn open_arg(args: &[String]) -> Option<String> {
+    let i = args.iter().position(|a| a == "--open")?;
+    args.get(i + 1).filter(|id| !id.starts_with("--")).cloned()
+}
+
+/// Hands the UI the note asked for with `omanote --open <id>` at launch.
+#[tauri::command]
+fn take_launch_note(state: State<'_, AppState>) -> Option<String> {
+    state.launch_note.lock().unwrap().take()
+}
+
+/// `omanote --toggle` (Hyprland binding on Omarchy), `--new`, `--capture`, `--open <id>`.
 #[cfg(desktop)]
 fn handle_args(app: &AppHandle, args: &[String]) {
-    if args.iter().any(|a| a == "--toggle") {
+    if let Some(id) = open_arg(args) {
+        show_window(app, false);
+        let _ = app.emit("open-note", id);
+    } else if args.iter().any(|a| a == "--toggle") {
         toggle_window(app);
     } else if args.iter().any(|a| a == "--new") {
         show_window(app, true);
@@ -826,6 +843,15 @@ fn handle_args(app: &AppHandle, args: &[String]) {
     } else {
         show_window(app, false);
     }
+}
+
+/// True when the Omanote widget for the Omarchy bar is installed.
+#[cfg(desktop)]
+fn omarchy_bar_plugin_installed() -> bool {
+    cfg!(target_os = "linux")
+        && std::env::var_os("HOME")
+            .map(|h| PathBuf::from(h).join(".config/omarchy/plugins/tinyworkshop.omanote/manifest.json").is_file())
+            .unwrap_or(false)
 }
 
 #[cfg(desktop)]
@@ -869,7 +895,11 @@ fn setup_desktop(app: &tauri::App) -> tauri::Result<()> {
     {
         tray = tray.icon_as_template(true);
     }
-    tray.build(app)?;
+    // On Omarchy the bar plugin (omarchy-plugin/) is the app's bar icon: a tray
+    // icon as well would show Omanote twice.
+    if !omarchy_bar_plugin_installed() {
+        tray.build(app)?;
+    }
 
     // Wayland (Omarchy) does not let apps grab global keys: there the hotkey
     // is a Hyprland binding running `omanote --toggle` (see Settings).
@@ -970,6 +1000,7 @@ pub fn run() {
                 e2ee_state: Mutex::new((false, false)),
                 timer: Mutex::new(None),
                 lang: Mutex::new("en".into()),
+                launch_note: Mutex::new(open_arg(&std::env::args().collect::<Vec<_>>())),
             });
 
             #[cfg(desktop)]
@@ -1028,6 +1059,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_status,
             get_system_theme,
+            take_launch_note,
             set_language,
             setup,
             use_local,
@@ -1074,4 +1106,18 @@ pub fn run() {
             show_window(_app, false);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::open_arg;
+
+    #[test]
+    fn reads_open_arg() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(open_arg(&a(&["omanote", "--open", "abc123"])).as_deref(), Some("abc123"));
+        assert_eq!(open_arg(&a(&["omanote", "--open"])), None);
+        assert_eq!(open_arg(&a(&["omanote", "--open", "--toggle"])), None);
+        assert_eq!(open_arg(&a(&["omanote", "--toggle"])), None);
+    }
 }

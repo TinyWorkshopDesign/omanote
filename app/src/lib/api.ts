@@ -135,6 +135,8 @@ export const api = {
   // window
   togglePin: () => invoke<boolean>("toggle_pin"),
   hideWindow: () => invoke<void>("hide_window"),
+  /** Note asked for with `omanote --open <id>` when the app was launched. */
+  takeLaunchNote: () => invoke<string | null>("take_launch_note"),
   setWindowControls: (visible: boolean) => invoke<void>("set_window_controls", { visible }),
 };
 
@@ -143,6 +145,8 @@ export const onSyncStatus = (cb: (e: SyncEvent) => void) =>
 export const onDataChanged = (cb: () => void) => listen("data-changed", () => cb());
 export const onQuickNote = (cb: () => void) => listen("quick-note", () => cb());
 export const onCaptureText = (cb: () => void) => listen("capture-text", () => cb());
+/** `omanote --open <id>` while the app runs (Omarchy bar plugin). */
+export const onOpenNote = (cb: (id: string) => void) => listen<string>("open-note", (e) => cb(e.payload));
 export const onTimer = (cb: (t: TimerTick | null) => void) => listen<TimerTick | null>("timer", (e) => cb(e.payload));
 export const onTimerFinished = (cb: (event: string) => void) => listen<string>("timer-finished", (e) => cb(e.payload));
 

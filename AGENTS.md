@@ -33,21 +33,25 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   clipboard lives in `treeClipboard.svelte.ts` and an auto-hiding bottom bar
   (‹ dots › + "+" slot, shown near the bottom edge or for 2 s after moving).
 - macOS window: no title bar, traffic lights shown only with the hover menu (58 px bar).
-- Icons: `design/icon.svg` (cyber pencil, terminal green `#2bff88`) → `npx tauri icon
+- Icons: `tools/gen-icons.py` draws `design/icon.svg` (pixel pencil in 1-cell lines on the
+  Omarchy logo grid, terminal green `#2bff88`; the same 16-cell pencil is the tray icon and the
+  bar plugin's `PencilIcon.qml`) → `npx tauri icon
   ../design/icon.png` from `app/`; `design/tray.svg` → `app/src-tauri/icons/tray.png`
   (macOS template image). Render SVGs with `@resvg/resvg-js`.
 - `omanote-cli` + MCP server tested on real synced data.
 - Images as Joplin attachments: paste/drop asks "Image or Text (OCR)" (keys I / T / Esc).
   Drops are handled by the editor as DOM files (`dragDropEnabled: false` in tauri.conf.json:
   Tauri's native interception only yields file paths, which images dragged from browsers
-  or Photos do not have). UI icons are monochrome SVGs in `app/src/lib/icons.ts`, no emoji;
+  or Photos do not have). UI icons are 1-pixel outline SVGs on a 16×16 grid (`currentColor`, sized per display scale
+  by `fitIconsToScreen`) in `app/src/lib/icons.ts`, no
+  emoji or Unicode glyphs;
   images become resources (`store.add_resource`, blob uploaded to `.resource/<id>` before
   the item, FileV1-encrypted under E2EE, `encryption_blob_encrypted` set) and render in the
   editor from `![name](:/id)` lines; remote blobs are fetched on demand
   (`Synchronizer::fetch_resource`, served via Tauri's asset protocol scoped to
   `$APPDATA/resources`). Verified both ways against Joplin CLI with identical SHA-256
   (`crates/omanote-core/examples/resources_e2e.rs`). Images never go on line 1 (title).
-- Whole-Joplin mode (`Config.whole_joplin`, Settings → "Tutto Joplin"): the tree root is
+- Whole-Joplin mode (`Config.whole_joplin`, Settings or first-run setup → "Tutto Joplin"): the tree root is
   Joplin's top level (`tree_root()` = "") so every notebook shows as a folder; new notes and
   notes dropped at the top level still go to `root_folder_id` (Joplin notes need a notebook).
   `create_folder` with parent "" makes a top-level notebook. The notebook for new notes is
@@ -56,10 +60,13 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   connecting a Joplin Server later uploads those notes instead of resetting the store
   (only switching from one server/account to another resets it). Verified with
   `crates/omanote-core/examples/local_then_sync.rs` + the official Joplin CLI.
+- Linux/Omarchy (Omarchy 4, real hardware, 2026-09-21): release build installed in `~/.local/bin`
+  with a desktop entry, theme from `colors.toml` incl. ANSI-only themes, `omanote --toggle` on a
+  Hyprland binding (Super+Alt+N), undecorated window, keyring via gnome-keyring, bar plugin.
+  Build it from a git clone outside Syncthing (`~/Projects/omanote` on the Omarchy box).
 
 **Not verified yet**
-- Linux/Omarchy build on real hardware (theme from `colors.toml`, tesseract, grim/slurp,
-  `omanote --toggle` Hyprland binding, undecorated window).
+- Linux: OCR with tesseract/grim/slurp, live theme switching (the watcher reads the new path).
 - iOS/Android: projects not initialised (`tauri ios init` / `android init`); the Android
   SDK is not installed on the dev Mac.
 
@@ -100,7 +107,9 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 | `crates/omanote-cli` | `omanote-cli`: terminal commands and the MCP server (`mcp.rs`) over the same database |
 | `app/src-tauri` | Tauri 2 shell: commands (`lib.rs`), timers (`timer.rs`), OCR (`ocr.rs`), Omarchy theme (`theme.rs`) |
 | `app/src` | Svelte 5 UI: editor (`lib/editor.ts`), inline math and note modes (`lib/calc.ts`), translations (`lib/i18n.svelte.ts`), themes (`lib/theme.ts`, generated `themes.css`) |
+| `omarchy-plugin` | Omarchy shell bar widget `tinyworkshop.omanote` (QML): quick capture and recent notes through `omanote-cli`, opens notes with `omanote --open <id>`; `install.sh` copies it into `~/.config/omarchy/plugins/`; when it is installed the app skips its Linux tray icon (`omarchy_bar_plugin_installed`) |
 | `tools/gen-themes.py` | Regenerates `app/src/themes.css` from the Omarchy repo |
+| `tools/gen-icons.py` | Draws the pixel app and tray icons in `design/` |
 
 ## Commands
 
@@ -108,7 +117,7 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 cargo test                          # all Rust tests (core, CLI/MCP, app: timer, theme, OCR)
 npm run --prefix app test           # calculator and note-mode tests
 npm run --prefix app check          # Svelte/TypeScript type check
-npm run --prefix app dev            # UI in a browser with mock data (src/lib/mock.ts)
+npm run --prefix app dev            # UI in a browser with mock data (src/lib/mock.ts; add ?setup for first run)
 npm run --prefix app tauri dev      # desktop app
 cargo run -p omanote-cli -- --help  # CLI
 ```
@@ -138,10 +147,12 @@ cargo run -p omanote-cli -- --help  # CLI
   languages fall back to English.
 - **Shortcuts** (`Mod` = ⌘ on Apple, Ctrl elsewhere). Omarchy binds
   almost everything to Super, so avoid Super and `Alt+Tab` inside the app. On Wayland the
-  global hotkey is a Hyprland binding calling `omanote --toggle`.
+  global hotkey is a Hyprland binding calling `omanote --toggle`. `omanote --open <id>` shows a
+  given note (used by the bar plugin), also when it starts the app.
 - **Omarchy theme**: on Omarchy the palette comes from
-  `~/.config/omarchy/current/theme/colors.toml` and follows theme changes live; the
-  bundled themes are only a fallback for other platforms.
+  `~/.local/state/omarchy/current/theme/colors.toml` (Omarchy 4; `~/.config/omarchy/current/theme`
+  before) and follows theme changes live; ANSI-only palettes (`color0`…`color15`) are completed
+  in `theme.rs`; the bundled themes are only a fallback for other platforms.
 
 ## Debugging the real webview
 
