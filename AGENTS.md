@@ -33,11 +33,18 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   clipboard lives in `treeClipboard.svelte.ts` and an auto-hiding bottom bar
   (‹ dots › + "+" slot, shown near the bottom edge or for 2 s after moving).
 - macOS window: no title bar, traffic lights shown only with the hover menu (58 px bar).
-- Icons: `tools/gen-icons.py` draws `design/icon.svg` (pixel pencil in 1-cell lines on the
-  Omarchy logo grid, terminal green `#2bff88`; the same 16-cell pencil is the tray icon and the
-  bar plugin's `PencilIcon.qml`) → `npx tauri icon
+- Icons: the interface draws Nerd Font glyphs, the way Omarchy draws its bar, menu and
+  panels (its `shell/Ui/OpticalGlyph.qml`; the menu names glyphs such as U+F035C for
+  "menu"). `tools/gen-symbol-font.py` cuts a subset of Nerd Fonts' Symbols Nerd Font
+  (MIT, release and SHA-256 pinned) into `app/static/fonts/omanote-symbols.woff2` and
+  writes `app/src/lib/symbols.generated.ts`; `icons.ts` renders those glyphs and
+  `app.css` sizes them (`--ico-fill`). Add an icon by naming its glyph in that script
+  and rerunning it; `--check` verifies the tree without writing. `tools/gen-icons.py`
+  composes the app icon and the tray from the same font's "pencil" glyph on the Omarchy
+  logo grid, terminal green `#2bff88` → `npx tauri icon
   ../design/icon.png` from `app/`; `design/tray.svg` → `app/src-tauri/icons/tray.png`
-  (macOS template image). Render SVGs with `@resvg/resvg-js`.
+  (macOS template image). Render SVGs with `rsvg-convert`. The bar plugin draws the same
+  glyph in QML (`omarchy-plugin/PencilIcon.qml`, through `OpticalGlyph`).
 - `omanote-cli` + MCP server tested on real synced data.
 - Trash (Joplin ≥ 3 semantics, `store.trashed/restore/purge/empty_trash`): a "Cestino" row
   at the bottom of the tree panel lists trashed notes and folders (content of a trashed
@@ -122,8 +129,9 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 | `app/src-tauri` | Tauri 2 shell: commands (`lib.rs`), timers (`timer.rs`), OCR (`ocr.rs`), Omarchy theme (`theme.rs`) |
 | `app/src` | Svelte 5 UI: editor (`lib/editor.ts`), inline math and note modes (`lib/calc.ts`), translations (`lib/i18n.svelte.ts`), themes (`lib/theme.ts`, generated `themes.css`) |
 | `omarchy-plugin` | Omarchy shell bar widget `tinyworkshop.omanote` (QML): quick capture and recent notes through `omanote-cli`, opens notes with `omanote --open <id>`; `install.sh` copies it into `~/.config/omarchy/plugins/`; when it is installed the app skips its Linux tray icon (`omarchy_bar_plugin_installed`) |
+| `tools/gen-symbol-font.py` | Cuts the icon font subset (`app/static/fonts/omanote-symbols.woff2`) and the glyph map from the pinned Nerd Fonts release (needs `fonttools` + `brotli`) |
 | `tools/gen-themes.py` | Regenerates `app/src/themes.css` from the Omarchy repo |
-| `tools/gen-icons.py` | Draws the pixel app and tray icons in `design/` |
+| `tools/gen-icons.py` | Composes the app and tray icons in `design/` from the icon font's pencil glyph |
 
 ## Commands
 

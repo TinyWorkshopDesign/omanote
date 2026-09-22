@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Omanote app icon: a pixel pencil in 1-cell lines, drawn on the Omarchy
-       logo grid (square cells, stepped corners) in terminal green. -->
+  <!-- Omanote app icon: the pencil glyph of the icon font (the mark the app's own
+       buttons use) on the Omarchy logo grid, in terminal green. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#101814"/>
@@ -13,7 +13,7 @@
       <rect width="8" height="3" fill="#000" fill-opacity="0.32"/>
     </pattern>
     <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feGaussianBlur stdDeviation="12" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <radialGradient id="haze">
@@ -27,11 +27,8 @@
   <g clip-path="url(#tile)">
     <rect width="1024" height="1024" fill="url(#grid)"/>
     <circle cx="512" cy="512" r="430" fill="url(#haze)"/>
-    <g filter="url(#glow)" shape-rendering="crispEdges">
-      <path d="M640 256h32v32h-32zM608 288h96v32h-96zM640 320h96v32h-96zM672 352h96v32h-96zM704 384h32v32h-32z" fill="#2bff88" fill-opacity="0.45"/>
-      <path d="M640 224h32v32h-32zM608 256h32v32h-32zM672 256h32v32h-32zM576 288h32v32h-32zM704 288h32v32h-32zM544 320h32v32h-32zM608 320h32v32h-32zM736 320h32v32h-32zM512 352h32v32h-32zM576 352h32v32h-32zM640 352h32v32h-32zM768 352h32v32h-32zM480 384h32v32h-32zM608 384h32v32h-32zM672 384h32v32h-32zM736 384h32v32h-32zM448 416h32v32h-32zM640 416h32v32h-32zM704 416h32v32h-32zM416 448h32v32h-32zM672 448h32v32h-32zM384 480h32v32h-32zM640 480h32v32h-32zM352 512h32v32h-32zM608 512h32v32h-32zM320 544h32v32h-32zM576 544h32v32h-32zM288 576h32v32h-32zM544 576h32v32h-32zM256 608h32v32h-32zM320 608h32v32h-32zM512 608h32v32h-32zM256 640h32v32h-32zM352 640h32v32h-32zM480 640h32v32h-32zM224 672h32v32h-32zM384 672h32v32h-32zM448 672h32v32h-32zM192 704h32v32h-32zM416 704h32v32h-32zM192 736h96v32h-96zM384 736h32v32h-32zM192 768h96v32h-96zM320 768h64v32h-64zM192 800h128v32h-128z" fill="#2bff88"/>
-    </g>
+    <g fill="#2bff88" filter="url(#glow)"><g transform="translate(512 512) scale(0.364583 -0.364583) translate(-768.0 -614.0)"><path d="M1512 1038Q1536 1062 1536.0 1098.0Q1536 1134 1512 1158L1312 1358Q1288 1382 1252.0 1382.0Q1216 1382 1192 1358L1036 1202L1356 882ZM0 166V-154H320L1264 790L944 1110Z"/></g></g>
     <rect width="1024" height="1024" fill="url(#scan)"/>
   </g>
-  <path d="M160 96 L864 96 L864 128 L896 128 L896 160 L928 160 L928 864 L896 864 L896 896 L864 896 L864 928 L160 928 L160 896 L128 896 L128 864 L96 864 L96 160 L128 160 L128 128 L160 128Z" fill="none" stroke="#2bff88" stroke-opacity="0.4" stroke-width="6" shape-rendering="crispEdges"/>
+  <path d="M160 96 L864 96 L864 128 L896 128 L896 160 L928 160 L928 864 L896 864 L896 896 L864 896 L864 928 L160 928 L160 896 L128 896 L128 864 L96 864 L96 160 L128 160 L128 128 L160 128Z" fill="none" stroke="#2bff88" stroke-opacity="0.4" stroke-width="6"/>
 </svg>

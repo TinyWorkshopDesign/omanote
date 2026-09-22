@@ -5,6 +5,19 @@
 @import "@fontsource-variable/jetbrains-mono";
 @import "./themes.css";
 
+/* Icon font: a subset of Nerd Fonts' Symbols Nerd Font (MIT), cut by
+   tools/gen-symbol-font.py. Omarchy draws its bar, menu and panels the same way
+   — monochrome glyphs from a Nerd Font — so the shapes are the ones the desktop
+   uses. Same weight and colour as the text around it. */
+@font-face {
+  font-family: "Omanote Symbols";
+  src: url("/fonts/omanote-symbols.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+  /* Icons are private-use glyphs: never fall back to a system font's guess. */
+  font-display: block;
+}
+
 :root {
   --radius: 2px;
   --font: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -278,8 +291,24 @@ input:focus {
 }
 
 .ico {
+  /* Icon glyphs (.ico spans from lib/icons.ts): a Nerd Font's symbols, like the
+     Omarchy bar and menu use. A Nerd Font glyph fills roughly 0.7em of its em
+     box, so the glyph is scaled up (1em / fill) and the slot it sits in is kept
+     exactly 1em, the size the layout expects. --ico-s / --ico-l come from
+     fitIconsToScreen(). */
+  --ico-fill: 0.7;
+  font-family: "Omanote Symbols", "Symbols Nerd Font", "JetBrainsMono Nerd Font", monospace;
+  font-size: calc(1em / var(--ico-fill));
+  width: calc(1em * var(--ico-fill));
+  height: calc(1em * var(--ico-fill));
+  line-height: calc(1em * var(--ico-fill));
+  display: inline-block;
+  text-align: center;
   vertical-align: -0.15em;
   flex: none;
+  color: inherit;
+  font-weight: normal;
+  font-style: normal;
 }
 
 .cm-image-remove {

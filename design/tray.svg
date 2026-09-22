@@ -1,5 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <!-- Menu bar / tray icon: the pixel pencil, monochrome. On macOS it is a template
-       image (tinted to match the menu bar). -->
-  <path d="M44 4h4v4h-4zM40 8h4v4h-4zM48 8h4v4h-4zM36 12h4v4h-4zM52 12h4v4h-4zM32 16h4v4h-4zM40 16h4v4h-4zM56 16h4v4h-4zM28 20h4v4h-4zM44 20h4v4h-4zM52 20h4v4h-4zM24 24h4v4h-4zM48 24h4v4h-4zM20 28h4v4h-4zM44 28h4v4h-4zM16 32h4v4h-4zM40 32h4v4h-4zM12 36h4v4h-4zM36 36h4v4h-4zM8 40h4v4h-4zM32 40h4v4h-4zM4 44h4v4h-4zM12 44h4v4h-4zM28 44h4v4h-4zM4 48h4v4h-4zM16 48h4v4h-4zM24 48h4v4h-4zM0 52h4v4h-4zM20 52h4v4h-4zM0 56h8v4h-8zM12 56h8v4h-8zM0 60h12v4h-12z" fill="#fff" shape-rendering="crispEdges"/>
+  <!-- Menu bar / tray icon: the pencil glyph, monochrome. -->
+  <g fill="#fff"><g transform="translate(32.0 32.0) scale(0.036458 -0.036458) translate(-768.0 -614.0)"><path d="M1512 1038Q1536 1062 1536.0 1098.0Q1536 1134 1512 1158L1312 1358Q1288 1382 1252.0 1382.0Q1216 1382 1192 1358L1036 1202L1356 882ZM0 166V-154H320L1264 790L944 1110Z"/></g></g>
 </svg>
