@@ -250,7 +250,9 @@ impl<'a> Synchronizer<'a> {
             if d.raw.item_type() == TYPE_RESOURCE && (d.sync_time == 0 || remote.is_none()) {
                 // New (or lost on the server) attachment: the file goes up first, like Joplin does.
                 if self.db().resource_file(&id)?.is_none() {
+                    // Nothing to send: report it once instead of at every sync.
                     report.errors.push(format!("{name}: attachment file not available locally"));
+                    self.db().mark_synced(&id, d.raw.time("updated_time"))?;
                     continue;
                 }
                 let mut it = d.raw.clone();
