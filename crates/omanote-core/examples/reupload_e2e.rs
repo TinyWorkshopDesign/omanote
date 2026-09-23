@@ -2,6 +2,8 @@
 //!
 //! `seed <db>`: create a folder, a note and an attachment, then sync.
 //! `reupload <db>`: re-upload everything in `<db>` (run after wiping the server).
+//! `edit <db> <line>` / `edit-sync <db> <line>`: add a line to the note (and sync).
+//! `show <db>`: list notes with their conflict flag and last line.
 //! `purge <db>`: trash a note, delete it for good, sync.
 //! `check <db> <sha256>`: sync a fresh store, print what came down and the blob hash.
 
@@ -47,6 +49,25 @@ async fn main() -> omanote_core::Result<()> {
             println!("{:?}", sync.sync().await?);
         }
         "reupload" => println!("{:?}", sync.reupload_all().await?),
+        "edit" | "edit-sync" => {
+            {
+                let db = store.lock().unwrap();
+                let all: Vec<String> = db.folders()?.into_iter().map(|f| f.id).collect();
+                let note = db.notes_in(&all)?.into_iter().find(|n| n.title == "Nota con foto").expect("a note");
+                let text = db.note(&note.id)?.unwrap().text;
+                db.update_note_text(&note.id, &format!("{text}\n{}", args[2]))?;
+            }
+            if args[0] == "edit-sync" {
+                println!("{:?}", sync.sync().await?);
+            }
+        }
+        "show" => {
+            let db = store.lock().unwrap();
+            let all: Vec<String> = db.folders()?.into_iter().map(|f| f.id).collect();
+            for n in db.notes_in(&all)? {
+                println!("{:?} conflict={} last line={:?}", n.title, n.is_conflict, db.note(&n.id)?.unwrap().text.lines().last());
+            }
+        }
         "purge" => {
             {
                 let db = store.lock().unwrap();

@@ -55,14 +55,16 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
 - Re-upload of local data (Settings, `reupload_local` → `Synchronizer::reupload_all`), like
   Joplin desktop's: download first, then every readable item is marked dirty with
   `sync_time = updated_time` and uploaded (attachment blobs too when the server lacks the
-  item); items the server has in the same version are skipped. Verified by wiping the
-  Docker server (`crates/omanote-core/examples/reupload_e2e.rs`).
+  item); items the server has in the same version are skipped. Items already edited
+  locally keep their real `sync_time`, so a change made elsewhere meanwhile still becomes a
+  conflict copy instead of being overwritten (unit test `reupload_keeps_local_edits_detectable`).
+  Verified by wiping the Docker server (`crates/omanote-core/examples/reupload_e2e.rs`, also
+  `edit`/`edit-sync`/`show` modes for the conflict case), without E2EE only.
 - Images as Joplin attachments: paste/drop asks "Image or Text (OCR)" (keys I / T / Esc).
   Drops are handled by the editor as DOM files (`dragDropEnabled: false` in tauri.conf.json:
   Tauri's native interception only yields file paths, which images dragged from browsers
-  or Photos do not have). UI icons are 1-pixel outline SVGs on a 16×16 grid (`currentColor`, sized per display scale
-  by `fitIconsToScreen`) in `app/src/lib/icons.ts`, no
-  emoji or Unicode glyphs;
+  or Photos do not have). UI icons come from `app/src/lib/icons.ts` (see Icons above), never
+  emoji;
   images become resources (`store.add_resource`, blob uploaded to `.resource/<id>` before
   the item, FileV1-encrypted under E2EE, `encryption_blob_encrypted` set) and render in the
   editor from `![name](:/id)` lines; remote blobs are fetched on demand
@@ -101,6 +103,10 @@ and comments in English). Working and verified on macOS with a real Joplin Serve
   table already marks as synced. Fix on the Joplin side: Sync → Advanced → "Re-upload local
   data to sync target". `cargo run -p omanote-core --example diagnose` lists what the server
   really holds (read-only GETs) to tell such cases from Omanote bugs.
+- Not re-tested end to end after the 2026-09-23 fixes: re-upload with a local edit that
+  conflicts, and any re-upload under E2EE. Docker.app is no longer installed on the dev Mac
+  (the `/usr/local/bin/docker` link is dangling) and the Joplin CLI lived in a temporary
+  folder: reinstall both (`npm i joplin` in a scratch dir) before rerunning the examples.
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
 - Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (private for now, to be made
   public), branch `main`. Share code between machines with git, never through Syncthing:
