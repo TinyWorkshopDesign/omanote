@@ -551,8 +551,8 @@ fn list_trash(state: State<'_, AppState>) -> Result<Vec<TrashItem>, String> {
 
 #[tauri::command]
 fn restore_item(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let home = state.config().root_folder_id;
-    state.db().restore(&id, &home).map_err(err)
+    let cfg = state.config();
+    state.db().restore(&id, &cfg.root_folder_id, cfg.tree_root()).map_err(err)
 }
 
 /// Deletes a trashed note or folder for good (also on the server at the next sync).

@@ -292,10 +292,14 @@ impl Store {
 
     /// Marks every readable item for upload, as if edited now but without changing it:
     /// `sync_time = updated_time`, so only a server copy that is really newer counts
-    /// as a conflict. Used by the re-upload of local data.
+    /// as a conflict. Items already edited here keep their real `sync_time`: the
+    /// download skips remote versions older than a local edit, so only that value
+    /// still reveals a change made elsewhere since the last sync (→ conflict copy).
+    /// Used by the re-upload of local data.
     pub fn mark_all_for_reupload(&self) -> Result<usize> {
         Ok(self.conn.execute(
-            "UPDATE items SET dirty = 1, sync_time = updated_time WHERE encrypted = 0 AND type IN (1, 2, 4, 5, 6)",
+            "UPDATE items SET dirty = 1, sync_time = updated_time
+             WHERE dirty = 0 AND encrypted = 0 AND type IN (1, 2, 4, 5, 6)",
             [],
         )?)
     }
@@ -631,15 +635,16 @@ impl Store {
 
     /// Takes an item out of the trash, like Joplin: a folder comes back with everything
     /// trashed inside it. When the original parent is gone or still in the trash, a folder
-    /// goes to the top level and a note to `fallback_folder`.
-    pub fn restore(&self, id: &str, fallback_folder: &str) -> Result<()> {
+    /// goes to `folder_parent` (the top of the tree the user sees) and a note to
+    /// `note_folder`.
+    pub fn restore(&self, id: &str, note_folder: &str, folder_parent: &str) -> Result<()> {
         let (it, ..) = self.raw(id)?.ok_or_else(|| Error::Sync(format!("item {id} not found")))?;
         let folders = self.all_folders()?;
         let parent = it.get("parent_id").to_string();
         let parent_alive = folders.iter().any(|(f, _, deleted)| *f == parent && !deleted);
         if it.item_type() == TYPE_FOLDER {
-            let top = parent.is_empty() || parent_alive;
-            self.set_deleted(id, 0, (!top).then_some(""))?;
+            let keep = parent.is_empty() || parent_alive;
+            self.set_deleted(id, 0, (!keep).then_some(folder_parent))?;
             for child in self.descendants(id)? {
                 if matches!(self.raw(&child)?, Some((c, false, ..)) if c.get("deleted_time").parse::<i64>().unwrap_or(0) > 0) {
                     self.set_deleted(&child, 0, None)?;
@@ -647,7 +652,7 @@ impl Store {
             }
             Ok(())
         } else {
-            self.set_deleted(id, 0, (!parent_alive).then_some(fallback_folder))
+            self.set_deleted(id, 0, (!parent_alive).then_some(note_folder))
         }
     }
 
@@ -767,7 +772,7 @@ mod tests {
         assert_eq!(s.trashed(&home.id).unwrap().len(), 1);
 
         // A folder comes back with what was trashed inside it.
-        s.restore(&work.id, &home.id).unwrap();
+        s.restore(&work.id, &home.id, "").unwrap();
         assert_eq!(s.notes_in(&s.folder_subtree(&work.id).unwrap()).unwrap().len(), 1);
         assert_eq!(s.trashed("").unwrap().len(), 1);
 
@@ -777,18 +782,46 @@ mod tests {
         s.purge(&sub.id).unwrap();
         assert!(s.raw(&a.id).unwrap().is_none());
         assert_eq!(s.pending_deletions().unwrap().len(), 2);
-        s.restore(&b.id, &home.id).unwrap();
+        s.restore(&b.id, &home.id, "").unwrap();
         assert!(s.trashed("").unwrap().is_empty());
 
         let c = s.create_note(&work.id, "C").unwrap();
         s.trash(&work.id).unwrap();
         s.trash(&c.id).unwrap();
         s.purge(&work.id).unwrap();
-        s.restore(&home.id, &home.id).unwrap();
+        s.restore(&home.id, &home.id, "").unwrap();
         let d = s.create_note(&home.id, "D").unwrap();
         s.trash(&d.id).unwrap();
         assert_eq!(s.empty_trash("").unwrap(), 1);
         assert!(s.raw(&c.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn restored_folder_stays_in_the_visible_tree() {
+        let s = Store::open_in_memory().unwrap();
+        let home = s.create_folder("Omanote", "").unwrap();
+        let outer = s.create_folder("Progetti", &home.id).unwrap();
+        let inner = s.create_folder("Vecchi", &outer.id).unwrap();
+        s.trash(&inner.id).unwrap();
+        s.trash(&outer.id).unwrap();
+        s.purge(&outer.id).unwrap_or(()); // outer and inner gone for good…
+        let lost = s.create_folder("Orfana", &outer.id).unwrap(); // …a folder whose parent is gone
+        s.trash(&lost.id).unwrap();
+        s.restore(&lost.id, &home.id, &home.id).unwrap();
+        assert_eq!(s.raw(&lost.id).unwrap().unwrap().0.get("parent_id"), home.id);
+    }
+
+    #[test]
+    fn reupload_keeps_local_edits_detectable() {
+        let s = Store::open_in_memory().unwrap();
+        let f = s.create_folder("Omanote", "").unwrap();
+        let n = s.create_note(&f.id, "A").unwrap();
+        s.mark_synced(&f.id, s.raw(&f.id).unwrap().unwrap().0.time("updated_time")).unwrap();
+        s.conn.execute("UPDATE items SET sync_time = 1 WHERE id = ?", [&n.id]).unwrap(); // edited since
+        s.mark_all_for_reupload().unwrap();
+        assert_eq!(s.raw(&n.id).unwrap().unwrap().3, 1, "a local edit keeps its sync_time");
+        let (fi, _, dirty, st) = s.raw(&f.id).unwrap().unwrap();
+        assert!(dirty && st == fi.time("updated_time"));
     }
 
     #[test]

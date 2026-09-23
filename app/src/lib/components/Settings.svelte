@@ -44,7 +44,7 @@
     reuploading = true;
     try {
       const r = await api.reuploadLocal();
-      if (r) alert(t("set.reuploadDone", { n: String(r.uploaded) }));
+      if (r) alert(t("set.reuploadDone", { n: String(r.uploaded) }) + (r.errors.length ? `\n${t("set.reuploadErrors", { n: String(r.errors.length) })}` : ""));
       onRootChanged();
     } finally {
       reuploading = false;
@@ -83,6 +83,7 @@
       { name: t("set.agentOther"), where: "mcp.json", text: json },
     ];
   });
+  const cliExample = $derived(`${sh(cli)} search budget --json`);
   let agentIndex = $state(0);
   const agent = $derived(agents[agentIndex]);
 
@@ -268,8 +269,8 @@
       </div>
       <p class="hint">{t("set.agentCli")}</p>
       <div class="code">
-        <code>{sh(cli)} search budget --json</code>
-        <button onclick={() => copy(`${sh(cli)} --help`)}>{copied === `${sh(cli)} --help` ? t("set.copied") : t("set.copy")}</button>
+        <code>{cliExample}</code>
+        <button onclick={() => copy(cliExample)}>{copied === cliExample ? t("set.copied") : t("set.copy")}</button>
       </div>
       <p class="hint mono">list · show · search · new · append · edit · move · trash · sync · mcp</p>
     </section>
