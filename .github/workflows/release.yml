@@ -1,0 +1,80 @@
+# Builds Omanote for macOS and Linux and attaches the bundles to a draft GitHub
+# Release. Runs when a version tag (v0.1.0, …) is pushed, or by hand.
+#
+# macOS: one universal .dmg (Apple Silicon + Intel), ad-hoc signed only: it is not
+# notarized, so the first launch has to be allowed in System Settings.
+# Linux: AppImage, .deb and .rpm, built on the oldest supported Ubuntu so the
+# AppImage runs on older glibc versions too.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+          - platform: ubuntu-22.04
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev libssl-dev libdbus-1-dev pkg-config patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ runner.os == 'macOS' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install UI dependencies
+        run: npm ci --prefix app
+
+      - name: Tests
+        run: |
+          cargo test --workspace --exclude omanote
+          npm run --prefix app test
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
+          releaseName: Omanote v__VERSION__ (preview)
+          releaseBody: |
+            First preview release. See the README for features and the first-launch notes below.
+
+            **macOS** (Apple Silicon and Intel): download the `.dmg`, drag Omanote to Applications.
+            The app is not notarized by Apple yet: on first launch macOS blocks it. Open
+            System Settings → Privacy & Security and click "Open Anyway" next to Omanote.
+
+            **Linux**: the `.AppImage` runs on most distributions (`chmod +x`, then run it; on Arch
+            and Omarchy it needs `fuse2`). There are also `.deb` and `.rpm` packages.
+            On Omarchy, bind `omanote --toggle` in Hyprland and install the bar plugin from
+            `omarchy-plugin/` (see the README).
+          releaseDraft: true
+          prerelease: true
+          args: ${{ matrix.args }}

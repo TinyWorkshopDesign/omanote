@@ -10,6 +10,17 @@ end-to-end encryption. Joplin and Omanote live side by side on the same account.
 > **Status: preview.** Verified end to end on macOS against a real Joplin Server with E2EE,
 > and on Omarchy 4. iOS and Android builds are not set up yet.
 
+## Download
+
+Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/omanote/releases)**.
+
+- **macOS** (Apple Silicon and Intel): open the `.dmg` and drag Omanote to Applications. The
+  app is not notarized by Apple yet, so the first launch is blocked: open System Settings →
+  Privacy & Security and click **Open Anyway**.
+- **Linux**: the `.AppImage` runs on most distributions (`chmod +x Omanote*.AppImage`; on
+  Arch and Omarchy install `fuse2` first). `.deb` and `.rpm` packages are there too.
+- Or build it from source (see [Development](#development)).
+
 ## Features
 
 **Quick notes**
