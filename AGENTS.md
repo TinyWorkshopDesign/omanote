@@ -91,8 +91,15 @@ its history. Do not name other note apps as models or references (code, docs, co
 
 **Not verified yet**
 - Linux: OCR with tesseract/grim/slurp, live theme switching (the watcher reads the new path).
-- iOS/Android: projects not initialised (`tauri ios init` / `android init`); the Android
-  SDK is not installed on the dev Mac.
+- iOS/iPadOS: project initialised and committed in `app/src-tauri/gen/apple` (iPhone + iPad,
+  all iPad orientations, minimum iOS 16 in `tauri.conf.json` *and* `gen/apple/project.yml` +
+  `Podfile`: `tauri ios init` does not rewrite an existing project, Xcode 27 rejects the
+  default 14.0). Builds and starts in the iPad simulator (first-run screen OK). Not yet
+  exercised by taps, not signed for devices. Build: `cd app && LANG=en_US.UTF-8 npx tauri ios
+  build --debug --target aarch64-sim` (needs `rustup target add aarch64-apple-ios
+  aarch64-apple-ios-sim`, Homebrew `cocoapods`; xcodegen and libimobiledevice are installed by
+  Tauri). After editing `project.yml` run `xcodegen generate` in `gen/apple`.
+- Android: project not initialised; the Android SDK is not installed on the dev Mac.
 
 **Known gaps / next steps**
 - Tags are synced but not shown.
