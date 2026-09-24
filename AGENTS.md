@@ -127,7 +127,7 @@ its history. Do not name other note apps as models or references (code, docs, co
   again for keychain access; the sync waits on that prompt (the UI must not).
 - Public builds: pushing a tag `vX.Y.Z` (matching `version` in `app/src-tauri/tauri.conf.json`)
   runs `.github/workflows/release.yml`, which builds a universal macOS `.dmg` (ad-hoc signed,
-  not notarized) and Linux AppImage/.deb/.rpm and attaches them to a **draft** pre-release;
+  not notarized) and Linux AppImage/.deb/.rpm and attaches them to a **draft** release (not marked pre-release, so `/releases/latest` keeps working);
   check the assets, then publish the draft.
 - Release build on the dev Mac: `cd app && PATH=/usr/bin:$PATH npm run tauri build -- --bundles app`.
   A Python `xattr` (from python.org's framework) shadows `/usr/bin/xattr` and lacks `-r`,
