@@ -1,133 +1,137 @@
 # Omanote
 
-Note veloci sincronizzate con **Joplin Server**, con l'estetica di
-**Omarchy**. Una sola app per **Linux, macOS, iOS e Android**, in 8 lingue.
+Quick notes synced with **Joplin Server**, with the look of **Omarchy**. One app for
+**Linux, macOS, iOS and Android**, in 8 languages.
 
-Il server non viene toccato: Omanote parla lo stesso protocollo dei client Joplin
-ufficiali (sync target versione 3), scrive gli stessi file `<id>.md` e usa la stessa
-crittografia end-to-end. Joplin e Omanote convivono sullo stesso account.
+The server is never modified: Omanote speaks the same protocol as the official Joplin
+clients (sync target version 3), writes the same `<id>.md` items and uses the same
+end-to-end encryption. Joplin and Omanote live side by side on the same account.
 
-## Funzioni
+> **Status: preview.** Verified end to end on macOS against a real Joplin Server with E2EE,
+> and on Omarchy 4. iOS and Android builds are not set up yet.
 
-**Note veloci**
-- Si apre su una nota nuova; `⌘[` / `⌘]` o lo swipe a due dita scorrono tra le note.
-  Andare oltre la più recente ne crea una nuova; una nota lasciata vuota si cancella da sola.
-- Menu nascosto: compare avvicinando il mouse al bordo alto della nota (sempre visibile su touch).
-- Barra inferiore a scomparsa: ‹ un puntino per nota › e «+» per una nota
-  nuova; compare vicino al bordo basso o per un attimo quando cambi nota.
-- Pannello delle cartelle ad albero (notebook → cartelle → note): rami apribili, nota
-  corrente evidenziata, azioni su ogni cartella, trascina una nota su una cartella per spostarla.
-- Parole chiave sulla prima riga (anche tradotte: `lista`, `somma`, `media`…):
-  - `list` / `list: Titolo`: ogni riga diventa una casella; `/x` a fine riga la spunta;
-  - `math`: risultati automatici anche senza `=`;
-  - `sum`, `avg`: somma o media di tutti i numeri della nota;
-  - `count`: elementi, righe, parole, caratteri;
-  - `code`: niente formattazione.
-- Caselle `[] ` o `- [ ] `, elenchi puntati e numerati che si continuano con Invio, `//` per
-  commentare una riga.
-- **Markdown vero, con anteprima dal vivo** come in Obsidian: titoli `#`…`######`, grassetto e
-  corsivo (anche su più righe), `~~barrato~~`, `` `codice` ``, citazioni, link, e `++sottolineato++`
-  come in Joplin. Anche l'HTML dell'editor ricco di Joplin si vede bene: testo colorato
-  (`<span style="color:…">`), immagini `<img>`, `&nbsp;`. I simboli si nascondono e ricompaiono
-  sulla riga del cursore, per modificarli.
-- Calcoli: scrivi `=` alla fine della riga e il risultato compare subito dopo: `2+3*4=`,
-  `100 € + iva =`, `20% di 50 =`, `sqrt(16) =`. Senza `=` la riga resta testo. Le variabili
-  (`iva = 22%`) si memorizzano senza mostrare nulla; `totale =` / `media =` sommano il blocco
-  sopra. Nelle note che iniziano con `math` i risultati compaiono sempre. Clic sul risultato
-  per copiarlo.
-- **Timer** su qualsiasi riga, poi Invio: `timer` (cronometro), `timer 5` / `timer 3:30` (conto
-  alla rovescia), `timer 9am` / `timer 21:15` (fino a un orario), `timer 5: Pasta` (con nome),
-  `timer 25 5` / `timer pomo` (pomodoro), `timer p` / `r` / `s` (pausa, riavvia, stop). Il
-  timer continua con la finestra nascosta, notifica alla fine e compare nella menu bar su macOS.
-- **Immagini**: trascinando o incollando un'immagine Omanote chiede se inserirla come
-  **immagine** (`I`) o come **testo OCR** (`T`). Le immagini diventano allegati Joplin
-  (cifrati con la E2EE) e si vedono anche nei client Joplin; quelle allegate in Joplin si
-  vedono in Omanote.
-- **OCR**: con «Testo» il contenuto dell'immagine finisce nella nota. `⌘⇧O` cattura una
-  zona dello schermo. Tutto sul dispositivo: Apple Vision su macOS/iOS, tesseract su Linux
-  (già incluso in Omarchy, rispetta `OMARCHY_OCR_LANGS`).
+## Features
+
+**Quick notes**
+- Opens on a fresh note; `⌘[` / `⌘]` or a two-finger swipe move between notes. Going past
+  the newest one starts a new note; a note left empty deletes itself.
+- Hidden menu: it shows when the pointer nears the top edge (always visible on touch screens).
+- Auto-hiding bottom bar: ‹ one dot per note › and "+" for a new note; it shows near the
+  bottom edge or briefly when you switch notes.
+- Folder tree panel (notebook → folders → notes): expandable branches, current note
+  highlighted, per-folder actions, drag and drop, cut / copy / paste, and a **Trash** with
+  restore, delete permanently and empty.
+- Keywords on the first line (also translated, e.g. `lista`, `somma`, `media`):
+  - `list` / `list: Title`: every line becomes a checkbox; `/x` at the end of a line ticks it;
+  - `math`: results show even without `=`;
+  - `sum`, `avg`: sum or average of all the numbers in the note;
+  - `count`: items, lines, words, characters;
+  - `code`: no formatting.
+- Checkboxes `[] ` or `- [ ] `, bulleted and numbered lists that continue on Enter, `//` to
+  comment out a line.
+- **Real Markdown with live preview**: headings `#`…`######`, bold and italic (also across
+  lines), `~~strikethrough~~`, `` `code` ``, quotes, links, and `++underline++` as in Joplin.
+  HTML from Joplin's rich-text editor renders too: coloured text (`<span style="color:…">`),
+  `<img>` images, `&nbsp;`. Markup hides and comes back on the cursor line for editing.
+- Calculations: end a line with `=` and the result appears right after it: `2+3*4=`,
+  `100 € + vat =`, `20% of 50 =`, `sqrt(16) =`. Without `=` the line stays text. Variables
+  (`vat = 22%`) are stored silently; `total =` / `avg =` add up the block above. In notes
+  starting with `math` every result shows. Click a result to copy it.
+- **Timers** on any line, then Enter: `timer` (stopwatch), `timer 5` / `timer 3:30`
+  (countdown), `timer 9am` / `timer 21:15` (until a time), `timer 5: Pasta` (named),
+  `timer 25 5` / `timer pomo` (pomodoro), `timer p` / `r` / `s` (pause, restart, stop). Timers
+  keep running with the window hidden, notify when done and show in the macOS menu bar.
+- **Images**: dropping or pasting an image asks whether to insert it as an **image** (`I`) or
+  as **OCR text** (`T`). Images become Joplin attachments (E2EE-encrypted) and show in Joplin
+  clients; images attached in Joplin show in Omanote.
+- **OCR**: "Text" puts the image's content into the note. `⌘⇧O` captures a screen region.
+  Everything runs on the device: Apple Vision on macOS/iOS, tesseract on Linux (already part
+  of Omarchy, honours `OMARCHY_OCR_LANGS`).
 
 **Joplin**
-- **Notebook di lavoro**: Omanote vede solo un notebook di Joplin (e i suoi sotto-notebook,
-  che diventano le cartelle). Lo scegli e lo cambi quando vuoi dalle Impostazioni, così il resto
-  del tuo Joplin resta intatto.
-- E2EE completa: legge `KeyV1`, `StringV1`, `FileV1` e i metodi storici `SJCL1a`, `SJCL1b`,
-  `SJCL3`, `SJCL4`; scrive con `StringV1` come Joplin. Non supportato solo il vecchio OCB2
-  (pre-2020): Joplin desktop propone di aggiornare quelle chiavi.
-- Conflitti gestiti come Joplin (la copia locale finisce nella cartella "Conflitti").
-- Eliminare una nota la sposta nel cestino di Joplin.
+- **Working notebook**: Omanote shows one Joplin notebook (its sub-notebooks become the
+  folders), or **all of Joplin**. Pick it and change it any time in Settings, so the rest of
+  your Joplin stays untouched.
+- Full E2EE: reads `KeyV1`, `StringV1`, `FileV1` and the legacy `SJCL1a`, `SJCL1b`, `SJCL3`,
+  `SJCL4`; writes `StringV1` like Joplin. Only the old OCB2 method (before 2020) is not
+  supported: Joplin desktop offers to upgrade those keys.
+- Conflicts are handled like Joplin: the remote version wins and the local one is kept as a
+  conflict copy.
+- Deleting a note moves it to Joplin's trash.
+- Repair tools in Settings: "Resync everything" and "Re-upload local data" (like Joplin
+  desktop's, for a server that lost data).
 
 **Omarchy**
-- Segue il tema di sistema (`~/.local/state/omarchy/current/theme`) e cambia al volo con il menu
-  temi; altrove include i 22 temi di Omarchy. Font JetBrains Mono.
-- Scorciatoie da tastiera con `Ctrl` al posto di `⌘`: nessun conflitto con Omarchy, che usa `Super`.
-- Scorciatoia globale su Hyprland, in `~/.config/hypr/bindings.conf`:
+- Follows the system theme (`~/.local/state/omarchy/current/theme`) and switches live with the
+  theme menu; elsewhere it ships the 22 Omarchy themes. JetBrains Mono font, Nerd Font icons.
+- Keyboard shortcuts use `Ctrl` instead of `⌘`: no clash with Omarchy, which uses `Super`.
+- Global shortcut on Hyprland, in `~/.config/hypr/bindings.conf`:
 
   ```
   bindd = SUPER ALT, N, Omanote, exec, omanote --toggle
   ```
 
-  (`omanote --new` apre una nota nuova, `omanote --capture` avvia l'OCR dello schermo,
-  `omanote --open <id>` apre una nota.)
-- **Plugin per la barra di Omarchy** (`omarchy-plugin/`): icona pixel nella barra; clic per
-  scrivere al volo una nota o cercare e aprire le recenti, clic destro per mostrare/nascondere
-  l'app, clic centrale per una nota nuova. Si installa con `omarchy-plugin/install.sh`.
-  Su macOS la scorciatoia globale è `⌥A`.
+  (`omanote --new` opens a new note, `omanote --capture` starts screen OCR,
+  `omanote --open <id>` opens a note.)
+- **Omarchy bar plugin** (`omarchy-plugin/`): a pencil in the bar; click to jot a note or
+  search and open recent ones, right-click to show or hide the app, middle-click for a new
+  note. Install it with `omarchy-plugin/install.sh`.
+- On macOS the global shortcut is `⌥A`.
 
 **AI friendly**
-- La riga di comando lavora sulle stesse note dell'app: `list`, `show`, `search`, `new`,
-  `append`, `edit`, `move`, `trash`, `sync`, con `--json` per gli script. È sia `omanote-cli`
-  sia l'app stessa (`omanote <comando>`): su macOS basta Omanote.app,
+- The command line works on the same notes as the app: `list`, `show`, `search`, `new`,
+  `append`, `edit`, `move`, `trash`, `sync`, with `--json` for scripts. It is both
+  `omanote-cli` and the app itself (`omanote <command>`): on macOS Omanote.app is enough,
   `/Applications/Omanote.app/Contents/MacOS/omanote list`.
-- `mcp` avvia un server MCP (standard aperto, non legato a un solo agente). In Impostazioni →
-  AI c'è la configurazione pronta da copiare per Claude Code, Codex, Gemini CLI, VS Code,
-  Cursor, Claude Desktop, Hermes, Zed e gli altri client MCP, con il percorso giusto.
-- L'app si aggiorna da sola quando un agente modifica le note.
-- `AGENTS.md` descrive architettura e regole del progetto per chi sviluppa con l'AI.
+- `mcp` starts an MCP server (an open standard, not tied to one agent). Settings → AI has a
+  ready-to-copy setup for Claude Code, Codex, Gemini CLI, VS Code, Cursor, Claude Desktop,
+  Hermes, Zed and other MCP clients, with the right path.
+- The app refreshes by itself when an agent changes notes.
+- `AGENTS.md` describes the architecture and rules for anyone developing with AI.
 
-## Scorciatoie
+## Shortcuts
 
 | | |
 | --- | --- |
-| `⌘N` | nuova nota |
-| `⌘[` `⌘]` | nota precedente / successiva |
-| `⌘1` / `⌘⇧1` | vai alla più recente / porta in cima |
-| `⌘D` | elimina nota |
-| `⌘F` | cerca (Invio senza risultati crea una nota) |
-| `⌘⇧K` / `⌘⇧M` | spunta riga / casella → punto → numero |
-| `⌘B` `⌘I` `⌘U` `⌘⇧X` | grassetto, corsivo, sottolineato (`++`), barrato |
-| `⌘⇧H` / `⌘/` | livello titolo / commento |
-| `⌥↑` `⌥↓` | sposta riga |
-| `⌘P` / `⌘W` | finestra in primo piano / nascondi |
-| `⌘+` `⌘−` | dimensione testo |
-| `⌘\` / `⌘E` | cartelle / sposta nota |
-| `⌘⇧O` / `⌘S` / `⌘,` | OCR schermo / sincronizza / impostazioni |
-| `Esc` | ferma il timer |
+| `⌘N` | new note |
+| `⌘[` `⌘]` | previous / next note |
+| `⌘1` / `⌘⇧1` | go to the newest / bring to the top |
+| `⌘D` | delete note |
+| `⌘F` | search (Enter with no results creates a note) |
+| `⌘⇧K` / `⌘⇧M` | tick line / checkbox → bullet → number |
+| `⌘B` `⌘I` `⌘U` `⌘⇧X` | bold, italic, underline (`++`), strikethrough |
+| `⌘⇧H` / `⌘/` | heading level / comment |
+| `⌥↑` `⌥↓` | move line |
+| `⌘P` / `⌘W` | keep on top / hide window |
+| `⌘+` `⌘−` | text size |
+| `⌘\` / `⌘E` | folders / move note |
+| `⌘⇧O` / `⌘S` / `⌘,` | screen OCR / sync / settings |
+| `Esc` | stop the timer |
 
-## Com'è fatto
+On Linux and Windows use `Ctrl` instead of `⌘`.
 
-| Parte | Tecnologia |
+## How it is built
+
+| Part | Technology |
 | --- | --- |
-| Core (`crates/omanote-core`) | Rust: formato Joplin, E2EE, client server, SQLite, sync |
-| CLI + MCP (`crates/omanote-cli`) | Rust, stesso database dell'app |
-| App (`app/src-tauri`) | Tauri 2: webview di sistema, binari di pochi MB |
-| UI (`app/src`) | Svelte 5 + CodeMirror 6, 616 KB compresi i font |
+| Core (`crates/omanote-core`) | Rust: Joplin item format, E2EE, server client, SQLite, sync |
+| CLI + MCP (`crates/omanote-cli`) | Rust, same database as the app |
+| App (`app/src-tauri`) | Tauri 2: system webview, binaries of a few MB |
+| UI (`app/src`) | Svelte 5 + CodeMirror 6 |
 
-## Sviluppo
+## Development
 
 ```bash
 npm install --prefix app
-npm run --prefix app tauri dev      # app desktop
-npm run --prefix app dev            # solo interfaccia nel browser, con dati finti
-cargo test                          # test Rust
-npm run --prefix app test           # test di calcolatrice e modalità
+npm run --prefix app tauri dev      # desktop app
+npm run --prefix app dev            # UI only, in a browser, with mock data
+cargo test                          # Rust tests
+npm run --prefix app test           # calculator and note-mode tests
 cargo install --path crates/omanote-cli
 ```
 
-I test E2EE usano vettori generati con lo stesso codice JavaScript di Joplin.
+The E2EE tests use vectors generated with Joplin's own JavaScript crypto code.
 
-## Stato
+## Roadmap
 
-Verificato end-to-end contro un Joplin Server reale con E2EE, incluso il caso dei conflitti.
-Da fare: tag, build firmate per iOS e Android,
-OCR su Android, notifiche del timer programmate su mobile.
+Tags, signed iOS and Android builds, OCR on Android, scheduled timer notifications on mobile.

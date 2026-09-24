@@ -6,8 +6,9 @@ changing code.
 
 ## Project status (2026-09-22)
 
-Owner: Michele Belleri (writes in Italian; UI text and commits are in Italian, code
-and **all comments in English**). Commit only as
+Owner: Michele Belleri (writes in Italian). The repository is **English only**: code,
+comments, test data, docs and **commit messages**; Italian lives only in the UI
+translations and in tests of translated keywords. Commit only as
 `Michele Belleri <23453441+TinyWorkshopDesign@users.noreply.github.com>` (set in this clone's
 git config; set it in other clones too): no personal email addresses anywhere in the repo or
 its history. Do not name other note apps as models or references (code, docs, commits). Working and verified on macOS with a real Joplin Server.

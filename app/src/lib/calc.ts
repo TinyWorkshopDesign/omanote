@@ -1,4 +1,4 @@
-// Inline calculator, Soulver style. Every line of a note is tried
+// Inline calculator. Every line of a note is tried
 // as an expression; lines that don't parse (plain text) are ignored.
 //
 //   2 + 3 * 4            → 14
