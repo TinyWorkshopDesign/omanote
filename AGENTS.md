@@ -7,7 +7,10 @@ changing code.
 ## Project status (2026-09-22)
 
 Owner: Michele Belleri (writes in Italian; UI text and commits are in Italian, code
-and comments in English). Working and verified on macOS with a real Joplin Server.
+and **all comments in English**). Commit only as
+`Michele Belleri <23453441+TinyWorkshopDesign@users.noreply.github.com>` (set in this clone's
+git config; set it in other clones too): no personal email addresses anywhere in the repo or
+its history. Do not name other note apps as models or references (code, docs, commits). Working and verified on macOS with a real Joplin Server.
 
 **Done and verified**
 - Sync with Joplin Server incl. E2EE (both directions) and conflicts, tested against
@@ -173,7 +176,7 @@ cargo run -p omanote-cli -- --help  # CLI
 - **Errors to the UI** are codes (`CODE` or `CODE|detail`) translated in `i18n.svelte.ts`.
 - **Languages**: left-to-right only. Add strings to the `en` dictionary first; other
   languages fall back to English.
-- **Shortcuts** (`Mod` = ⌘ on Apple, Ctrl elsewhere). Omarchy binds
+- **Shortcuts** use `Mod` = ⌘ on Apple, Ctrl elsewhere. Omarchy binds
   almost everything to Super, so avoid Super and `Alt+Tab` inside the app. On Wayland the
   global hotkey is a Hyprland binding calling `omanote --toggle`. `omanote --open <id>` shows a
   given note (used by the bar plugin), also when it starts the app.
