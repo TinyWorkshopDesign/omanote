@@ -153,7 +153,7 @@ mod tests {
         let t = std::time::Instant::now();
         super::recognize(png).unwrap();
         eprintln!("second OCR: {:?}", t.elapsed());
-        assert!(text.contains("Lista della spesa"), "{text}");
-        assert!(text.contains("42,50"), "{text}");
+        assert!(text.contains("Shopping list"), "{text}");
+        assert!(text.contains("42.50"), "{text}");
     }
 }

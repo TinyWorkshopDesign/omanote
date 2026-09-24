@@ -6,17 +6,17 @@ import type { Folder, Note, NoteSummary, Status, SyncReport, TrashItem } from ".
 
 const folders: Folder[] = [
   { id: "r".repeat(32), parent_id: "", title: "Omanote", icon: "", note_count: 0 },
-  { id: "a".repeat(32), parent_id: "r".repeat(32), title: "Spesa", icon: "🛒", note_count: 1 },
-  { id: "b".repeat(32), parent_id: "r".repeat(32), title: "Lavoro", icon: "💼", note_count: 1 },
-  { id: "c".repeat(32), parent_id: "b".repeat(32), title: "Progetti", icon: "", note_count: 1 },
+  { id: "a".repeat(32), parent_id: "r".repeat(32), title: "Groceries", icon: "🛒", note_count: 1 },
+  { id: "b".repeat(32), parent_id: "r".repeat(32), title: "Work", icon: "💼", note_count: 1 },
+  { id: "c".repeat(32), parent_id: "b".repeat(32), title: "Projects", icon: "", note_count: 1 },
 ];
 
 const notes: (Note & { title: string })[] = [
   {
     id: "1".repeat(32),
     parent_id: "a".repeat(32),
-    title: "Spesa di sabato",
-    text: "Spesa di sabato\n- [ ] latte 1,20 €\n- [x] pane 2,50 €\n- [ ] caffè 4 €\ntotale\n\nsconto = 10%\ntotale - sconto",
+    title: "Saturday shopping",
+    text: "Saturday shopping\n- [ ] milk 1.20 €\n- [x] bread 2.50 €\n- [ ] coffee 4 €\ntotal\n\ndiscount = 10%\ntotal - discount =",
     updated_time: Date.now() - 600_000,
     created_time: Date.now() - 86_400_000,
     encrypted: false,
@@ -24,8 +24,8 @@ const notes: (Note & { title: string })[] = [
   {
     id: "2".repeat(32),
     parent_id: "b".repeat(32),
-    title: "Riunione lunedì",
-    text: "Riunione lunedì\n# Punti\n- budget trimestre: 12500 €\n- team: 7 persone\n12500 / 7\n\n- [ ] preparare slide\n- [ ] mandare invito",
+    title: "Monday meeting",
+    text: "Monday meeting\n# Agenda\n- quarterly budget: 12500 €\n- team: 7 people\n12500 / 7 =\n\n- [ ] prepare slides\n- [ ] send the invite",
     updated_time: Date.now() - 3_600_000,
     created_time: Date.now() - 172_800_000,
     encrypted: false,
@@ -37,7 +37,7 @@ notes.push(
     id: "3".repeat(32),
     parent_id: "c".repeat(32),
     title: "Omanote",
-    text: "Omanote\n- [x] albero delle cartelle\n- [ ] barra inferiore",
+    text: "Omanote\n- [x] folder tree\n- [ ] bottom bar",
     updated_time: Date.now() - 7_200_000,
     created_time: Date.now() - 7_200_000,
     encrypted: false,
@@ -45,8 +45,8 @@ notes.push(
   {
     id: "4".repeat(32),
     parent_id: "r".repeat(32),
-    title: "Idea veloce",
-    text: "Idea veloce\n2+2",
+    title: "Quick idea",
+    text: "Quick idea\n2+2=",
     updated_time: Date.now() - 60_000,
     created_time: Date.now() - 60_000,
     encrypted: false,
@@ -221,7 +221,7 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
       return /^\s*timer\b/i.test(a.line ?? "");
     case "ocr_image":
     case "ocr_file":
-      return "Testo riconosciuto (demo)";
+      return "Recognized text (demo)";
     case "toggle_pin":
       return true;
     case "add_image": {

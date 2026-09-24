@@ -40,10 +40,10 @@ async fn main() -> omanote_core::Result<()> {
         "seed" => {
             {
                 let db = store.lock().unwrap();
-                let f = db.create_folder("Lavoro", "")?;
+                let f = db.create_folder("Work", "")?;
                 let img = std::fs::read(&args[2]).expect("image");
-                let id = db.add_resource(&img, "image/png", "foto.png")?;
-                db.create_note(&f.id, &format!("Nota con foto\n![foto.png](:/{id})"))?;
+                let id = db.add_resource(&img, "image/png", "photo.png")?;
+                db.create_note(&f.id, &format!("Note with a photo\n![photo.png](:/{id})"))?;
                 println!("sha256 {}", hex(&img));
             }
             println!("{:?}", sync.sync().await?);
@@ -53,7 +53,7 @@ async fn main() -> omanote_core::Result<()> {
             {
                 let db = store.lock().unwrap();
                 let all: Vec<String> = db.folders()?.into_iter().map(|f| f.id).collect();
-                let note = db.notes_in(&all)?.into_iter().find(|n| n.title == "Nota con foto").expect("a note");
+                let note = db.notes_in(&all)?.into_iter().find(|n| n.title == "Note with a photo").expect("a note");
                 let text = db.note(&note.id)?.unwrap().text;
                 db.update_note_text(&note.id, &format!("{text}\n{}", args[2]))?;
             }

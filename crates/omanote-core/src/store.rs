@@ -737,20 +737,20 @@ mod tests {
     fn note_lifecycle() {
         let s = Store::open_in_memory().unwrap();
         let f = s.create_folder("Omanote", "").unwrap();
-        let sub = s.create_folder("Spesa", &f.id).unwrap();
-        let n = s.create_note(&sub.id, "Lista\n- latte\n- pane").unwrap();
-        assert_eq!(n.text, "Lista\n- latte\n- pane");
+        let sub = s.create_folder("Groceries", &f.id).unwrap();
+        let n = s.create_note(&sub.id, "Shopping\n- milk\n- bread").unwrap();
+        assert_eq!(n.text, "Shopping\n- milk\n- bread");
         let (raw, ..) = s.raw(&n.id).unwrap().unwrap();
-        assert_eq!(raw.title.as_deref(), Some("Lista"));
-        assert_eq!(raw.body.as_deref(), Some("- latte\n- pane"));
+        assert_eq!(raw.title.as_deref(), Some("Shopping"));
+        assert_eq!(raw.body.as_deref(), Some("- milk\n- bread"));
 
         let tree = s.folder_subtree(&f.id).unwrap();
         assert_eq!(tree.len(), 2);
         assert_eq!(s.notes_in(&tree).unwrap().len(), 1);
         assert_eq!(s.dirty_items().unwrap().len(), 3);
 
-        s.update_note_text(&n.id, "Lista\n- latte").unwrap();
-        assert_eq!(s.search_notes(&tree, "LATTE").unwrap().len(), 1);
+        s.update_note_text(&n.id, "Shopping\n- milk").unwrap();
+        assert_eq!(s.search_notes(&tree, "MILK").unwrap().len(), 1);
         assert!(s.update_folder(&f.id, None, Some(&sub.id)).is_err());
 
         s.trash(&n.id).unwrap();
@@ -761,8 +761,8 @@ mod tests {
     fn trash_restore_purge() {
         let s = Store::open_in_memory().unwrap();
         let home = s.create_folder("Omanote", "").unwrap();
-        let work = s.create_folder("Lavoro", "").unwrap();
-        let sub = s.create_folder("Progetti", &work.id).unwrap();
+        let work = s.create_folder("Work", "").unwrap();
+        let sub = s.create_folder("Projects", &work.id).unwrap();
         let a = s.create_note(&sub.id, "A").unwrap();
         let b = s.create_note(&home.id, "B").unwrap();
         for id in [&a.id, &sub.id, &work.id, &b.id] {
@@ -800,12 +800,12 @@ mod tests {
     fn restored_folder_stays_in_the_visible_tree() {
         let s = Store::open_in_memory().unwrap();
         let home = s.create_folder("Omanote", "").unwrap();
-        let outer = s.create_folder("Progetti", &home.id).unwrap();
-        let inner = s.create_folder("Vecchi", &outer.id).unwrap();
+        let outer = s.create_folder("Projects", &home.id).unwrap();
+        let inner = s.create_folder("Old", &outer.id).unwrap();
         s.trash(&inner.id).unwrap();
         s.trash(&outer.id).unwrap();
         s.purge(&outer.id).unwrap_or(()); // outer and inner gone for good…
-        let lost = s.create_folder("Orfana", &outer.id).unwrap(); // …a folder whose parent is gone
+        let lost = s.create_folder("Orphan", &outer.id).unwrap(); // …a folder whose parent is gone
         s.trash(&lost.id).unwrap();
         s.restore(&lost.id, &home.id, &home.id).unwrap();
         assert_eq!(s.raw(&lost.id).unwrap().unwrap().0.get("parent_id"), home.id);
@@ -835,7 +835,7 @@ mod tests {
 
     #[test]
     fn text_split_round_trip() {
-        let cases = [("", ""), ("solo titolo", "solo titolo"), ("t\nb", "t\nb"), ("t\n\nb\n", "t\n\nb\n"), ("t\n", "t")];
+        let cases = [("", ""), ("title only", "title only"), ("t\nb", "t\nb"), ("t\n\nb\n", "t\n\nb\n"), ("t\n", "t")];
         for (input, expected) in cases {
             let (a, b) = split_text(input);
             assert_eq!(join_text(&a, &b), expected);

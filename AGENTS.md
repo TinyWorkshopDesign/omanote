@@ -207,7 +207,7 @@ generic `mcpServers` JSON, built from the real binary path (`cli_path` command).
 claude mcp add omanote -- omanote-cli mcp     # MCP tools: list/search/read/create/update/append/move/trash/sync
 codex mcp add omanote -- omanote-cli mcp
 gemini mcp add -s user omanote omanote-cli mcp
-omanote-cli new --folder Lavoro "Riunione\n- [ ] slide"
+omanote-cli new --folder Work "Meeting\n- [ ] slides"
 omanote-cli search budget --json
 ```
 

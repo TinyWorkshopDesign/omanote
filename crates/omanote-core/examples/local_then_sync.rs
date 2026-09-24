@@ -23,11 +23,11 @@ async fn main() -> omanote_core::Result<()> {
     // 1. Local mode: no server at all.
     let (root, note) = {
         let db = store.lock().unwrap();
-        let root = db.create_folder("Locale Omanote", "")?;
-        let sub = db.create_folder("Idee", &root.id)?;
-        db.create_note(&root.id, "Nota offline\nscritta senza server\nx = 21\nx * 2")?;
-        let note = db.create_note(&sub.id, "list: Da fare\n- [ ] collegare Joplin")?;
-        println!("locale: {} elementi da caricare", db.dirty_items()?.len());
+        let root = db.create_folder("Omanote Local", "")?;
+        let sub = db.create_folder("Ideas", &root.id)?;
+        db.create_note(&root.id, "Offline note\nwritten without a server\nx = 21\nx * 2")?;
+        let note = db.create_note(&sub.id, "list: To do\n- [ ] connect Joplin")?;
+        println!("local: {} items to upload", db.dirty_items()?.len());
         (root, note)
     };
 
@@ -50,6 +50,6 @@ async fn main() -> omanote_core::Result<()> {
     assert_eq!(db.dirty_items()?.len(), 0, "everything uploaded");
     assert!(db.note(&note.id)?.is_some(), "local note kept");
     assert!(report.uploaded >= 4, "folders and notes uploaded");
-    println!("ok: root {} e note locali caricate sul server", root.id);
+    println!("ok: root {} and local notes uploaded to the server", root.id);
     Ok(())
 }
