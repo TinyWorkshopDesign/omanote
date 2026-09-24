@@ -11,17 +11,6 @@
         "app"
       ],
       "port": 1420
-    },
-    {
-      "name": "omanote-ui-clone",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--prefix",
-        "../omanote/app"
-      ],
-      "port": 1420
     }
   ]
 }
