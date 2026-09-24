@@ -90,9 +90,9 @@
     <h1>Omanote</h1>
     {#if step === "login"}
       <p class="sub">{t("app.tagline")}</p>
-      <label>{t("setup.server")}<input bind:value={serverUrl} placeholder="https://joplin.example.com" autocomplete="off" /></label>
-      <label>{t("setup.email")}<input bind:value={email} placeholder="io@example.com" autocomplete="off" /></label>
-      <label>{t("setup.password")}<input type="password" bind:value={password} /></label>
+      <label>{t("setup.server")}<input type="url" inputmode="url" bind:value={serverUrl} placeholder="https://joplin.example.com" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
+      <label>{t("setup.email")}<input type="email" inputmode="email" bind:value={email} placeholder="you@example.com" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
+      <label>{t("setup.password")}<input type="password" bind:value={password} autocomplete="current-password" /></label>
       {#if needsMaster}
         <label>{t("setup.master")}<input type="password" bind:value={master} /></label>
       {/if}

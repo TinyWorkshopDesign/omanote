@@ -49,6 +49,9 @@
     ],
     "macOS": {
       "signingIdentity": "-"
+    },
+    "iOS": {
+      "minimumSystemVersion": "16.0"
     }
   }
 }
