@@ -112,8 +112,9 @@ its history. Do not name other note apps as models or references (code, docs, co
   (the `/usr/local/bin/docker` link is dangling) and the Joplin CLI lived in a temporary
   folder: reinstall both (`npm i joplin` in a scratch dir) before rerunning the examples.
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
-- Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (private for now, to be made
-  public), branch `main`. Share code between machines with git, never through Syncthing:
+- Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (**public** since 2026-09-24, MIT;
+  `omanote-archive` is the old private repo with pre-cleanup history, do not push to it),
+  branch `main`. Share code between machines with git, never through Syncthing:
   `.git` is excluded from Syncthing on the dev Mac.
 - The repo lives in a **Syncthing** folder (`~/Sync/...`) shared with another device.
   Syncthing may drop `*.sync-conflict-*` copies next to sources: SvelteKit fails with
