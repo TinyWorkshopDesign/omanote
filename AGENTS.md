@@ -46,7 +46,9 @@ its history. Do not name other note apps as models or references (code, docs, co
   and rerunning it; `--check` verifies the tree without writing. `tools/gen-icons.py`
   composes the app icon and the tray from the same font's "pencil" glyph on the Omarchy
   logo grid, terminal green `#2bff88` → `npx tauri icon
-  ../design/icon.png` from `app/`; `design/tray.svg` → `app/src-tauri/icons/tray.png`
+  ../design/icon.png --ios-color '#040706'` from `app/` (it also writes the iOS icons into
+  `gen/apple/Assets.xcassets`; iOS icons must be opaque, so flatten any leftover alpha onto
+  `#040706` — the tile's darkest tone — and the iOS icon looks like the macOS one); `design/tray.svg` → `app/src-tauri/icons/tray.png`
   (macOS template image). Render SVGs with `rsvg-convert`. The bar plugin draws the same
   glyph in QML (`omarchy-plugin/PencilIcon.qml`, through `OpticalGlyph`).
 - `omanote-cli` + MCP server tested on real synced data.
