@@ -98,7 +98,10 @@ its history. Do not name other note apps as models or references (code, docs, co
   exercised by taps, not signed for devices. Build: `cd app && LANG=en_US.UTF-8 npx tauri ios
   build --debug --target aarch64-sim` (needs `rustup target add aarch64-apple-ios
   aarch64-apple-ios-sim`, Homebrew `cocoapods`; xcodegen and libimobiledevice are installed by
-  Tauri). After editing `project.yml` run `xcodegen generate` in `gen/apple`.
+  Tauri). After editing `project.yml` run `xcodegen generate` in `gen/apple`. Device builds:
+  pass the Apple team only as `APPLE_DEVELOPMENT_TEAM=<id>` (`--target aarch64`, then
+  `xcrun devicectl device install app`); Tauri writes it into `project.pbxproj` as
+  `DEVELOPMENT_TEAM`: **never commit that** (personal team id), restore the file after building.
 - Android: project not initialised; the Android SDK is not installed on the dev Mac.
 
 **Known gaps / next steps**
