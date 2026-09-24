@@ -21,7 +21,7 @@ end-to-end encryption. Joplin and Omanote live side by side on the same account.
 - Folder tree panel (notebook → folders → notes): expandable branches, current note
   highlighted, per-folder actions, drag and drop, cut / copy / paste, and a **Trash** with
   restore, delete permanently and empty.
-- Keywords on the first line (also translated, e.g. `lista`, `somma`, `media`):
+- Keywords on the first line (also translated):
   - `list` / `list: Title`: every line becomes a checkbox; `/x` at the end of a line ticks it;
   - `math`: results show even without `=`;
   - `sum`, `avg`: sum or average of all the numbers in the note;
