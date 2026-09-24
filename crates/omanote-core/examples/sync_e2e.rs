@@ -1,7 +1,7 @@
 //! End-to-end check against a real Joplin Server.
 //!
 //! OMANOTE_URL=… OMANOTE_EMAIL=… OMANOTE_PASSWORD=… OMANOTE_MASTER=… OMANOTE_DB=…
-//! cargo run --example sync_e2e -- [write] [edit <titolo> <testo>] [list]
+//! cargo run --example sync_e2e -- [write] [edit <title> <text>] [list]
 //!
 //! "edit" changes a note locally WITHOUT syncing, which is how the conflict
 //! path is exercised: edit the same note in Joplin, sync Joplin, then sync here.
@@ -44,9 +44,9 @@ async fn main() -> omanote_core::Result<()> {
             .notes_in(&all)?
             .into_iter()
             .find(|n| n.title == title)
-            .unwrap_or_else(|| panic!("nota {title:?} non trovata"));
+            .unwrap_or_else(|| panic!("note {title:?} not found"));
         db.update_note_text(&n.id, &text)?;
-        println!("modificata localmente (non sincronizzata): {title}");
+        println!("edited locally (not synced): {title}");
         return Ok(());
     }
 
@@ -57,7 +57,7 @@ async fn main() -> omanote_core::Result<()> {
     {
         let db = store.lock().unwrap();
         for f in db.folders()? {
-            println!("📁 {} ({} note)", f.title, f.note_count);
+            println!("📁 {} ({} notes)", f.title, f.note_count);
             for n in db.notes_in(&[f.id.clone()])? {
                 let full = db.note(&n.id)?.unwrap();
                 println!("   📝 {:?}", full.text);
@@ -66,9 +66,9 @@ async fn main() -> omanote_core::Result<()> {
         if write {
             let folders = db.folders()?;
             let test = folders.iter().find(|f| f.title == "Test").expect("Test folder");
-            let spesa = db.notes_in(&[test.id.clone()])?.into_iter().find(|n| n.title == "Spesa").unwrap();
-            db.update_note_text(&spesa.id, "Spesa\n- latte\n- pane 😀\n- uova (da Omanote)")?;
-            db.create_note(&test.id, "Nota da Omanote ✓\nscritta in Rust, cifrata E2EE")?;
+            let groceries = db.notes_in(&[test.id.clone()])?.into_iter().find(|n| n.title == "Groceries").unwrap();
+            db.update_note_text(&groceries.id, "Groceries\n- milk\n- bread 😀\n- eggs (from Omanote)")?;
+            db.create_note(&test.id, "Note from Omanote ✓\nwritten in Rust, E2EE-encrypted")?;
             db.create_folder("Omanote Inbox", "")?;
         }
     }

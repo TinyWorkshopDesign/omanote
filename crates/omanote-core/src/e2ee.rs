@@ -457,7 +457,7 @@ mod tests {
         let r = ring();
         // Put an emoji (surrogate pair) exactly across the chunk boundary.
         let mut s = "a".repeat(STRING_V1_CHUNK - 1);
-        s.push_str("😀 ciao àèì");
+        s.push_str("😀 hello àèì");
         let enc = r.encrypt_string(&s).unwrap();
         assert!(enc.starts_with("JED01000022"));
         assert_eq!(r.decrypt_string(&enc).unwrap(), s);

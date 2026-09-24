@@ -2,12 +2,12 @@
 // as an expression; lines that don't parse (plain text) are ignored.
 //
 //   2 + 3 * 4            → 14
-//   iva = 22%            → 0,22        (variables)
-//   100 € + iva          → 122 €       (x + y% adds a percentage)
-//   20% di 50            → 10
-//   caffè: 1,50 €        → 1,50 €      ("label: expr")
-//   totale               → sum of the block above (also: sum, somma, total)
-//   media                → average of the block above (also: avg, average)
+//   vat = 22%            → 0.22        (variables)
+//   100 € + vat          → 122 €       (x + y% adds a percentage)
+//   20% of 50            → 10
+//   coffee: 1.50 €       → 1.50 €      ("label: expr")
+//   total                → sum of the block above (also: sum, and the UI languages' words)
+//   avg                  → average of the block above (also: average, and translations)
 //   sqrt(16) + ans       → uses the previous result
 
 export interface LineResult {

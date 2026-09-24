@@ -38,8 +38,8 @@ async fn main() -> omanote_core::Result<()> {
             {
                 let db = store.lock().unwrap();
                 let folder = db.folders()?.into_iter().find(|f| f.title == "Test").expect("Test folder").id;
-                let id = db.add_resource(&bytes, "image/png", "schermata.png")?;
-                db.create_note(&folder, &format!("Immagine da Omanote\n![schermata.png](:/{id})"))?;
+                let id = db.add_resource(&bytes, "image/png", "screenshot.png")?;
+                db.create_note(&folder, &format!("Image from Omanote\n![screenshot.png](:/{id})"))?;
                 println!("resource {id} ({} bytes)", bytes.len());
             }
             println!("sync: {:?}", sync.sync().await?);
