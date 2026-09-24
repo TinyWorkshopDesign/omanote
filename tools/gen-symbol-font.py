@@ -122,7 +122,7 @@ def require(module: str, package: str) -> None:
     try:
         __import__(module)
     except ImportError:
-        sys.exit(f"ERRORE: manca {module}. Installa con: python3 -m pip install {package}")
+        sys.exit(f"ERROR: {module} is missing. Install it with: python3 -m pip install {package}")
 
 
 def cache_dir() -> pathlib.Path:
@@ -134,17 +134,17 @@ def fetch_font() -> bytes:
     cached = cache_dir() / f"{NERD_VERSION}" / FONT_IN_ARCHIVE
     if cached.exists():
         return cached.read_bytes()
-    print(f"scarico {TARBALL_URL}")
+    print(f"downloading {TARBALL_URL}")
     with urllib.request.urlopen(TARBALL_URL, timeout=120) as r:  # noqa: S310
         blob = r.read()
     digest = hashlib.sha256(blob).hexdigest()
     if digest != TARBALL_SHA256:
-        sys.exit(f"ERRORE: SHA-256 di {TARBALL} inatteso\n  atteso {TARBALL_SHA256}\n  visto  {digest}")
+        sys.exit(f"ERROR: unexpected SHA-256 for {TARBALL}\n  expected {TARBALL_SHA256}\n  got      {digest}")
     cached.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
         member = next((m for m in tar.getmembers() if m.name.endswith(FONT_IN_ARCHIVE)), None)
         if member is None:
-            sys.exit(f"ERRORE: {FONT_IN_ARCHIVE} non trovato in {TARBALL}")
+            sys.exit(f"ERROR: {FONT_IN_ARCHIVE} not found in {TARBALL}")
         data = tar.extractfile(member)
         assert data is not None
         cached.write_bytes(data.read())
@@ -165,7 +165,7 @@ def codepoints(font_bytes: bytes) -> dict[str, int]:
         else:
             missing.append(f"{key} ({glyph_name})")
     if missing:
-        sys.exit("ERRORE: glifi assenti nel Symbols Nerd Font:\n  " + "\n  ".join(missing))
+        sys.exit("ERROR: glyphs missing from Symbols Nerd Font:\n  " + "\n  ".join(missing))
     return out
 
 
@@ -235,21 +235,21 @@ def main() -> None:
     if args.check:
         problems = []
         if not WOFF2.exists():
-            problems.append(f"manca {WOFF2.relative_to(ROOT)}")
+            problems.append(f"missing {WOFF2.relative_to(ROOT)}")
         if not GENERATED.exists():
-            problems.append(f"manca {GENERATED.relative_to(ROOT)}")
+            problems.append(f"missing {GENERATED.relative_to(ROOT)}")
         elif GENERATED.read_text() != ts_source(points):
-            problems.append(f"{GENERATED.relative_to(ROOT)} non e' aggiornato con Nerd Fonts v{NERD_VERSION}")
+            problems.append(f"{GENERATED.relative_to(ROOT)} is out of date with Nerd Fonts v{NERD_VERSION}")
         if problems:
-            sys.exit("Controllo icone fallito:\n  " + "\n  ".join(problems))
-        print(f"icone ok: {len(set(points.values()))} glifi, woff2 {WOFF2.stat().st_size / 1024:.1f} KB")
+            sys.exit("Icon check failed:\n  " + "\n  ".join(problems))
+        print(f"icons ok: {len(set(points.values()))} glyphs, woff2 {WOFF2.stat().st_size / 1024:.1f} KB")
         return
 
     WOFF2.parent.mkdir(parents=True, exist_ok=True)
     WOFF2.write_bytes(build_woff2(font_bytes, points))
     GENERATED.write_text(ts_source(points))
-    print(f"scritto {WOFF2.relative_to(ROOT)}  ({WOFF2.stat().st_size / 1024:.1f} KB)")
-    print(f"scritto {GENERATED.relative_to(ROOT)}  ({len(set(points.values()))} glifi)")
+    print(f"wrote {WOFF2.relative_to(ROOT)}  ({WOFF2.stat().st_size / 1024:.1f} KB)")
+    print(f"wrote {GENERATED.relative_to(ROOT)}  ({len(set(points.values()))} glyphs)")
 
 
 if __name__ == "__main__":

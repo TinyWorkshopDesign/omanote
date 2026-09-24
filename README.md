@@ -135,3 +135,7 @@ The E2EE tests use vectors generated with Joplin's own JavaScript crypto code.
 ## Roadmap
 
 Tags, signed iOS and Android builds, OCR on Android, scheduled timer notifications on mobile.
+
+## License
+
+[MIT](LICENSE). Third-party material and its licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

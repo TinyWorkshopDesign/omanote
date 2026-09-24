@@ -37,13 +37,13 @@ def codepoint(key: str) -> int:
         import fontTools.ttLib  # noqa: F401
     except ImportError:
         raise SystemExit(
-            "ERRORE: manca fontTools. Installa con: python3 -m pip install fonttools"
+            "ERROR: fontTools is missing. Install it with: python3 -m pip install fonttools"
         )
 
     match = re.search(rf'"{key}": 0x([0-9a-f]+),', ICON_MAP.read_text())
     if match is None:
-        raise SystemExit(f"ERRORE: '{key}' non e' in {ICON_MAP.name}; "
-                         f"aggiungilo a ICONS in tools/gen-symbol-font.py")
+        raise SystemExit(f"ERROR: '{key}' is not in {ICON_MAP.name}; "
+                         f"add it to ICONS in tools/gen-symbol-font.py")
     return int(match.group(1), 16)
 
 
@@ -126,8 +126,8 @@ TRAY = 64
 </svg>
 ''')
 
-print(f"scritto {DESIGN / 'icon.svg'}")
-print(f"scritto {TRAY_SVG}")
-print("ora: rsvg-convert -w 1024 design/icon.svg -o design/icon.png")
-print("     cd app && PATH=/usr/bin:$PATH npx tauri icon ../design/icon.png")
-print("     rsvg-convert -w 64 design/tray.svg -o app/src-tauri/icons/tray.png")
+print(f"wrote {DESIGN / 'icon.svg'}")
+print(f"wrote {TRAY_SVG}")
+print("next: rsvg-convert -w 1024 design/icon.svg -o design/icon.png")
+print("      cd app && PATH=/usr/bin:$PATH npx tauri icon ../design/icon.png")
+print("      rsvg-convert -w 64 design/tray.svg -o app/src-tauri/icons/tray.png")
