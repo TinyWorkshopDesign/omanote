@@ -76,5 +76,5 @@ jobs:
             On Omarchy, bind `omanote --toggle` in Hyprland and install the bar plugin from
             `omarchy-plugin/` (see the README).
           releaseDraft: true
-          prerelease: true
+          prerelease: false
           args: ${{ matrix.args }}
