@@ -96,8 +96,11 @@ its history. Do not name other note apps as models or references (code, docs, co
 - iOS/iPadOS: project initialised and committed in `app/src-tauri/gen/apple` (iPhone + iPad,
   all iPad orientations, minimum iOS 16 in `tauri.conf.json` *and* `gen/apple/project.yml` +
   `Podfile`: `tauri ios init` does not rewrite an existing project, Xcode 27 rejects the
-  default 14.0). Builds and starts in the iPad simulator (first-run screen OK). Not yet
-  exercised by taps, not signed for devices. Build: `cd app && LANG=en_US.UTF-8 npx tauri ios
+  default 14.0). `project.yml` declares `UIApplicationSceneManifest` with multiple scenes:
+  iOS 27 kills apps without the scene lifecycle at launch (`EXC_BREAKPOINT` in
+  `_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`, seen only on a real
+  device), and tao attaches its window to a scene only when that key is set. Runs in the iPad
+  simulator and on a real iPhone (iOS 27.2); crash reports: `idevicecrashreport -k -e <dir>`. Build: `cd app && LANG=en_US.UTF-8 npx tauri ios
   build --debug --target aarch64-sim` (needs `rustup target add aarch64-apple-ios
   aarch64-apple-ios-sim`, Homebrew `cocoapods`; xcodegen and libimobiledevice are installed by
   Tauri). After editing `project.yml` run `xcodegen generate` in `gen/apple`. Device builds:

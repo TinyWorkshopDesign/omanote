@@ -41,6 +41,10 @@ targets:
       properties:
         LSRequiresIPhoneOS: true
         UILaunchStoryboardName: LaunchScreen
+        # iOS 27 terminates apps that do not adopt the scene lifecycle; tao attaches its
+        # window to a scene only when this manifest enables multiple scenes.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
         UIRequiredDeviceCapabilities: [arm64, metal]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
