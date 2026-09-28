@@ -1021,6 +1021,27 @@ fn spawn_debug_eval(app: AppHandle) {
     });
 }
 
+/// The ECB reference rates for the calculator, EUR based: the table cached next
+/// to the database, downloaded at most once a day. `error` says why a stale
+/// table is being used (offline, server down); the UI keeps working with it, and
+/// with the "1 € = 1.08 $" lines a note can declare.
+#[tauri::command]
+async fn fx_rates(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let dir = state.dir.clone();
+    let (table, error) = omanote_core::fx::rates(&dir, now_ms() / 1000).await;
+    let (date, fetched_at, rates) = match table {
+        Some(t) => (t.date, t.fetched_at, t.rates),
+        None => (String::new(), 0, Default::default()),
+    };
+    Ok(serde_json::json!({
+        "base": "EUR",
+        "date": date,
+        "fetched_at": fetched_at,
+        "rates": rates,
+        "error": error,
+    }))
+}
+
 /// The palette Omanote should use: `Some` only on Omarchy systems.
 #[tauri::command]
 fn get_system_theme() -> Option<theme::OmarchyTheme> {
@@ -1157,6 +1178,7 @@ pub fn run() {
             resource_path,
             capture_text,
             toggle_pin,
+            fx_rates,
             hide_window,
             set_window_controls,
             #[cfg(debug_assertions)]

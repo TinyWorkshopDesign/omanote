@@ -93,6 +93,18 @@ export interface SyncEvent {
   report: SyncReport | null;
 }
 
+export interface FxTable {
+  /** The currency the rates are quoted against: always EUR. */
+  base: string;
+  /** Publication date on the ECB side (YYYY-MM-DD), empty when there is none. */
+  date: string;
+  /** When the table was downloaded (unix seconds); 0 when there is none. */
+  fetched_at: number;
+  rates: Record<string, number>;
+  /** Why a stale table is being used (offline); null when it is current. */
+  error: string | null;
+}
+
 export const api = {
   status: () => invoke<Status>("get_status"),
   setup: (server_url: string, email: string, password: string, master_password?: string) =>
@@ -147,6 +159,8 @@ export const api = {
     return path && inTauri ? convertFileSrc(path) : path;
   },
   captureText: () => invoke<string | null>("capture_text"),
+  /** Exchange rates for the calculator (ECB), cached: at most one request a day. */
+  fxRates: () => invoke<FxTable>("fx_rates"),
   // window
   togglePin: () => invoke<boolean>("toggle_pin"),
   hideWindow: () => invoke<void>("hide_window"),

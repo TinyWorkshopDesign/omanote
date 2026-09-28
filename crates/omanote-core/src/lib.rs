@@ -6,6 +6,7 @@ pub mod item;
 
 pub use error::{Error, Result};
 pub mod api;
+pub mod fx;
 pub mod store;
 pub mod sync;
 pub mod config;

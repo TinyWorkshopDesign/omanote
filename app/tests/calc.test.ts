@@ -1,8 +1,8 @@
-import { countIn, detectMode, evaluate, formatResult, numbersIn } from "../src/lib/calc.ts";
+import { buildRates, countIn, detectMode, evaluate, formatResult, numbersIn, type FxRates } from "../src/lib/calc.ts";
 import assert from "node:assert/strict";
 
-const show = (text: string, auto = false, locale = "en-US") =>
-  evaluate(text, auto).map((r) => (r && r.show ? formatResult(r, locale) : null));
+const show = (text: string, auto = false, locale = "en-US", fx?: FxRates) =>
+  evaluate(text, auto, fx).map((r) => (r && r.show ? formatResult(r, locale) : null));
 
 // Plain notes: a result shows only on lines ending with "=".
 const cases: [string, (string | null)[]][] = [
@@ -38,6 +38,12 @@ const cases: [string, (string | null)[]][] = [
   ["avg\n4\n6\navg =", [null, null, null, "5"]],
   ["10 €\n5 €\ntotal\ntotal * 2 =", [null, null, null, "30.00 €"]],
   ["// 2 + 2 =\n3 + 3 =", [null, "6"]],
+  // A word that only looks like a conversion stays text.
+  ["2 in 3", [null]],
+  // Two currencies cannot be added: no result (not a silent wrong one).
+  ["10 € + 5 $ =", [null]],
+  ["10 € + 5 =", ["15.00 €"]],
+  ["10 € - 5 $ =", [null]],
 ];
 
 // Other UI languages: translated keywords ("totale", "somma", "media", "di", "summe",
@@ -67,6 +73,28 @@ const auto: [string, (string | null)[]][] = [
 for (const [input, expected] of cases) assert.deepEqual(show(input), expected, input);
 for (const [input, expected] of localized) assert.deepEqual(show(input, false, "it-IT"), expected, `it: ${input}`);
 for (const [input, expected] of auto) assert.deepEqual(show(input, true), expected, `auto: ${input}`);
+
+// Currency conversion: the rate table the app gets from the ECB (EUR based) and
+// the "1 € = 1.08 $" line, which overrides it for one note only.
+const fx = buildRates({ USD: 1.08, GBP: 0.85, JPY: 170 });
+const conversions: [string, (string | null)[], string, FxRates | undefined][] = [
+  ["100 € in $ =", ["108.00 $"], "en-US", fx],
+  ["100 € to usd =", ["108.00 $"], "en-US", fx],
+  ["100 $ in € =", ["92.59 €"], "en-US", fx],
+  ["100 € in ¥ =", ["17,000.00 ¥"], "en-US", fx],
+  ["100 € in chf =", [null], "en-US", fx], // not in the table: no result
+  ["100 in $ =", [null], "en-US", fx], // nothing to convert
+  ["rate = 0\n100 € in $ =", [null, "108.00 $"], "en-US", fx], // "0" is not a rate line
+  ["1 € = 1.08 $\n100 € in $ =", [null, "108,00 $"], "it-IT", undefined],
+  ["1 € = 1.08 $\n50 € in $ =", [null, "54,00 $"], "it-IT", fx], // the note wins
+  ["1 ₿ = 60000 €\n0.5 ₿ in € =", [null, "30,000.00 €"], "en-US", undefined],
+  ["1 € = 1.08 $\n100 $ in € =", [null, "92,59 €"], "it-IT", undefined],
+];
+for (const [input, expected, locale, table] of conversions) {
+  assert.deepEqual(show(input, false, locale, table), expected, `fx: ${input}`);
+}
+// In a "math" note the declared rate shows too.
+assert.deepEqual(show("math\n1 € = 1.08 $\n100 € in $", true, "en-US"), [null, "1.08 $", "108.00 $"]);
 assert.deepEqual(show("coffee: 1,20 €\nlunch: 12 €\nsomma", true, "it-IT"), ["1,20 €", "12,00 €", "13,20 €"]);
 
 assert.deepEqual(detectMode("list: Groceries"), { mode: "list", title: "Groceries" });
