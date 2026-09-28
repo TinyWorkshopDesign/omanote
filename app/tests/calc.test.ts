@@ -95,6 +95,25 @@ for (const [input, expected, locale, table] of conversions) {
 }
 // In a "math" note the declared rate shows too.
 assert.deepEqual(show("math\n1 € = 1.08 $\n100 € in $", true, "en-US"), [null, "1.08 $", "108.00 $"]);
+
+// A currency may be written as a code or as a word, on either side.
+const live = buildRates({ USD: 1.1403, GBP: 0.86045, CHF: 0.9445, JPY: 179.7 });
+const written: [string, (string | null)[]][] = [
+  ["4500$ in € =", ["3,946.33 €"]],
+  ["4500 USD in € =", ["3,946.33 €"]],
+  ["4500USD in € =", ["3,946.33 €"]],
+  ["4500 dollari in € =", ["3,946.33 €"]],
+  ["4500 dollars to EUR =", ["3,946.33 €"]],
+  ["100 euro in $ =", ["114.03 $"]],
+  ["1 € = 1.08 dollari\n100 € in dollari =", [null, "108.00 $"]],
+  ["2 USD =", ["2.00 $"]],
+  ["2 euro =", ["2.00 €"]],
+  ["2 franchi =", ["2.00 CHF"]], // no symbol: the code shows, still 2 decimals
+  ["1 CHF = 1.06 €\n2 CHF in € =", [null, "2.12 €"]], // note rate on a code-only currency
+  ["4500 USD in € =", ["3,946.33 €"]],
+  ["fan = 3\n2 cat =", [null, null]], // ordinary words are not currencies
+];
+for (const [input, expected] of written) assert.deepEqual(show(input, false, "en-US", live), expected, `written: ${input}`);
 assert.deepEqual(show("coffee: 1,20 €\nlunch: 12 €\nsomma", true, "it-IT"), ["1,20 €", "12,00 €", "13,20 €"]);
 
 assert.deepEqual(detectMode("list: Groceries"), { mode: "list", title: "Groceries" });
@@ -106,4 +125,6 @@ assert.equal(detectMode("Lista groceries").mode, "plain");
 assert.deepEqual(numbersIn("sum\n- [ ] milk 1,50\n2. bread 2\n// 100\neggs x6"), [1.5, 2, 6]);
 assert.deepEqual(countIn("count\none two\n\nsix\n// no"), { items: 2, lines: 3, words: 3, chars: 10 });
 
-console.log(`calc: ${cases.length + localized.length + auto.length + 1} cases + modes ok`);
+console.log(
+  `calc: ${cases.length + localized.length + auto.length + conversions.length + written.length + 1} cases + modes ok`,
+);
