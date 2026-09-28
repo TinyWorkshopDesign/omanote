@@ -10,6 +10,7 @@
 //   avg                  → average of the block above (also: average, and translations)
 //   sqrt(16) + ans       → uses the previous result
 //   100 € in $           → 108 $       (conversion; automatic rates, or "1 € = 1.08 $" in the note)
+//   100 USD in €         → 87,72 €     (a currency may also be written out: "100 dollari in €")
 
 export interface LineResult {
   value: number;
@@ -62,19 +63,47 @@ export function buildRates(base: Record<string, number>, baseCode = "EUR"): FxRa
   return rates;
 }
 
-/** EUR, usd, $, chf → a currency code; null when the text is not a currency. */
+/** EUR, usd, $, chf, euro → a currency code; null when the text is not a currency. */
 function currencyCode(text: string): string | null {
   const t = text.trim();
   if (SYMBOL_CODES[t]) return SYMBOL_CODES[t];
+  const word = CODE_WORDS[t.toLowerCase()];
+  if (word) return word;
   const up = t.toUpperCase();
   return /^[A-Z]{3}$/.test(up) && up !== "IN" && up !== "TO" ? up : null;
 }
 
 const currencySymbol = (code: string) => CODE_SYMBOLS[code] ?? code;
-// "1 € = 1.08 $", "1 EUR = 1.08 USD": a rate that only this note uses.
-const RATE_DECL = /^([0-9][\d.,]*)\s*(\S{1,4})\s*=\s*([0-9][\d.,]*)\s*(\S{1,4})$/;
+
+/** Codes accepted right after a number ("4500 USD in €"), so that no ordinary
+ *  three letter word in a note is ever mistaken for a currency. */
+const CURRENCY_CODES = new Set([
+  "EUR", "USD", "GBP", "JPY", "CHF", "BTC", "AUD", "BGN", "BRL", "CAD", "CNY", "CZK",
+  "DKK", "HKD", "HUF", "IDR", "ILS", "INR", "ISK", "KRW", "MXN", "MYR", "NOK", "NZD",
+  "PHP", "PLN", "RON", "SEK", "SGD", "THB", "TRY", "ZAR",
+]);
+/** Written out currencies ("4500 dollari in €", "1 € = 1.08 dollari"). */
+const CODE_WORDS: Record<string, string> = {
+  euro: "EUR", euros: "EUR",
+  dollaro: "USD", dollari: "USD", dollar: "USD", dollars: "USD",
+  sterlina: "GBP", sterline: "GBP", pound: "GBP", pounds: "GBP",
+  yen: "JPY", franco: "CHF", franchi: "CHF",
+  bitcoin: "BTC", bitcoins: "BTC",
+};
+
+/** A currency the user wrote after a number: only the known codes and names. */
+function unitCode(text: string): string | null {
+  const t = text.trim();
+  if (SYMBOL_CODES[t]) return SYMBOL_CODES[t];
+  const word = CODE_WORDS[t.toLowerCase()];
+  if (word) return word;
+  const up = t.toUpperCase();
+  return CURRENCY_CODES.has(up) ? up : null;
+}
+// "1 € = 1.08 $", "1 EUR = 1.08 USD", "1 € = 1.08 dollari": a rate this note uses.
+const RATE_DECL = /^([0-9][\d.,]*)\s*(\S{1,10})\s*=\s*([0-9][\d.,]*)\s*(\S{1,10})$/;
 // "100 € in $", "100 € to USD", "100 € -> $": a conversion.
-const CONVERT = /^(.*?)\s+(?:in|to|->|→)\s+(\S{1,4})$/i;
+const CONVERT = /^(.*?)\s+(?:in|to|->|→)\s+(\S{1,10})$/i;
 
 // Per-line keywords, in every UI language.
 const SUM_WORDS = new Set([
@@ -140,7 +169,10 @@ function tokenize(src: string): Tok[] | null {
     // stays a multiplier/suffix ("2k", "500k"), and "3x4" is a multiplication.
     if (/[0-9]/.test(c)) {
       const name = /^[0-9]+[A-Za-z_àèéìòù]{2}[A-Za-z0-9_àèéìòù]*/.exec(src.slice(i));
-      if (name) {
+      // "5axis" is a name, "4500USD" is a number with a currency: only a known
+      // currency after the digits keeps the token a number.
+      const letters = name ? /^[0-9]+([A-Za-z]+)/.exec(name[0])?.[1] ?? "" : "";
+      if (name && !unitCode(letters)) {
         out.push({ t: "id", v: name[0].toLowerCase() });
         i += name[0].length;
         continue;
@@ -168,6 +200,12 @@ function tokenize(src: string): Tok[] | null {
       else if (src[j] === "M" && !/[a-z]/i.test(src[j + 1] ?? "")) { v *= 1e6; j++; }
       if (src[j] === "%") { pct = true; j++; }
       else if (CURRENCIES.includes(src[j] ?? "")) { unit = src[j]; j++; }
+      else if (!pct) {
+        // "4500 USD" / "4500 dollari": a written currency is the unit too.
+        const after = /^ ?(\S{2,10})/.exec(src.slice(j));
+        const code = after ? unitCode(after[1]) : null;
+        if (code) { unit = currencySymbol(code); j += after![0].length; }
+      }
       out.push({ t: "num", v, pct, unit });
       i = j;
       continue;
@@ -421,7 +459,8 @@ export function evaluate(text: string, auto = false, fx?: FxRates): (LineResult 
     if (conv) {
       const to = currencyCode(conv[2]);
       const left = to ? evalExpr(conv[1], vars) : null;
-      const from = left?.val.unit ? SYMBOL_CODES[left.val.unit] : null;
+      // The unit may be a symbol ("$") or a code already ("CHF").
+      const from = left?.val.unit ? currencyCode(left.val.unit) : null;
       const rate = from && to ? rateOf(from, to) : null;
       if (left && from && to && rate) {
         const val = { v: left.val.v * rate, unit: currencySymbol(to), pct: false };
@@ -480,7 +519,8 @@ export function formatResult(r: LineResult, locale?: string): string {
     return `${p}%`;
   }
   const abs = Math.abs(r.value);
-  const money = r.unit !== "" && CURRENCIES.includes(r.unit);
+  // A currency is money whether it shows as a symbol or as a code (CHF).
+  const money = r.unit !== "" && (CURRENCIES.includes(r.unit) || CURRENCY_CODES.has(r.unit));
   const digits = money ? 2 : abs !== 0 && abs < 0.001 ? 8 : 6;
   const key = `${locale ?? ""}|${digits}|${money}`;
   let f = fmtCache.get(key);
