@@ -2,7 +2,7 @@
 // as an expression; lines that don't parse (plain text) are ignored.
 //
 //   2 + 3 * 4            → 14
-//   vat = 22%            → 0.22        (variables)
+//   vat = 22%            → 0.22        (variables; the name may start with digits: 5axis = 1100)
 //   100 € + vat          → 122 €       (x + y% adds a percentage)
 //   20% of 50            → 10
 //   coffee: 1.50 €       → 1.50 €      ("label: expr")
@@ -44,26 +44,74 @@ const FUNCS: Record<string, (...a: number[]) => number> = {
 };
 const CONSTS: Record<string, number> = { pi: Math.PI, e: Math.E };
 
+/**
+ * Both conventions are read: "1.234,56" and "1,234.56" are 1234.56. With both
+ * separators the last one is the decimal one; a repeated separator groups digits.
+ */
+function parseNumber(raw: string): number | null {
+  const dots = raw.split(".").length - 1;
+  const commas = raw.split(",").length - 1;
+  let s = raw;
+  if (dots > 0 && commas > 0) {
+    // Both separators: the last one is the decimal separator.
+    if (raw.lastIndexOf(".") > raw.lastIndexOf(",")) s = raw.split(",").join("");
+    else s = raw.split(".").join("").replace(",", ".");
+  } else if (dots > 1) {
+    s = raw.split(".").join(""); // repeated separator: digit grouping
+  } else if (commas > 1) {
+    s = raw.split(",").join("");
+  } else if (commas === 1) {
+    s = raw.replace(",", "."); // "1,50" → 1.50
+  }
+  const v = parseFloat(s);
+  return Number.isNaN(v) ? null : v;
+}
+
+/** "3x4": an x between two numbers multiplies. "12 x 4" already works. */
+function isDimensionX(src: string, i: number, prev: Tok | undefined): boolean {
+  return (
+    (src[i] === "x" || src[i] === "X") &&
+    /[0-9]/.test(src[i + 1] ?? "") &&
+    prev?.t === "num"
+  );
+}
+
 function tokenize(src: string): Tok[] | null {
   const out: Tok[] = [];
   let i = 0;
   while (i < src.length) {
     const c = src[i];
     if (c === " " || c === "\t") { i++; continue; }
+    if (isDimensionX(src, i, out[out.length - 1])) {
+      out.push({ t: "op", v: "*" });
+      i++;
+      continue;
+    }
+    // A name may start with digits ("5axis"): digits followed by at least two
+    // letters are one identifier, not a number plus a word. One trailing letter
+    // stays a multiplier/suffix ("2k", "500k"), and "3x4" is a multiplication.
+    if (/[0-9]/.test(c)) {
+      const name = /^[0-9]+[A-Za-z_àèéìòù]{2}[A-Za-z0-9_àèéìòù]*/.exec(src.slice(i));
+      if (name) {
+        out.push({ t: "id", v: name[0].toLowerCase() });
+        i += name[0].length;
+        continue;
+      }
+    }
     if (/[0-9.,]/.test(c) && (c !== "," || /[0-9]/.test(src[i + 1] ?? "") && /[0-9]/.test(src[i - 1] ?? ""))) {
       let j = i;
-      let s = "";
+      let raw = "";
       while (j < src.length) {
         const d = src[j];
-        if (/[0-9]/.test(d)) s += d;
-        else if ((d === "." || d === ",") && /[0-9]/.test(src[j + 1] ?? "")) s += ".";
+        if (/[0-9]/.test(d)) raw += d;
+        else if ((d === "." || d === ",") && /[0-9]/.test(src[j + 1] ?? "")) raw += d;
         else if (d === "_" || d === "'") { /* digit grouping */ }
         else break;
         j++;
       }
-      if (s.split(".").length > 2) return null;
-      let v = parseFloat(s);
-      if (Number.isNaN(v)) return null;
+      const parsed = parseNumber(raw);
+      if (parsed === null) return null;
+      let v = parsed;
       // suffixes: k / M, %, currency
       let pct = false;
       let unit = "";
@@ -106,6 +154,38 @@ function tokenize(src: string): Tok[] | null {
 }
 
 interface Val { v: number; unit: string; pct: boolean }
+
+/**
+ * A name may be several words ("prezzo unitario"), stored as "prezzo_unitario"
+ * and "prezzounitario": the longest run of words that is a known variable is
+ * joined into a single identifier.
+ */
+function joinWords(toks: Tok[], vars: Map<string, Val>): Tok[] {
+  const out: Tok[] = [];
+  let i = 0;
+  while (i < toks.length) {
+    const tk = toks[i];
+    if (tk.t === "id" && !vars.has(tk.v)) {
+      const words: string[] = [tk.v];
+      let found: string | null = null;
+      let end = i;
+      for (let k = i + 1; k < toks.length && toks[k].t === "id"; k++) {
+        words.push((toks[k] as { v: string }).v);
+        const spaced = words.join("_");
+        if (vars.has(spaced)) { found = spaced; end = k; }
+        else if (vars.has(words.join(""))) { found = words.join(""); end = k; }
+      }
+      if (found) {
+        out.push({ t: "id", v: found });
+        i = end + 1;
+        continue;
+      }
+    }
+    out.push(tk);
+    i++;
+  }
+  return out;
+}
 
 class Parser {
   i = 0;
@@ -213,9 +293,9 @@ function apply(op: string, a: Val, b: Val): Val {
 }
 
 function evalExpr(src: string, vars: Map<string, Val>): { val: Val; computed: boolean } | null {
-  const toks = tokenize(src);
-  if (!toks || toks.length === 0) return null;
-  const p = new Parser(toks, vars);
+  const raw = tokenize(src);
+  if (!raw || raw.length === 0) return null;
+  const p = new Parser(joinWords(raw, vars), vars);
   const val = p.parse();
   if (!val || !Number.isFinite(val.v)) return null;
   return { val, computed: p.usedOperator || val.pct };
@@ -262,8 +342,10 @@ export function evaluate(text: string, auto = false): (LineResult | null)[] {
       continue;
     }
 
-    const assign = body.match(/^([a-zA-Z_àèéìòù][\wàèéìòù ]{0,30}?)\s*=\s*(.+)$/);
-    if (assign) {
+    // "name = expr": the name may start with a digit ("5axis = 1100") but must
+    // hold at least one letter, so a plain equation never defines a variable.
+    const assign = body.match(/^([a-zA-Z_àèéìòù\d][\wàèéìòù ]{0,30}?)\s*=\s*(.+)$/);
+    if (assign && /[a-zA-Z_àèéìòù]/.test(assign[1])) {
       const r = evalExpr(assign[2], vars);
       if (r) {
         vars.set(assign[1].trim().toLowerCase().replace(/\s+/g, "_"), r.val);
