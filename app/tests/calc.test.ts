@@ -16,6 +16,15 @@ const cases: [string, (string | null)[]][] = [
   ["20% of 50 =", ["10"]],
   ["coffee: 1.20 €\nlunch: 12 €\nsum =", [null, null, "13.20 €"]],
   ["x = 10\nx * 3 =\nans + 1 =", [null, "30", "31"]],
+  // A name may start with a digit, and the k/M suffix still multiplies.
+  ["X1 = 2900\ncoolant = 700\n5axis = 1100\nX1 + coolant + 5axis =", [null, null, null, "4,700"]],
+  ["5axis = 1100\n5axis * 2 =", [null, "2,200"]],
+  ["2k + 500 =\n500k + 1 =", ["2,500", "500,001"]],
+  ["3x4=", ["12"]],
+  ["3x4 + 1,234.5 =", ["1,246.5"]],
+  // A name may be several words, with either thousands separator.
+  ["prezzo unitario = 20\nquantita = 3\nprezzo unitario * quantita =", [null, null, "60"]],
+  ["prezzo = 1,234.56 €\nprezzo * 2 =", [null, "2,469.12 €"]],
   ["sqrt(16) + 1 =", ["5"]],
   ["I have 3 cats and 2 dogs", [null]],
   ["- [ ] buy milk\n- [x] done", [null, null]],
@@ -43,6 +52,8 @@ const localized: [string, (string | null)[]][] = [
   ["1,5k + 500 =", ["2000"]],
   ["10 €\n5 €\nsumme =", [null, null, "15,00 €"]],
   ["30% von 200 =", ["60"]],
+  ["prezzo = 1.234,56 €\nprezzo * 2 =", [null, "2469,12 €"]],
+  ["prezzo totale = 20\nprezzo totale * 2 =", [null, "40"]],
 ];
 
 // "math" notes: every calculation shows, "=" not needed.
