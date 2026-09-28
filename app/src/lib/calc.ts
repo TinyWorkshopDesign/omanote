@@ -9,6 +9,7 @@
 //   total                → sum of the block above (also: sum, and the UI languages' words)
 //   avg                  → average of the block above (also: average, and translations)
 //   sqrt(16) + ans       → uses the previous result
+//   100 € in $           → 108 $       (conversion; automatic rates, or "1 € = 1.08 $" in the note)
 
 export interface LineResult {
   value: number;
@@ -28,6 +29,53 @@ type Tok =
   | { t: "," };
 
 const CURRENCIES = "€$£¥₿";
+/** The code behind every symbol the calculator knows. */
+const SYMBOL_CODES: Record<string, string> = { "€": "EUR", "$": "USD", "£": "GBP", "¥": "JPY", "₿": "BTC" };
+/** Shown for a currency: the symbol when there is one, the code otherwise (CHF). */
+const CODE_SYMBOLS: Record<string, string> = { EUR: "€", USD: "$", GBP: "£", JPY: "¥", BTC: "₿" };
+
+/** `"EUR>USD"` → rate. */
+export type FxRates = ReadonlyMap<string, number>;
+
+/**
+ * Every pair, from a table based on one currency (the automatic one comes from
+ * the ECB, EUR based): the direct rate, its inverse and the cross rates.
+ */
+export function buildRates(base: Record<string, number>, baseCode = "EUR"): FxRates {
+  const codes = Object.keys(base).map((c) => c.trim().toUpperCase()).filter((c) => c !== baseCode);
+  const of = (c: string) => (c === baseCode ? 1 : base[c] ?? base[c.toLowerCase()] ?? 0);
+  const rates = new Map<string, number>();
+  rates.set(`${baseCode}>${baseCode}`, 1);
+  for (const c of codes) {
+    const r = of(c);
+    if (!r) continue;
+    rates.set(`${baseCode}>${c}`, r);
+    rates.set(`${c}>${baseCode}`, 1 / r);
+  }
+  for (const from of codes) {
+    for (const to of codes) {
+      const rf = of(from);
+      const rt = of(to);
+      if (from !== to && rf && rt) rates.set(`${from}>${to}`, rt / rf);
+    }
+  }
+  return rates;
+}
+
+/** EUR, usd, $, chf → a currency code; null when the text is not a currency. */
+function currencyCode(text: string): string | null {
+  const t = text.trim();
+  if (SYMBOL_CODES[t]) return SYMBOL_CODES[t];
+  const up = t.toUpperCase();
+  return /^[A-Z]{3}$/.test(up) && up !== "IN" && up !== "TO" ? up : null;
+}
+
+const currencySymbol = (code: string) => CODE_SYMBOLS[code] ?? code;
+// "1 € = 1.08 $", "1 EUR = 1.08 USD": a rate that only this note uses.
+const RATE_DECL = /^([0-9][\d.,]*)\s*(\S{1,4})\s*=\s*([0-9][\d.,]*)\s*(\S{1,4})$/;
+// "100 € in $", "100 € to USD", "100 € -> $": a conversion.
+const CONVERT = /^(.*?)\s+(?:in|to|->|→)\s+(\S{1,4})$/i;
+
 // Per-line keywords, in every UI language.
 const SUM_WORDS = new Set([
   "sum", "total", "tot", "totale", "somma", "suma", "soma", "somme", "summe", "gesamt", "som", "totaal", "razem",
@@ -227,6 +275,7 @@ class Parser {
       const right = this.expr(op === "^" ? p : p + 1);
       if (!right) return null;
       left = apply(op, left, right);
+      if (!left) return null;
     }
     return left;
   }
@@ -279,7 +328,10 @@ class Parser {
   }
 }
 
-function apply(op: string, a: Val, b: Val): Val {
+function apply(op: string, a: Val, b: Val): Val | null {
+  // "10 € + 5 $" has no meaning: refuse the line instead of silently keeping
+  // the unit on the left. Same for any other combination of two currencies.
+  if (a.unit && b.unit && a.unit !== b.unit) return null;
   const unit = a.unit || b.unit;
   switch (op) {
     case "+": return { v: b.pct && !a.pct ? a.v * (1 + b.v) : a.v + b.v, unit, pct: a.pct && b.pct };
@@ -309,9 +361,14 @@ const LIST_PREFIX = /^\s*(?:[-*+•]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/;
  * Every line is computed (variables, totals), but a result is *shown* only when
  * the line ends with "=" ("2+2=", "x * 2 =", "totale ="). With `auto` (notes
  * whose first line is "math") every calculation shows.
+ * `fx` holds the exchange rates (see `buildRates`); a "1 € = 1.08 $" line
+ * overrides them for this note only.
  */
-export function evaluate(text: string, auto = false): (LineResult | null)[] {
+export function evaluate(text: string, auto = false, fx?: FxRates): (LineResult | null)[] {
   const vars = new Map<string, Val>();
+  const localRates = new Map<string, number>();
+  const rateOf = (from: string, to: string): number | null =>
+    from === to ? 1 : localRates.get(`${from}>${to}`) ?? fx?.get(`${from}>${to}`) ?? null;
   const out: (LineResult | null)[] = [];
   let block: Val[] = [];
   let last: Val | null = null;
@@ -340,6 +397,40 @@ export function evaluate(text: string, auto = false): (LineResult | null)[] {
       out.push({ value: v, unit, pct: false, show: auto || asks });
       block = [];
       continue;
+    }
+
+    // "1 € = 1.08 $" (or "1 EUR = 1.08 USD"): a rate used by this note only.
+    const decl = body.match(RATE_DECL);
+    if (decl) {
+      const amount = parseNumber(decl[1]);
+      const quoted = parseNumber(decl[3]);
+      const from = currencyCode(decl[2]);
+      const to = currencyCode(decl[4]);
+      if (amount && quoted && from && to && from !== to) {
+        const rate = quoted / amount;
+        localRates.set(`${from}>${to}`, rate);
+        localRates.set(`${to}>${from}`, 1 / rate);
+        last = { v: rate, unit: currencySymbol(to), pct: false };
+        out.push({ value: rate, unit: currencySymbol(to), pct: false, show: auto });
+        continue;
+      }
+    }
+
+    // "100 € in $ =": convert with the rates above (automatic or declared).
+    const conv = body.replace(/=\s*$/, "").trim().match(CONVERT);
+    if (conv) {
+      const to = currencyCode(conv[2]);
+      const left = to ? evalExpr(conv[1], vars) : null;
+      const from = left?.val.unit ? SYMBOL_CODES[left.val.unit] : null;
+      const rate = from && to ? rateOf(from, to) : null;
+      if (left && from && to && rate) {
+        const val = { v: left.val.v * rate, unit: currencySymbol(to), pct: false };
+        last = val;
+        block.push(val);
+        out.push({ value: val.v, unit: val.unit, pct: val.pct, show: asks || auto });
+        continue;
+      }
+      if (left && to) { out.push(null); continue; } // no rate for that pair
     }
 
     // "name = expr": the name may start with a digit ("5axis = 1100") but must

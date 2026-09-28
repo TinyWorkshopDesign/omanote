@@ -8,6 +8,7 @@
 import {
   EditorSelection,
   EditorState,
+  StateEffect,
   type ChangeSpec,
   type Extension,
   type Range,
@@ -27,7 +28,7 @@ import { defaultKeymap, history, historyKeymap, indentLess, indentMore } from "@
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
-import { countIn, detectMode, evaluate, formatResult, numbersIn, type Mode } from "./calc";
+import { countIn, detectMode, evaluate, formatResult, numbersIn, type FxRates, type Mode } from "./calc";
 import { t } from "./i18n.svelte";
 import { icons } from "./icons";
 
@@ -42,6 +43,17 @@ const CHECK_TRIGGER = "/x";
 
 function modeOf(doc: Text): Mode {
   return detectMode(doc.line(1).text).mode;
+}
+
+// Exchange rates for the calculator (`100 € in $ =`): the app loads them once
+// at startup (see `calc.buildRates`), a note can override any pair.
+let fxRates: FxRates | undefined;
+
+/** Rebuild the results after new exchange rates arrived. */
+export const ratesChanged = StateEffect.define<null>();
+
+export function setFxRates(rates: FxRates) {
+  fxRates = rates;
 }
 
 function hasMarker(text: string) {
@@ -126,7 +138,7 @@ function build(view: EditorView): Built {
   const { mode } = detectMode(first);
   // Math works in lists too; only code notes stay raw.
   // Results show after a trailing "=" (every calculation in "math" notes).
-  const results = mode === "code" ? [] : evaluate(text, mode === "math");
+  const results = mode === "code" ? [] : evaluate(text, mode === "math", fxRates);
   const deco: Range<Decoration>[] = [];
   const atomic: Range<Decoration>[] = [];
   let inFence = false;
@@ -226,7 +238,8 @@ const decorations = ViewPlugin.fromClass(
       ({ all: this.decorations, atomic: this.atomic } = build(view));
     }
     update(u: ViewUpdate) {
-      if (u.docChanged || u.viewportChanged) ({ all: this.decorations, atomic: this.atomic } = build(u.view));
+      const rates = u.transactions.some((tr) => tr.effects.some((e) => e.is(ratesChanged)));
+      if (u.docChanged || u.viewportChanged || rates) ({ all: this.decorations, atomic: this.atomic } = build(u.view));
     }
   },
   {

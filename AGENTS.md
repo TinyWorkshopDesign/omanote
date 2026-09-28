@@ -18,7 +18,11 @@ its history. Do not name other note apps as models or references (code, docs, co
   `joplin/server` in Docker with the official Joplin CLI (`crates/omanote-core/examples/sync_e2e.rs`).
 - Scratchpad behaviour: first-line keywords, lists with `/x` and `[] `, double Enter ends a
   list, inline math and variables (also in list notes, only `code` notes are raw; a result
-  shows right after a trailing "=" — "2+2=" — while "math" notes show every result), timers,
+  shows right after a trailing "=" — "2+2=" — while "math" notes show every result; variable
+  names may start with a digit and hold several words), currency conversion (`100 € in $ =`,
+  ECB rates cached in `fx-rates.json` next to the database and refreshed at most once a day;
+  a "1 € = 1.05 $" line overrides them for one note; two different currencies in one sum are
+  refused instead of silently added with the left unit), timers,
   swipe navigation, auto-deleted empty notes, keyboard shortcuts.
 - Editor rendering: `@codemirror/lang-markdown` (CommonMark + GFM) with a `HighlightStyle`
   for headings/emphasis/code/quotes, plus a live-preview plugin in `editor.ts` that hides

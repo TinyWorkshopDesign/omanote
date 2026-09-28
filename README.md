@@ -50,6 +50,10 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
   (`5axis = 1100`, `prezzo unitario = 20`), and `1.234,56` / `1,234.56` are read in either
   convention. `3x4` multiplies like `3 x 4`. `total =` / `avg =` add up the block above. In
   notes starting with `math` every result shows. Click a result to copy it.
+- **Currency conversion**: `100 € in $ =`, `100 € to USD =`. The rates are the ECB reference
+  ones (fetched once a day, cached next to the database, still working offline) and a line in
+  the note overrides them for that note only: `1 € = 1.05 $`, `1 ₿ = 60000 €`. Adding two
+  different currencies (`10 € + 5 $`) shows no result instead of a wrong one.
 - **Timers** on any line, then Enter: `timer` (stopwatch), `timer 5` / `timer 3:30`
   (countdown), `timer 9am` / `timer 21:15` (until a time), `timer 5: Pasta` (named),
   `timer 25 5` / `timer pomo` (pomodoro), `timer p` / `r` / `s` (pause, restart, stop). Timers

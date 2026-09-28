@@ -51,6 +51,15 @@ notes.push(
     created_time: Date.now() - 60_000,
     encrypted: false,
   },
+  {
+    id: "5".repeat(32),
+    parent_id: "b".repeat(32),
+    title: "Tokyo trip",
+    text: "Tokyo trip\nhotel = 240 $\nhotel in € =\n1 € = 1.05 $\n100 € in $ =\n120000 ¥ in € =",
+    updated_time: Date.now() - 30_000,
+    created_time: Date.now() - 30_000,
+    encrypted: false,
+  },
 );
 
 const images = new Map<string, string>();
@@ -102,6 +111,15 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
   switch (cmd) {
     case "get_status":
       return { ...status }; // a fresh object, like the real backend
+    case "fx_rates":
+      // Stand-in for the ECB table the app caches once a day.
+      return {
+        base: "EUR",
+        date: "2026-09-25",
+        fetched_at: Math.floor(Date.now() / 1000),
+        rates: { USD: 1.08, GBP: 0.85, CHF: 0.94, JPY: 170.2 },
+        error: null,
+      };
     case "list_folders":
       return folders;
     case "set_notes_home":

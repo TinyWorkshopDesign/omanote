@@ -16,7 +16,8 @@
     type Status,
     type TimerTick,
   } from "$lib/api";
-  import { createEditor, insertBlock, insertText } from "$lib/editor";
+  import { createEditor, insertBlock, insertText, ratesChanged, setFxRates } from "$lib/editor";
+  import { buildRates } from "$lib/calc";
   import { errText, i18n, t } from "$lib/i18n.svelte";
   import { initTheme, type ThemeState } from "$lib/theme";
   import { fitIconsToScreen, icons } from "$lib/icons";
@@ -114,6 +115,18 @@
       document.documentElement.lang = i18n.lang;
       void api.setLanguage(i18n.lang);
       await refreshStatus();
+      // Exchange rates for `100 € in $ =`: loaded in the background, cached on
+      // disk by the app (one request a day). Offline, the last table is used.
+      void (async () => {
+        try {
+          const table = await api.fxRates();
+          if (!Object.keys(table.rates ?? {}).length) return;
+          setFxRates(buildRates(table.rates, table.base || "EUR"));
+          view?.dispatch({ effects: ratesChanged.of(null) });
+        } catch {
+          /* no rates: conversions stay unavailable until a rate line is added */
+        }
+      })();
       await refresh();
       timer = await api.timerState();
       const launch = await api.takeLaunchNote();
