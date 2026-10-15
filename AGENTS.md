@@ -111,6 +111,18 @@ its history. Do not name other note apps as models or references (code, docs, co
   pass the Apple team only as `APPLE_DEVELOPMENT_TEAM=<id>` (`--target aarch64`, then
   `xcrun devicectl device install app`); Tauri writes it into `project.pbxproj` as
   `DEVELOPMENT_TEAM`: **never commit that** (personal team id), restore the file after building.
+  The device build **must** pass `--debug`: without it `tauri ios build` defaults to **release**, and
+  the release link fails on Xcode 27 / Swift 6.4 with "Undefined symbols for architecture arm64"
+  (`_register_plugin`, `_on_webview_created`, `_log_stdout`, `_init_plugin_notification`, …), because
+  the Swift static libs swift-rs generates (`libTauri.a`, `libtauri-plugin-*.a`) then carry local
+  symbols. Diagnose with `nm -arch arm64 <lib>.a | grep register_plugin`: lowercase `t` is broken
+  (release), uppercase `T` is good (debug). `--release` is not a valid flag at all. Verified device
+  flow (iPhone 16 Pro, iOS 27.2, 2026-10-15): `cd app && PATH="$HOME/.cargo/bin:/usr/bin:$PATH"
+  LANG=en_US.UTF-8 APPLE_DEVELOPMENT_TEAM=<id> npm run tauri ios build -- --debug --target aarch64`;
+  restore `project.pbxproj`; `xcrun devicectl device install app --device <udid>
+  gen/apple/build/omanote_iOS.xcarchive/Products/Applications/Omanote.app` (the iPhone must be
+  unlocked, or the install fails with the misleading "developer disk image could not be mounted");
+  `xcrun devicectl device process launch --device <udid> app.omanote` proves it starts.
 - Android: project not initialised; the Android SDK is not installed on the dev Mac.
 
 **Known gaps / next steps**
