@@ -322,8 +322,38 @@ input:focus {
   padding: 2px 7px;
 }
 
-.cm-image:hover .cm-image-remove {
+.cm-image-edit {
+  position: absolute;
+  top: 6px;
+  right: 46px;
+  background: var(--bar);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  opacity: 0;
+  padding: 2px 7px;
+}
+
+.cm-image:hover .cm-image-remove,
+.cm-image:hover .cm-image-edit {
   opacity: 1;
+}
+
+.cm-image-edit:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* A sketch opens for editing when tapped. */
+.cm-sketch {
+  cursor: pointer;
+}
+
+/* Touch screens have no hover: keep the image buttons visible. */
+@media (hover: none) {
+  .cm-image-remove,
+  .cm-image-edit {
+    opacity: 1;
+  }
 }
 
 .cm-image-remove:hover {

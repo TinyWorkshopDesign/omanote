@@ -8,7 +8,7 @@ const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 const invoke = <T>(cmd: string, args?: InvokeArgs, options?: InvokeOptions): Promise<T> =>
   inTauri
     ? tauriInvoke<T>(cmd, args, options)
-    : import("./mock").then((m) => m.mockInvoke(cmd, args as Record<string, unknown>) as Promise<T>);
+    : import("./mock").then((m) => m.mockInvoke(cmd, args as Record<string, unknown>, options) as Promise<T>);
 
 const listen = <T>(event: string, cb: (e: { payload: T }) => void): Promise<UnlistenFn> =>
   inTauri ? tauriListen<T>(event, cb) : Promise.resolve(() => {});
@@ -153,11 +153,17 @@ export const api = {
     invoke<string>("add_image", new Uint8Array(await image.arrayBuffer()), {
       headers: { "x-name": name.replace(/[^\x20-\x7e]/g, "_"), "x-mime": image.type || "image/png" },
     }),
+  /** Replaces an attachment's file, keeping its id (an edited sketch). */
+  updateImage: async (id: string, image: Blob) =>
+    invoke<void>("update_image", new Uint8Array(await image.arrayBuffer()), { headers: { "x-id": id } }),
   /** URL the webview can load for an attachment (downloaded on demand). */
   resourceSrc: async (id: string) => {
     const path = await invoke<string | null>("resource_path", { id });
     return path && inTauri ? convertFileSrc(path) : path;
   },
+  /** An attachment's bytes, never from a cache (sketches, which can be edited). */
+  resourceBlob: async (id: string, type = "image/png") =>
+    new Blob([await invoke<ArrayBuffer>("resource_bytes", { id })], { type }),
   captureText: () => invoke<string | null>("capture_text"),
   /** Exchange rates for the calculator (ECB), cached: at most one request a day. */
   fxRates: () => invoke<FxTable>("fx_rates"),

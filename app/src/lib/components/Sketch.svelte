@@ -21,17 +21,20 @@
   import { MOD, t, type Key } from "$lib/i18n.svelte";
   import { icons } from "$lib/icons";
   import { pencil, type EraserMode, type Ink, type SketchTool, type ToolState } from "$lib/pencil";
+  import { roundPoint, withSketchData, type SketchData, type StrokeData } from "$lib/sketchData";
 
   interface Props {
     /** Draw on the native PencilKit canvas (iPadOS) instead of the web one. */
     native?: boolean;
+    /** The strokes of a sketch being edited (see lib/sketchData.ts). */
+    initial?: SketchData | null;
     /** The drawing as an image; `width` is its size in CSS pixels. */
     onImage: (png: Blob, width: number) => void;
     /** The drawing rendered for OCR (dark ink on white). */
     onText: (png: Blob) => void;
     onClose: () => void;
   }
-  let { native = false, onImage, onText, onClose }: Props = $props();
+  let { native = false, initial = null, onImage, onText, onClose }: Props = $props();
 
   interface Point {
     x: number;
@@ -168,8 +171,21 @@
     void pencil.setTool({ tool, color: hex(resolve(color)), size: sizes[tool], eraser: eraserMode });
   });
 
+  /** Saved strokes as web-canvas strokes (unknown inks draw as a pen). */
+  const fromData = (list: StrokeData[]): Stroke[] =>
+    list
+      .filter((d) => d.pts?.length)
+      .map((d) => ({
+        kind: d.kind === "erase" || d.kind in INKS ? (d.kind as Stroke["kind"]) : "pen",
+        color: d.color,
+        width: d.width,
+        pen: d.pen,
+        pts: d.pts.map(([x, y, p]) => ({ x, y, p: p ?? 0.5 })),
+      }));
+
   onMount(() => {
     (document.activeElement as HTMLElement | null)?.blur?.();
+    if (initial && !native) strokes = fromData(initial.strokes);
     const ro = new ResizeObserver(resize);
     if (box) ro.observe(box);
     if (native && box) {
@@ -186,7 +202,7 @@
         }),
         pencil.onPalette((p) => openPalette(p.x, p.y)),
       ];
-      void pencil.open(box.getBoundingClientRect());
+      void pencil.open(box.getBoundingClientRect(), initial);
     }
     return () => ro.disconnect();
   });
@@ -462,8 +478,8 @@
 
   // ------------------------------------------------------------------ export
 
-  /** The drawing cropped to its strokes, as a PNG. */
-  function render(forOcr: boolean): Promise<{ png: Blob; width: number } | null> {
+  /** The drawing cropped to its strokes, as a PNG, with its strokes from the PNG's corner. */
+  function render(forOcr: boolean): Promise<{ png: Blob; width: number; data: SketchData } | null> {
     const ink = strokes.filter((s) => s.kind !== "erase");
     if (!ink.length) return Promise.resolve(null);
     let x0 = Infinity;
@@ -503,7 +519,21 @@
     g.fillStyle = forOcr ? "#ffffff" : css("--bg") || "#ffffff";
     g.fillRect(0, 0, out.width, out.height);
     g.drawImage(layer, 0, 0);
-    return new Promise((resolve) => out.toBlob((png) => resolve(png ? { png, width: w } : null), "image/png"));
+    const dx = pad - x0;
+    const dy = pad - y0;
+    const data: SketchData = {
+      v: 1,
+      strokes: strokes.map((s) => ({
+        kind: s.kind,
+        color: s.kind === "erase" ? "" : hex(s.color),
+        width: Math.round(s.width * 10) / 10,
+        pen: s.pen,
+        pts: s.pts.map((q) => roundPoint(q.x + dx, q.y + dy, q.p)),
+      })),
+    };
+    return new Promise((resolve) =>
+      out.toBlob((png) => resolve(png ? { png, width: w, data } : null), "image/png"),
+    );
   }
 
   async function finish(asText: boolean) {
@@ -512,8 +542,9 @@
     const r = native ? await pencil.export(asText, hex(css("--bg") || "#ffffff")) : await render(asText);
     busy = false;
     if (!r) return onClose();
-    if (asText) onText(r.png);
-    else onImage(r.png, r.width);
+    if (asText) return onText(r.png);
+    // The strokes travel inside the PNG, so the sketch can be reopened and edited.
+    onImage(await withSketchData(r.png, r.data), r.width);
   }
 
   function key(e: KeyboardEvent) {
@@ -557,9 +588,10 @@
 {/snippet}
 
 {#snippet colorButtons()}
-  {#each [...COLORS, ...recent] as c (c)}
+  {#each [...COLORS, ...recent] as c, i (c)}
     <button
       class="swatch"
+      class:extra={i >= COLORS.length + 2}
       class:on={color === c && tool !== "eraser"}
       style="--c: {c.startsWith('--') ? `var(${c})` : c}"
       aria-label={c.startsWith("--") ? c.slice(2) : c}
@@ -794,6 +826,35 @@
     flex-wrap: wrap;
     align-items: center;
     max-width: 300px;
+  }
+  /* Narrow windows (an iPad in portrait): a tighter row, "Insert" as its icon only. */
+  @media (max-width: 1000px) {
+    .tools {
+      padding-left: 4px;
+      padding-right: 4px;
+    }
+    .icon {
+      min-width: 36px;
+      padding: 4px 4px;
+    }
+    .sep {
+      margin: 12px 3px;
+    }
+    .swatch {
+      width: 26px;
+      height: 26px;
+      margin: 0 2px;
+    }
+    /* Only the two latest picks fit; all of them stay in the Pencil's palette. */
+    .tools .swatch.extra {
+      display: none;
+    }
+    .size {
+      width: 30px;
+    }
+    .done .label {
+      display: none;
+    }
   }
   /* Phones: two rows rather than an action scrolled out of sight. */
   @media (max-width: 560px) {

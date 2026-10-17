@@ -247,8 +247,10 @@ impl<'a> Synchronizer<'a> {
                 continue;
             }
 
-            if d.raw.item_type() == TYPE_RESOURCE && (d.sync_time == 0 || remote.is_none()) {
-                // New (or lost on the server) attachment: the file goes up first, like Joplin does.
+            // The file changed since the last upload (an edited sketch), as in Joplin.
+            let blob_changed = d.raw.get("blob_updated_time").parse::<i64>().unwrap_or(0) > d.sync_time;
+            if d.raw.item_type() == TYPE_RESOURCE && (d.sync_time == 0 || remote.is_none() || blob_changed) {
+                // New, changed or lost on the server: the file goes up first, like Joplin does.
                 if self.db().resource_file(&id)?.is_none() {
                     // Nothing to send: report it once instead of at every sync.
                     report.errors.push(format!("{name}: attachment file not available locally"));

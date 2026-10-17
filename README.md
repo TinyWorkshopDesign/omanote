@@ -66,8 +66,9 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
   stroke eraser, theme colours or any colour you pick (the last ones are kept), undo and redo,
   with smoothed, pressure-sensitive strokes. On iPad it is a native PencilKit canvas with the
   fountain pen (barrel roll) and the Apple Pencil's double tap and squeeze. Insert the drawing
-  as an image (a Joplin attachment), or as text read by OCR. When a pen is in use, a resting
-  palm does not draw.
+  as an image (a Joplin attachment), or as text read by OCR. Tap a drawing in a note to
+  reopen and edit it: its strokes are saved inside the image. When a pen is in use, a
+  resting palm does not draw.
 - **OCR**: "Text" puts the image's content into the note. `⌘⇧O` captures a screen region.
   Everything runs on the device: Apple Vision on macOS/iOS, tesseract on Linux (already part
   of Omarchy, honours `OMARCHY_OCR_LANGS`).

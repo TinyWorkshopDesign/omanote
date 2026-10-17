@@ -728,6 +728,28 @@ fn add_image(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Re
     state.db().add_resource(bytes, &mime, &name).map_err(err)
 }
 
+/// Replaces the file of an attachment (raw request body; `x-id` header): an edited
+/// sketch keeps its id, so the notes showing it need no change.
+#[tauri::command]
+fn update_image(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected raw image bytes".into());
+    };
+    let id = request.headers().get("x-id").and_then(|v| v.to_str().ok()).unwrap_or("");
+    state.db().update_resource(id, bytes).map_err(err)
+}
+
+/// The bytes of an attachment, downloading it if needed. Sketches are read this way
+/// (to show them and to reopen their strokes) so an edited one never comes from a
+/// web view cache.
+#[tauri::command]
+async fn resource_bytes(state: State<'_, AppState>, id: String) -> Result<tauri::ipc::Response, String> {
+    let Some(path) = resource_path(state, id).await? else {
+        return Err("RESOURCE_MISSING".into());
+    };
+    std::fs::read(path).map(tauri::ipc::Response::new).map_err(err)
+}
+
 
 /// Local path of an attachment, downloading it from Joplin Server if needed.
 #[tauri::command]
@@ -1176,7 +1198,9 @@ pub fn run() {
             timer_state,
             ocr_image,
             add_image,
+            update_image,
             resource_path,
+            resource_bytes,
             capture_text,
             toggle_pin,
             fx_rates,

@@ -16,7 +16,16 @@
     type Status,
     type TimerTick,
   } from "$lib/api";
-  import { createEditor, insertBlock, insertText, ratesChanged, setFxRates } from "$lib/editor";
+  import {
+    createEditor,
+    insertBlock,
+    insertText,
+    ratesChanged,
+    refreshImage,
+    setFxRates,
+    SKETCH_EDIT,
+    type SketchEdit,
+  } from "$lib/editor";
   import { buildRates } from "$lib/calc";
   import { errText, i18n, t } from "$lib/i18n.svelte";
   import { initTheme, type ThemeState } from "$lib/theme";
@@ -26,6 +35,7 @@
   import Palette from "$lib/components/Palette.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import Sketch from "$lib/components/Sketch.svelte";
+  import { readSketchData, type SketchData } from "$lib/sketchData";
 
   const FONT_KEY = "omanote.fontSize";
 
@@ -39,6 +49,9 @@
   let palette = $state<"search" | "move" | null>(null);
   let settings = $state(false);
   let sketch = $state(false); // handwriting / drawing canvas
+  /** The sketch being edited (its tag in the note) and its saved strokes. */
+  let sketchEditing: SketchEdit | null = null;
+  let sketchInitial = $state<SketchData | null>(null);
   let connecting = $state(false); // local mode → Joplin Server login
   let syncState = $state<"idle" | "syncing" | "error">("idle");
   let syncMsg = $state("");
@@ -112,6 +125,8 @@
   onMount(() => {
     fitIconsToScreen();
     const offs: (() => void)[] = [];
+    host?.addEventListener(SKETCH_EDIT, editSketch);
+    offs.push(() => host?.removeEventListener(SKETCH_EDIT, editSketch));
     void (async () => {
       offs.push(await initTheme((s) => (theme = s)));
       document.documentElement.lang = i18n.lang;
@@ -231,7 +246,8 @@
       onChange: scheduleSave,
       onTimer: (line) => api.timerCommand(line),
       onImages: (files) => void handleImages(files),
-      resolveImage: (id) => api.resourceSrc(id),
+      resolveImage: async (id, sketch) =>
+        sketch ? URL.createObjectURL(await api.resourceBlob(id)) : api.resourceSrc(id),
       extraKeys: noteKeys(),
     });
     if (focus) view.focus();
@@ -492,10 +508,60 @@
 
   // ------------------------------------------------------------ handwriting
 
+  /** A sketch tapped in the note reopens on the canvas with its strokes. */
+  async function editSketch(e: Event) {
+    const edit = (e as CustomEvent<SketchEdit>).detail;
+    try {
+      const data = await readSketchData(await api.resourceBlob(edit.id));
+      if (!data) return say(t("sketch.notEditable"));
+      sketchEditing = edit;
+      sketchInitial = data;
+      sketch = true;
+    } catch (err) {
+      say(errText(err));
+    }
+  }
+
+  function closeSketch() {
+    sketch = false;
+    sketchEditing = null;
+    sketchInitial = null;
+  }
+
+  /** An edited sketch keeps its attachment id: only the file and the tag's width change. */
+  async function saveEditedSketch(view: EditorView, edit: SketchEdit, png: Blob, width: number) {
+    await api.updateImage(edit.id, png);
+    const doc = view.state.doc;
+    let { from, to } = edit;
+    // The note may have changed meanwhile (a sync): find the tag again by its id.
+    if (!doc.sliceString(from, to).toLowerCase().includes(edit.id)) {
+      const m = new RegExp(`<img\\b[^>\\n]*:/${edit.id}[^>\\n]*>`, "i").exec(doc.toString());
+      if (!m) return refreshImage(view, edit.id);
+      from = m.index;
+      to = from + m[0].length;
+    }
+    const tag = doc.sliceString(from, to);
+    const next = /\bwidth=/.test(tag)
+      ? tag.replace(/\bwidth=["']?\d+["']?/, `width="${width}"`)
+      : tag.replace(/\s*\/?>$/, ` width="${width}">`);
+    if (next !== tag) view.dispatch({ changes: { from, to, insert: next } });
+    refreshImage(view, edit.id);
+  }
+
   /** A finished drawing becomes an attachment shown at the size it was drawn. */
   async function insertSketch(png: Blob, width: number) {
-    sketch = false;
+    const edit = sketchEditing;
+    closeSketch();
     if (!view) return;
+    if (edit) {
+      try {
+        await saveEditedSketch(view, edit, png, width);
+        scheduleSync();
+      } catch (e) {
+        say(errText(e));
+      }
+      return;
+    }
     try {
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
       const name = `sketch-${stamp}.png`;
@@ -509,7 +575,7 @@
 
   /** Handwriting read back as text (Apple Vision / tesseract). */
   async function sketchToText(png: Blob) {
-    sketch = false;
+    closeSketch();
     view?.focus();
     const text = await ocrBlob(png);
     if (text && view) insertText(view, text);
@@ -703,9 +769,10 @@
 {#if sketch}
   <Sketch
     native={status?.platform === "ios"}
+    initial={sketchInitial}
     onImage={insertSketch}
     onText={sketchToText}
-    onClose={() => ((sketch = false), view?.focus())}
+    onClose={() => (closeSketch(), view?.focus())}
   />
 {/if}
 

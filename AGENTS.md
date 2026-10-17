@@ -113,6 +113,23 @@ its history. Do not name other note apps as models or references (code, docs, co
     verified on an iPad Pro 11" M4 (iPadOS 27.0) with an Apple Pencil Pro, 2026-10-17;
     squeeze, double tap, barrel roll and haptics not confirmed yet. Package.swift
     needs swift-tools-version ≥ 5.7 for `.iOS(.v16)`.
+  - Editable sketches (`lib/sketchData.ts`): the strokes travel inside the PNG, in a
+    zlib-compressed iTXt chunk `omanote-sketch` (JSON `{v: 1, strokes, pencilkit?}`,
+    coordinates in CSS px from the PNG's corner), so the attachment stays a plain image
+    for Joplin. `strokes` is the common format; the iPad also stores its `PKDrawing`
+    (base64) and prefers it. Cross-engine reopening is approximate (no pixel-eraser masks
+    from PencilKit, no web pixel-eraser passes in PencilKit). Tapping a sketch (alt
+    `sketch-…`) or its pencil button sends `SKETCH_EDIT` from the editor; "Insert" then
+    replaces the **same** attachment (`update_image` → `store.update_resource`: new file,
+    `size`, `blob_updated_time`, dirty) and only fixes the tag's `width`. The sync uploads
+    a resource's file again when `blob_updated_time > sync_time` (Joplin's rule), and
+    `put_remote` drops the local file when a newer one arrives, to be fetched on demand.
+    Sketch images are read as bytes (`resource_bytes`) into blob URLs, never through the
+    asset protocol, so an edited one never comes from the web view cache (a `?v=` query
+    on the asset URL made images fail to load on iPadOS). Verified on the iPad and in
+    Chrome with mock data.
+  - Below 1000 px (iPad portrait) the toolbar tightens and shows only the 2 latest
+    picked colours; the Pencil palette shows all of them.
 - Whole-Joplin mode (`Config.whole_joplin`, Settings or first-run setup → "Tutto Joplin"): the tree root is
   Joplin's top level (`tree_root()` = "") so every notebook shows as a folder; new notes and
   notes dropped at the top level still go to `root_folder_id` (Joplin notes need a notebook).
@@ -169,8 +186,8 @@ its history. Do not name other note apps as models or references (code, docs, co
 
 **Known gaps / next steps**
 - Tags are synced but not shown.
-- Sketches are flat PNGs: reopening one to keep drawing is not possible yet (it would need
-  the strokes stored alongside, e.g. as an SVG attachment with the points embedded).
+- Sketches made before editable sketches (2026-10-17) hold no strokes and can only be
+  replaced; another client that re-encodes a sketch PNG drops its strokes too.
 - Mobile: timer notifications are not scheduled, so they do not fire while the app is
   suspended; OCR on Android missing (ML Kit plugin planned).
 - Items the sync cannot read are skipped; their errors now go to
