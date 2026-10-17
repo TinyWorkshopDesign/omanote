@@ -62,9 +62,12 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
   as **OCR text** (`T`). Images become Joplin attachments (E2EE-encrypted) and show in Joplin
   clients; images attached in Joplin show in Omanote.
 - **Handwriting and sketches**: the pencil button (`⌘⇧D`) opens a canvas for an Apple Pencil,
-  a graphics tablet, a mouse or a finger, with pressure, eraser, theme colours or any colour you pick (the last ones are kept), and undo. Insert the
-  drawing as an image (a Joplin attachment), or as text read by OCR. When a pen is in use,
-  a resting palm does not draw.
+  a graphics tablet, a mouse or a finger: ballpoint pen, pencil and highlighter, a pixel or
+  stroke eraser, theme colours or any colour you pick (the last ones are kept), undo and redo,
+  with smoothed, pressure-sensitive strokes. On iPad it is a native PencilKit canvas with the
+  fountain pen (barrel roll) and the Apple Pencil's double tap and squeeze. Insert the drawing
+  as an image (a Joplin attachment), or as text read by OCR. When a pen is in use, a resting
+  palm does not draw.
 - **OCR**: "Text" puts the image's content into the note. `⌘⇧O` captures a screen region.
   Everything runs on the device: Apple Vision on macOS/iOS, tesseract on Linux (already part
   of Omarchy, honours `OMARCHY_OCR_LANGS`).

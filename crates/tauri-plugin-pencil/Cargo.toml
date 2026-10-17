@@ -1,0 +1,15 @@
+[package]
+name = "tauri-plugin-pencil"
+version = "0.1.0"
+description = "Omanote's native sketch canvas on iPadOS (PencilKit, Apple Pencil Pro gestures)"
+authors = ["Michele Belleri"]
+edition = "2021"
+license = "MIT"
+publish = false
+links = "tauri-plugin-pencil"
+
+[dependencies]
+tauri = "2"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

@@ -82,20 +82,37 @@ its history. Do not name other note apps as models or references (code, docs, co
   `$APPDATA/resources`). Verified both ways against Joplin CLI with identical SHA-256
   (`crates/omanote-core/examples/resources_e2e.rs`). Images never go on line 1 (title).
 - Handwriting and sketches (`lib/components/Sketch.svelte`, header button and Mod-Shift-D):
-  a full-window canvas driven by Pointer Events, so one implementation serves Apple
-  Pencil, graphics tablets, mice and fingers. Pen pressure sets the segment width,
-  coalesced events keep fast strokes smooth, the eraser end of a pen (`buttons & 32`)
-  erases, and once a pen has touched the canvas fingers no longer draw (palm rejection).
-  Tools: pen, stroke eraser, 4 theme colours plus any colour from the system picker
+  one Omarchy toolbar over two engines. Tools: ballpoint pen, pencil, highlighter (and
+  fountain pen on iPadOS), a pixel eraser and a stroke eraser (tap the eraser again to
+  switch), 3 sizes per tool, 4 theme colours plus any colour from the system picker
   (`<input type="color">`; the last 4 picks are kept in localStorage `omanote.sketchColors`),
-  3 sizes, undo, clear. "Insert" stores the
-  drawing, cropped to its strokes on the theme background at up to 2x, as a PNG attachment
-  through the same `add_image` path as pasted images, written as
-  `<img src=":/id" alt="sketch-….png" width="<css px>">` so it shows at the size it was drawn
-  in every Joplin client. "Text" renders black ink on white at 2x and runs it through the
-  existing OCR (`ocr_image`). Verified in Chromium with emulated pen/mouse/touch input and
-  mock data (pressure, palm rejection, erase + undo, both exits, phone-width toolbar);
-  not yet on a real iPad or in the Tauri webviews.
+  undo/redo (Mod-Z, Mod-Shift-Z), clear, keys P/B/H/E. "Insert" stores the drawing, cropped
+  to its strokes on the theme background at up to 2x, as a PNG attachment through the same
+  `add_image` path as pasted images, written as `<img src=":/id" alt="sketch-….png"
+  width="<css px>">` so it shows at the size it was drawn in every Joplin client. "Text"
+  renders black ink on white at 2x and runs it through the existing OCR (`ocr_image`).
+  - Web engine (macOS, Linux, everything but iPadOS): Pointer Events with coalesced points;
+    strokes are drawn as filled outlines by `perfect-freehand` (input smoothing, width from
+    pen pressure or, for mice and fingers, from speed); finished strokes are cached in an
+    offscreen canvas. The pixel eraser is a stroke painted with `destination-out`; export
+    paints the strokes on a transparent layer first so it never cuts the background. The
+    eraser end of a pen (`buttons & 32`) erases; once a pen has touched the canvas, fingers
+    no longer draw (palm rejection). Verified in Chrome with emulated pen input.
+  - Native engine (iPadOS, `crates/tauri-plugin-pencil`, JS side `lib/pencil.ts`): a
+    transparent `PKCanvasView` laid over the paper area of the page; the web toolbar drives
+    it (`set_tool`, `undo`, `export`, …) and it reports `state`, `tool` and `palette` events.
+    It handles the Pencil's double tap and Apple Pencil Pro squeeze as set in the system
+    settings (switch to eraser / previous tool, or open the web contextual palette next to
+    the hovering tip, during which the canvas stops taking input), barrel roll on the
+    fountain pen, PencilKit's smoothing and palm rejection, "only draw with Apple Pencil".
+    The canvas forces `overrideUserInterfaceStyle = .light` (PencilKit would otherwise
+    remap ink colours in dark mode) and keeps its own `UndoManager`. **Coordinates**: the
+    page has no `viewport-fit=cover`, so CSS pixel 0 is below the status bar; CSS rects and
+    points go through `webview.scrollView.convert(_:to:)`, never straight into the web
+    view's coordinates (that put the canvas ~24 pt too high, over the toolbar). Drawing
+    verified on an iPad Pro 11" M4 (iPadOS 27.0) with an Apple Pencil Pro, 2026-10-17;
+    squeeze, double tap, barrel roll and haptics not confirmed yet. Package.swift
+    needs swift-tools-version ≥ 5.7 for `.iOS(.v16)`.
 - Whole-Joplin mode (`Config.whole_joplin`, Settings or first-run setup → "Tutto Joplin"): the tree root is
   Joplin's top level (`tree_root()` = "") so every notebook shows as a folder; new notes and
   notes dropped at the top level still go to `root_folder_id` (Joplin notes need a notebook).
@@ -138,15 +155,16 @@ its history. Do not name other note apps as models or references (code, docs, co
   gen/apple/build/omanote_iOS.xcarchive/Products/Applications/Omanote.app` (the iPhone must be
   unlocked, or the install fails with the misleading "developer disk image could not be mounted");
   `xcrun devicectl device process launch --device <udid> app.omanote` proves it starts.
-- iPad + Apple Pencil (needs the Mac and a real iPad; the simulator has no Pencil):
-  1. the sketch canvas in WKWebView: pressure (`pointerType "pen"`), latency, that
-     `touch-action: none` stops scrolling and the edge-swipe gestures while drawing;
-  2. **Scribble** (iPadOS turns handwriting into text in any text field) in the CodeMirror
-     `contenteditable`: plain writing, and the scratch-out / insert-space gestures, which
-     may fight CodeMirror's own input handling;
-  3. Apple Vision on handwriting through the "Text" exit (`ocr.rs`, the recognition languages).
-  If WKWebView latency is poor, a native PencilKit view behind a Tauri plugin is the
-  fallback, exporting the same PNG so notes stay unchanged.
+- iPad + Apple Pencil, still to check: **Scribble** (iPadOS turns handwriting into text in
+  any text field) in the CodeMirror `contenteditable`, including the scratch-out /
+  insert-space gestures, and Apple Vision on handwriting through the sketch "Text" exit.
+  A new device must be in the team's provisioning profile: `tauri ios build` passes only
+  `-allowProvisioningUpdates`, so register it once with `xcodebuild -project
+  gen/apple/omanote.xcodeproj -scheme omanote_iOS -destination 'id=<udid>'
+  -allowProvisioningUpdates -allowProvisioningDeviceRegistration DEVELOPMENT_TEAM=<id> build`
+  (the Rust build phase fails outside Tauri, but the profile is refreshed first), then build
+  with Tauri again. The device also needs Developer Mode (Settings → Privacy & Security; the
+  switch appears only after Xcode has seen the device).
 - Android: project not initialised; the Android SDK is not installed on the dev Mac.
 
 **Known gaps / next steps**

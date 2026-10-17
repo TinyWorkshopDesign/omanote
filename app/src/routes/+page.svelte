@@ -701,7 +701,12 @@
 {/if}
 
 {#if sketch}
-  <Sketch onImage={insertSketch} onText={sketchToText} onClose={() => ((sketch = false), view?.focus())} />
+  <Sketch
+    native={status?.platform === "ios"}
+    onImage={insertSketch}
+    onText={sketchToText}
+    onClose={() => ((sketch = false), view?.focus())}
+  />
 {/if}
 
 {#if toast}<div class="toast">{toast}</div>{/if}
