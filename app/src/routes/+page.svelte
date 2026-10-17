@@ -25,6 +25,7 @@
   import Sidebar from "$lib/components/Sidebar.svelte";
   import Palette from "$lib/components/Palette.svelte";
   import Settings from "$lib/components/Settings.svelte";
+  import Sketch from "$lib/components/Sketch.svelte";
 
   const FONT_KEY = "omanote.fontSize";
 
@@ -37,6 +38,7 @@
   let sidebar = $state(false);
   let palette = $state<"search" | "move" | null>(null);
   let settings = $state(false);
+  let sketch = $state(false); // handwriting / drawing canvas
   let connecting = $state(false); // local mode → Joplin Server login
   let syncState = $state<"idle" | "syncing" | "error">("idle");
   let syncMsg = $state("");
@@ -212,6 +214,7 @@
     { key: "Mod-w", run: () => (void api.hideWindow(), true) },
     { key: "Mod-o", run: () => (void api.hideWindow(), true) },
     { key: "Mod-Shift-o", run: () => (void captureText(), true) },
+    { key: "Mod-Shift-d", run: () => ((sketch = true), true) },
     { key: "Mod-=", run: () => ((fontSize = Math.min(24, fontSize + 1)), true) },
     { key: "Mod-+", run: () => ((fontSize = Math.min(24, fontSize + 1)), true) },
     { key: "Mod--", run: () => ((fontSize = Math.max(11, fontSize - 1)), true) },
@@ -487,6 +490,31 @@
     }
   }
 
+  // ------------------------------------------------------------ handwriting
+
+  /** A finished drawing becomes an attachment shown at the size it was drawn. */
+  async function insertSketch(png: Blob, width: number) {
+    sketch = false;
+    if (!view) return;
+    try {
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      const name = `sketch-${stamp}.png`;
+      const id = await api.addImage(new File([png], name, { type: "image/png" }), name);
+      insertBlock(view, `<img src=":/${id}" alt="${name}" width="${width}">`, t("sketch.title"));
+      scheduleSync();
+    } catch (e) {
+      say(errText(e));
+    }
+  }
+
+  /** Handwriting read back as text (Apple Vision / tesseract). */
+  async function sketchToText(png: Blob) {
+    sketch = false;
+    view?.focus();
+    const text = await ocrBlob(png);
+    if (text && view) insertText(view, text);
+  }
+
   async function captureText() {
     try {
       const text = await api.captureText();
@@ -525,6 +553,7 @@
   }
 
   function windowKey(e: KeyboardEvent) {
+    if (sketch) return; // the canvas handles its own keys
     if (imageAsk) {
       const k = e.key.toLowerCase();
       if (k === "i" || k === "enter") imageAsk("image");
@@ -590,6 +619,7 @@
       <button class="icon" class:on={pinned} title={t("act.pin")} onclick={togglePin}>{@html icons.pin}</button>
       <button class="icon" title={t("act.capture")} onclick={() => void captureText()}>{@html icons.capture}</button>
     {/if}
+    <button class="icon" title={t("act.draw")} onclick={() => (sketch = true)}>{@html icons.draw}</button>
     {#if !status?.local}<button
       class="icon dot"
       class:syncing={syncState === "syncing"}
@@ -668,6 +698,10 @@
       <button class="link" onclick={() => imageAsk?.(null)}>{t("setup.cancel")} <kbd>Esc</kbd></button>
     </div>
   </div>
+{/if}
+
+{#if sketch}
+  <Sketch onImage={insertSketch} onText={sketchToText} onClose={() => ((sketch = false), view?.focus())} />
 {/if}
 
 {#if toast}<div class="toast">{toast}</div>{/if}

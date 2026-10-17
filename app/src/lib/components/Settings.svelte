@@ -109,6 +109,7 @@
     [`${MOD} \\`, "key.folders"],
     [`${MOD} E`, "key.moveNote"],
     [`${MOD} ⇧ O`, "key.capture"],
+    [`${MOD} ⇧ D`, "key.draw"],
     [`${MOD} S`, "key.syncKey"],
   ];
 

@@ -82,4 +82,12 @@ export const icons = {
   trash: glyph("trash"),
   /** Take back out of the trash: an arrow turning back. */
   restore: glyph("restore"),
+  /** Handwriting and sketches (pen tool). */
+  draw: glyph("draw"),
+  /** Sketch eraser. */
+  eraser: glyph("eraser"),
+  /** Undo a stroke. */
+  undo: glyph("undo"),
+  /** Confirm. */
+  check: glyph("check"),
 };
