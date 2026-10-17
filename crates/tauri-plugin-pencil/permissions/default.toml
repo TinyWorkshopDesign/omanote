@@ -1,0 +1,17 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Everything the sketch canvas uses."
+permissions = [
+  "allow-open",
+  "allow-set-frame",
+  "allow-set-tool",
+  "allow-set-enabled",
+  "allow-undo",
+  "allow-redo",
+  "allow-clear",
+  "allow-export",
+  "allow-close",
+  "allow-register-listener",
+  "allow-remove-listener",
+]

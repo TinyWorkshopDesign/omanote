@@ -84,10 +84,22 @@ export const icons = {
   restore: glyph("restore"),
   /** Handwriting and sketches (pen tool). */
   draw: glyph("draw"),
-  /** Sketch eraser. */
+  /** Sketch eraser (rubs out pixels). */
   eraser: glyph("eraser"),
+  /** Sketch eraser that removes whole strokes. */
+  eraserStroke: glyph("eraserStroke"),
+  /** Sketch ink: ballpoint pen. */
+  pen: glyph("pen"),
+  /** Sketch ink: pencil. */
+  pencil: glyph("pencil"),
+  /** Sketch ink: highlighter. */
+  marker: glyph("marker"),
+  /** Sketch ink: fountain pen (follows the nib angle and barrel roll). */
+  fountainPen: glyph("fountainPen"),
   /** Undo a stroke. */
   undo: glyph("undo"),
+  /** Redo a stroke. */
+  redo: glyph("redo"),
   /** Confirm. */
   check: glyph("check"),
 };

@@ -22,6 +22,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-notification = "2"
+tauri-plugin-pencil = { path = "../../crates/tauri-plugin-pencil" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

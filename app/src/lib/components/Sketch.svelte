@@ -3,24 +3,35 @@
   // graphics tablet, a Surface pen), a mouse or a finger. The drawing goes into
   // the note as an attachment image or, through OCR, as text.
   //
-  // Strokes are kept as points in CSS pixels and redrawn on every change, so a
-  // resize or an undo never loses quality. Pens report pressure, which sets the
-  // width of each segment; mice and fingers draw at a constant width.
+  // Two engines behind one toolbar:
+  // - `native` (iPadOS): a PencilKit view laid over the paper area by
+  //   tauri-plugin-pencil (`lib/pencil.ts`). It brings what pointer events cannot:
+  //   the Pencil's double tap and squeeze (which open the palette below or switch
+  //   tools, as set in the system settings), barrel roll, haptics and Apple's inks.
+  // - the web canvas everywhere else. Strokes are kept as points in CSS pixels and
+  //   drawn as filled outlines by perfect-freehand, which steadies the input and
+  //   varies the width with pen pressure (or with speed for mice and fingers).
+  //   The pixel eraser is a stroke that cuts out what is under it.
   //
   // Palm rejection: once a pen has touched the canvas, fingers no longer draw
   // (a hand resting on an iPad would otherwise leave marks).
-  import { onMount } from "svelte";
-  import { MOD, t } from "$lib/i18n.svelte";
+  import { onDestroy, onMount } from "svelte";
+  import { getStroke } from "perfect-freehand";
+  import type { PluginListener } from "@tauri-apps/api/core";
+  import { MOD, t, type Key } from "$lib/i18n.svelte";
   import { icons } from "$lib/icons";
+  import { pencil, type EraserMode, type Ink, type SketchTool, type ToolState } from "$lib/pencil";
 
   interface Props {
+    /** Draw on the native PencilKit canvas (iPadOS) instead of the web one. */
+    native?: boolean;
     /** The drawing as an image; `width` is its size in CSS pixels. */
     onImage: (png: Blob, width: number) => void;
     /** The drawing rendered for OCR (dark ink on white). */
     onText: (png: Blob) => void;
     onClose: () => void;
   }
-  let { onImage, onText, onClose }: Props = $props();
+  let { native = false, onImage, onText, onClose }: Props = $props();
 
   interface Point {
     x: number;
@@ -29,8 +40,13 @@
     p: number;
   }
   interface Stroke {
+    /** An ink, or "erase": a pixel-eraser pass that cuts out what lies under it. */
+    kind: Ink | "erase";
     color: string;
-    size: number;
+    /** Width in CSS pixels at medium pressure. */
+    width: number;
+    /** Drawn with a pen: pressure is real, not simulated from speed. */
+    pen: boolean;
     pts: Point[];
   }
 
@@ -38,29 +54,77 @@
   const COLORS = ["--text", "--accent", "--danger", "--result"];
   const RECENT_KEY = "omanote.sketchColors";
   const RECENT_MAX = 4;
-  const SIZES = [2, 4, 8];
-  const ERASER_RADIUS = 12;
 
-  let strokes = $state.raw<Stroke[]>([]);
-  let history: Stroke[][] = [];
-  let tool = $state<"pen" | "eraser">("pen");
+  interface InkLook {
+    icon: string;
+    label: Key;
+    /** Widths for the three sizes, in CSS pixels. */
+    widths: [number, number, number];
+    /** How much pressure thins the line (perfect-freehand). */
+    thinning: number;
+    alpha: number;
+  }
+  const INKS: Record<Ink, InkLook> = {
+    pen: { icon: icons.pen, label: "sketch.ballpoint", widths: [2.5, 5, 10], thinning: 0.6, alpha: 1 },
+    pencil: { icon: icons.pencil, label: "sketch.pencil", widths: [2, 4, 8], thinning: 0.35, alpha: 0.8 },
+    marker: { icon: icons.marker, label: "sketch.marker", widths: [12, 20, 32], thinning: 0, alpha: 0.35 },
+    fountain: { icon: icons.fountainPen, label: "sketch.fountain", widths: [3, 6, 12], thinning: 0.7, alpha: 1 },
+  };
+  /** The fountain pen needs the nib angle and barrel roll: PencilKit only. */
+  const inks = $derived((Object.keys(INKS) as Ink[]).filter((k) => native || k !== "fountain"));
+  const ERASER_WIDTHS = [12, 28, 56];
+
+  let tool = $state<SketchTool>("pen");
+  let lastInk: Ink = "pen";
+  let eraserMode = $state<EraserMode>("pixel");
+  /** The size index (0..2) of each tool. */
+  let sizes = $state<Record<SketchTool, number>>({ pen: 1, pencil: 1, marker: 1, fountain: 1, eraser: 1 });
   let color = $state("--text");
   let recent = $state<string[]>(readRecent());
-  let size = $state(SIZES[1]);
   let busy = $state(false);
+  /** The contextual palette (Pencil squeeze or double tap), in CSS pixels. */
+  let palette = $state<{ x: number; y: number } | null>(null);
+
+  // Web engine.
+  let strokes = $state.raw<Stroke[]>([]);
+  let undone = $state.raw<Stroke[][]>([]);
+  let history = $state.raw<Stroke[][]>([]);
+  // Native engine: what PencilKit reports.
+  let nativeEmpty = $state(true);
+  let nativeUndo = $state(false);
+  let nativeRedo = $state(false);
+
+  const empty = $derived(native ? nativeEmpty : !strokes.some((s) => s.kind !== "erase"));
+  const canUndo = $derived(native ? nativeUndo : history.length > 0);
+  const canRedo = $derived(native ? nativeRedo : undone.length > 0);
 
   let box: HTMLElement | undefined = $state();
   let canvas: HTMLCanvasElement | undefined = $state();
   let ctx: CanvasRenderingContext2D | null = null;
+  /** The finished strokes, drawn once: a frame only adds the live stroke on top. */
+  let base: HTMLCanvasElement | null = null;
   let live: Stroke | null = null;
+  let frame = 0;
   let activePointer: number | null = null;
+  /** Stroke-eraser pass in progress (pixel erasing is a live stroke). */
   let erasing = false;
   /** A pen was used in this session: ignore fingers from now on. */
   let penSeen = false;
+  let listeners: Promise<PluginListener>[] = [];
 
   const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   /** A swatch as a colour: theme variables follow the current theme. */
   const resolve = (c: string) => (c.startsWith("--") ? css(c) : c);
+
+  /** Any CSS colour as #rrggbb (PencilKit and the colour picker take only that). */
+  function hex(c: string): string {
+    const g = document.createElement("canvas").getContext("2d");
+    if (!g) return "#808080";
+    g.fillStyle = "#808080";
+    g.fillStyle = c;
+    const v = g.fillStyle;
+    return /^#[0-9a-f]{6}$/i.test(v) ? v : "#808080";
+  }
 
   function readRecent(): string[] {
     try {
@@ -71,9 +135,15 @@
     }
   }
 
+  function choose(next: SketchTool) {
+    if (next === "eraser" && tool === "eraser") eraserMode = eraserMode === "pixel" ? "stroke" : "pixel";
+    tool = next;
+    if (next !== "eraser") lastInk = next;
+  }
+
   function pick(c: string) {
     color = c;
-    tool = "pen";
+    if (tool === "eraser") tool = lastInk;
   }
 
   /** The system colour picker: preview while choosing, remember on confirm. */
@@ -89,22 +159,51 @@
     }
   }
 
-  /** The picker starts from the current colour (it only takes #rrggbb). */
-  const pickerValue = $derived.by(() => {
-    if (!color.startsWith("--")) return color;
-    const m = /^#([0-9a-f]{6})$/i.exec(css(color));
-    return m ? `#${m[1]}` : "#808080";
+  /** The picker starts from the current colour. */
+  const pickerValue = $derived(hex(resolve(color)));
+
+  /** The native canvas follows every toolbar change. */
+  $effect(() => {
+    if (!native) return;
+    void pencil.setTool({ tool, color: hex(resolve(color)), size: sizes[tool], eraser: eraserMode });
   });
 
   onMount(() => {
     (document.activeElement as HTMLElement | null)?.blur?.();
     const ro = new ResizeObserver(resize);
     if (box) ro.observe(box);
+    if (native && box) {
+      listeners = [
+        pencil.onState((s) => {
+          nativeEmpty = s.empty;
+          nativeUndo = s.canUndo;
+          nativeRedo = s.canRedo;
+        }),
+        pencil.onTool((s: ToolState) => {
+          tool = s.tool;
+          eraserMode = s.eraser;
+          if (s.tool !== "eraser") lastInk = s.tool;
+        }),
+        pencil.onPalette((p) => openPalette(p.x, p.y)),
+      ];
+      void pencil.open(box.getBoundingClientRect());
+    }
     return () => ro.disconnect();
   });
 
+  onDestroy(() => {
+    if (!native) return;
+    void pencil.close();
+    for (const l of listeners) void l.then((x) => x.unregister());
+  });
+
   function resize() {
-    if (!canvas || !box) return;
+    if (!box) return;
+    if (native) {
+      void pencil.setFrame(box.getBoundingClientRect());
+      return;
+    }
+    if (!canvas) return;
     const dpr = window.devicePixelRatio || 1;
     const { width, height } = box.getBoundingClientRect();
     canvas.width = Math.round(width * dpr);
@@ -112,62 +211,129 @@
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
     ctx = canvas.getContext("2d");
-    ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
-    redraw();
+    base = document.createElement("canvas");
+    base.width = canvas.width;
+    base.height = canvas.height;
+    rebuild();
   }
 
-  // ------------------------------------------------------------------ drawing
+  // ------------------------------------------------------------------ palette
 
-  const widthAt = (s: Stroke, p: number) => s.size * (0.35 + 1.3 * p);
-
-  /** One segment, smoothed with the midpoints of its neighbours. */
-  function segment(g: CanvasRenderingContext2D, s: Stroke, i: number, color = s.color) {
-    const pts = s.pts;
-    const b = pts[i];
-    const a = pts[i - 1] ?? b;
-    const z = pts[i - 2] ?? a;
-    g.strokeStyle = color;
-    g.lineWidth = widthAt(s, a.p);
-    g.beginPath();
-    g.moveTo((z.x + a.x) / 2, (z.y + a.y) / 2);
-    g.quadraticCurveTo(a.x, a.y, (a.x + b.x) / 2, (a.y + b.y) / 2);
-    g.stroke();
+  function openPalette(x: number, y: number) {
+    const r = box?.getBoundingClientRect();
+    if (!r) return;
+    // Unknown position (older Pencils): near the top of the paper, centred.
+    const px = x < 0 ? r.left + r.width / 2 : x;
+    const py = y < 0 ? r.top + 80 : y;
+    palette = { x: px, y: py };
+    if (native) void pencil.setEnabled(false);
   }
 
-  function paint(g: CanvasRenderingContext2D, s: Stroke, color = s.color) {
-    g.lineCap = "round";
-    g.lineJoin = "round";
-    if (s.pts.length === 1) {
-      const p = s.pts[0];
-      g.fillStyle = color;
-      g.beginPath();
-      g.arc(p.x, p.y, widthAt(s, p.p) / 2, 0, Math.PI * 2);
-      g.fill();
-      return;
+  function closePalette() {
+    if (!palette) return;
+    palette = null;
+    if (native) void pencil.setEnabled(true);
+  }
+
+  /** The palette beside the pen tip, kept on screen. */
+  function place(node: HTMLElement, at: { x: number; y: number }) {
+    const put = (p: { x: number; y: number }) => {
+      const { width, height } = node.getBoundingClientRect();
+      const m = 8;
+      let left = p.x + 24;
+      if (left + width > window.innerWidth - m) left = p.x - 24 - width;
+      const top = Math.min(Math.max(m, p.y - height / 2), window.innerHeight - height - m);
+      node.style.left = `${Math.max(m, left)}px`;
+      node.style.top = `${top}px`;
+    };
+    put(at);
+    return { update: put };
+  }
+
+  // ------------------------------------------------------------------ drawing (web)
+
+  function outline(s: Stroke, last: boolean): Path2D {
+    const look = s.kind === "erase" ? null : INKS[s.kind];
+    const pts = getStroke(
+      s.pts.map((q) => [q.x, q.y, q.p]),
+      {
+        size: s.width,
+        thinning: look?.thinning ?? 0,
+        smoothing: 0.6,
+        streamline: 0.55,
+        // Mice and fingers: thinner when fast, like ink.
+        simulatePressure: !s.pen && (look?.thinning ?? 0) > 0,
+        last,
+      },
+    );
+    const path = new Path2D();
+    if (pts.length < 2) return path;
+    // A closed quadratic curve through the midpoints of the outline.
+    path.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 0; i < pts.length; i++) {
+      const [x0, y0] = pts[i];
+      const [x1, y1] = pts[(i + 1) % pts.length];
+      path.quadraticCurveTo(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
     }
-    for (let i = 1; i < s.pts.length; i++) segment(g, s, i, color);
-    // The smoothing stops half a segment short: finish at the last point.
-    const a = s.pts[s.pts.length - 2];
-    const b = s.pts[s.pts.length - 1];
-    g.strokeStyle = color;
-    g.lineWidth = widthAt(s, b.p);
-    g.beginPath();
-    g.moveTo((a.x + b.x) / 2, (a.y + b.y) / 2);
-    g.lineTo(b.x, b.y);
-    g.stroke();
+    path.closePath();
+    return path;
   }
 
-  function redraw() {
-    if (!ctx || !canvas) return;
-    ctx.save();
+  function paint(g: CanvasRenderingContext2D, s: Stroke, last: boolean, ink?: string) {
+    const path = outline(s, last);
+    g.save();
+    if (s.kind === "erase") {
+      g.globalCompositeOperation = "destination-out";
+      g.fillStyle = "#000";
+    } else {
+      g.globalAlpha = INKS[s.kind].alpha;
+      g.fillStyle = ink ?? s.color;
+    }
+    g.fill(path);
+    g.restore();
+  }
+
+  /** Redraws the finished strokes into the cache, then the screen. */
+  function rebuild() {
+    const g = base?.getContext("2d");
+    if (!g || !base) return;
+    const dpr = window.devicePixelRatio || 1;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, base.width, base.height);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (const s of strokes) paint(g, s, true);
+    show();
+  }
+
+  function show() {
+    if (!ctx || !canvas || !base) return;
+    const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
-    for (const s of strokes) paint(ctx, s);
-    if (live) paint(ctx, live);
+    ctx.drawImage(base, 0, 0);
+    if (live) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paint(ctx, live, false);
+    }
   }
 
-  // ------------------------------------------------------------------ input
+  function schedule() {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      show();
+    });
+  }
+
+  /** A new state of the drawing, undoable. */
+  function commit(next: Stroke[]) {
+    history = [...history, strokes];
+    undone = [];
+    strokes = next;
+    rebuild();
+  }
+
+  // ------------------------------------------------------------------ input (web)
 
   function point(e: PointerEvent): Point {
     const r = canvas!.getBoundingClientRect();
@@ -183,6 +349,7 @@
 
   function down(e: PointerEvent) {
     if (activePointer !== null || busy) return;
+    if (palette) return closePalette();
     if (e.pointerType === "pen") penSeen = true;
     else if (e.pointerType === "touch" && penSeen) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -190,14 +357,22 @@
     activePointer = e.pointerId;
     canvas!.setPointerCapture(e.pointerId);
     // The eraser end of a pen (buttons bit 32) erases whatever tool is selected.
-    erasing = tool === "eraser" || (e.buttons & 32) !== 0;
-    if (erasing) {
-      history.push(strokes);
+    const eraser = tool === "eraser" || (e.buttons & 32) !== 0;
+    const pen = e.pointerType === "pen";
+    if (eraser && eraserMode === "stroke") {
+      erasing = true;
+      history = [...history, strokes];
       eraseAt(point(e));
       return;
     }
-    live = { color: resolve(color) || "#888", size, pts: [point(e)] };
-    redraw();
+    if (eraser) {
+      live = { kind: "erase", color: "", width: ERASER_WIDTHS[sizes.eraser], pen, pts: [point(e)] };
+    } else {
+      const ink = tool === "eraser" ? lastInk : tool;
+      const width = INKS[ink].widths[sizes[ink]];
+      live = { kind: ink, color: resolve(color) || "#888", width, pen, pts: [point(e)] };
+    }
+    schedule();
   }
 
   function move(e: PointerEvent) {
@@ -207,14 +382,13 @@
       for (const p of points(e)) eraseAt(p);
       return;
     }
-    if (!live || !ctx) return;
+    if (!live) return;
     for (const p of points(e)) {
       const last = live.pts[live.pts.length - 1];
-      if (Math.hypot(p.x - last.x, p.y - last.y) < 0.6) continue;
+      if (Math.hypot(p.x - last.x, p.y - last.y) < 0.5) continue;
       live.pts.push(p);
-      ctx.lineCap = "round";
-      segment(ctx, live, live.pts.length - 1);
     }
+    schedule();
   }
 
   function up(e: PointerEvent) {
@@ -223,28 +397,31 @@
     if (erasing) {
       erasing = false;
       // Nothing was erased: drop the snapshot taken on pointerdown.
-      if (history[history.length - 1] === strokes) history.pop();
+      if (history[history.length - 1] === strokes) history = history.slice(0, -1);
+      else undone = [];
       return;
     }
     if (live) {
-      history.push(strokes);
-      strokes = [...strokes, live];
+      const done = live;
       live = null;
-      redraw();
+      commit([...strokes, done]);
     }
   }
 
+  /** Stroke eraser: removes every ink stroke the eraser touches. */
   function eraseAt(p: Point) {
+    const r = ERASER_WIDTHS[sizes.eraser] / 2;
     const hit = (s: Stroke) =>
+      s.kind !== "erase" &&
       s.pts.some((q, i) => {
-        const r = ERASER_RADIUS + widthAt(s, q.p) / 2;
-        if (i === 0) return Math.hypot(p.x - q.x, p.y - q.y) < r;
-        return distToSegment(p, s.pts[i - 1], q) < r;
+        const d = r + s.width / 2;
+        if (i === 0) return Math.hypot(p.x - q.x, p.y - q.y) < d;
+        return distToSegment(p, s.pts[i - 1], q) < d;
       });
     const kept = strokes.filter((s) => !hit(s));
     if (kept.length !== strokes.length) {
       strokes = kept;
-      redraw();
+      rebuild();
     }
   }
 
@@ -256,32 +433,46 @@
     return Math.hypot(p.x - (a.x + k * dx), p.y - (a.y + k * dy));
   }
 
+  // ------------------------------------------------------------------ actions
+
   function undo() {
-    const prev = history.pop();
+    if (native) return void pencil.undo();
+    const prev = history[history.length - 1];
     if (!prev) return;
+    history = history.slice(0, -1);
+    undone = [...undone, strokes];
     strokes = prev;
-    redraw();
+    rebuild();
+  }
+
+  function redo() {
+    if (native) return void pencil.redo();
+    const next = undone[undone.length - 1];
+    if (!next) return;
+    undone = undone.slice(0, -1);
+    history = [...history, strokes];
+    strokes = next;
+    rebuild();
   }
 
   function clear() {
-    if (!strokes.length) return;
-    history.push(strokes);
-    strokes = [];
-    redraw();
+    if (native) return void pencil.clear();
+    if (strokes.length) commit([]);
   }
 
   // ------------------------------------------------------------------ export
 
   /** The drawing cropped to its strokes, as a PNG. */
   function render(forOcr: boolean): Promise<{ png: Blob; width: number } | null> {
-    if (!strokes.length) return Promise.resolve(null);
+    const ink = strokes.filter((s) => s.kind !== "erase");
+    if (!ink.length) return Promise.resolve(null);
     let x0 = Infinity;
     let y0 = Infinity;
     let x1 = -Infinity;
     let y1 = -Infinity;
-    for (const s of strokes)
+    for (const s of ink)
       for (const q of s.pts) {
-        const w = widthAt(s, q.p) / 2;
+        const w = s.width;
         x0 = Math.min(x0, q.x - w);
         y0 = Math.min(y0, q.y - w);
         x1 = Math.max(x1, q.x + w);
@@ -292,26 +483,33 @@
     const h = Math.ceil(y1 - y0 + pad * 2);
     // Sharp on Retina screens without storing huge files.
     const scale = forOcr ? 2 : Math.min(2, Math.max(1, window.devicePixelRatio || 1));
-    const out = document.createElement("canvas");
-    out.width = Math.round(w * scale);
-    out.height = Math.round(h * scale);
+    const make = () => {
+      const c = document.createElement("canvas");
+      c.width = Math.round(w * scale);
+      c.height = Math.round(h * scale);
+      return c;
+    };
+    const out = make();
+    const layer = make();
     const g = out.getContext("2d");
-    if (!g) return Promise.resolve(null);
+    const l = layer.getContext("2d");
+    if (!g || !l) return Promise.resolve(null);
+    // The strokes on a transparent layer first, so the pixel eraser cuts the ink
+    // and not the background.
+    l.setTransform(scale, 0, 0, scale, (pad - x0) * scale, (pad - y0) * scale);
+    for (const s of strokes) paint(l, s, true, forOcr ? "#000000" : undefined);
     // An image keeps the colours on screen, on the theme background, so it reads
     // the same in any client; OCR gets dark ink on white.
     g.fillStyle = forOcr ? "#ffffff" : css("--bg") || "#ffffff";
     g.fillRect(0, 0, out.width, out.height);
-    g.setTransform(scale, 0, 0, scale, (pad - x0) * scale, (pad - y0) * scale);
-    for (const s of strokes) paint(g, s, forOcr ? "#000000" : s.color);
-    return new Promise((resolve) =>
-      out.toBlob((png) => resolve(png ? { png, width: w } : null), "image/png"),
-    );
+    g.drawImage(layer, 0, 0);
+    return new Promise((resolve) => out.toBlob((png) => resolve(png ? { png, width: w } : null), "image/png"));
   }
 
   async function finish(asText: boolean) {
     if (busy) return;
     busy = true;
-    const r = await render(asText);
+    const r = native ? await pencil.export(asText, hex(css("--bg") || "#ffffff")) : await render(asText);
     busy = false;
     if (!r) return onClose();
     if (asText) onText(r.png);
@@ -321,87 +519,116 @@
   function key(e: KeyboardEvent) {
     const mod = e.metaKey || e.ctrlKey;
     const k = e.key.toLowerCase();
-    if (k === "escape") onClose();
+    if (k === "escape") palette ? closePalette() : onClose();
+    else if (mod && k === "z" && e.shiftKey) redo();
     else if (mod && k === "z") undo();
     else if (mod && k === "enter") void finish(false);
     else if (mod || e.altKey) return;
-    else if (k === "p") tool = "pen";
-    else if (k === "e") tool = "eraser";
+    else if (k === "p") choose("pen");
+    else if (k === "b") choose("pencil");
+    else if (k === "h") choose("marker");
+    else if (k === "e") choose("eraser");
     else return;
     e.preventDefault();
     e.stopPropagation();
   }
+
+  const KEYS: Partial<Record<SketchTool, string>> = { pen: "P", pencil: "B", marker: "H", eraser: "E" };
+  const keyHint = (k: SketchTool) => (KEYS[k] ? ` (${KEYS[k]})` : "");
+  const eraserLabel = $derived(t(eraserMode === "stroke" ? "sketch.eraserStroke" : "sketch.eraser"));
+  /** The dot shown on a size button: the real width, kept within the button. */
+  const dot = (i: number) => {
+    const w = tool === "eraser" ? ERASER_WIDTHS[i] : INKS[tool].widths[i];
+    return Math.min(26, Math.max(4, w));
+  };
 </script>
 
 <svelte:window onkeydown={key} />
+
+{#snippet inkButtons()}
+  {#each inks as k (k)}
+    <button class="icon" class:on={tool === k} title={t(INKS[k].label) + keyHint(k)} onclick={() => choose(k)}
+      >{@html INKS[k].icon}</button
+    >
+  {/each}
+  <button class="icon" class:on={tool === "eraser"} title={eraserLabel + keyHint("eraser")} onclick={() => choose("eraser")}
+    >{@html eraserMode === "stroke" ? icons.eraserStroke : icons.eraser}</button
+  >
+{/snippet}
+
+{#snippet colorButtons()}
+  {#each [...COLORS, ...recent] as c (c)}
+    <button
+      class="swatch"
+      class:on={color === c && tool !== "eraser"}
+      style="--c: {c.startsWith('--') ? `var(${c})` : c}"
+      aria-label={c.startsWith("--") ? c.slice(2) : c}
+      onclick={() => pick(c)}
+    ></button>
+  {/each}
+  {#if !COLORS.includes(color) && !recent.includes(color)}
+    <button class="swatch on" style="--c: {color}" aria-label={color} onclick={() => pick(color)}></button>
+  {/if}
+  <label class="swatch custom" title={t("sketch.color")}>
+    <input type="color" value={pickerValue} oninput={(e) => picked(e, false)} onchange={(e) => picked(e, true)} />
+  </label>
+{/snippet}
+
+{#snippet sizeButtons()}
+  {#each [0, 1, 2] as i (i)}
+    <button class="size" class:on={sizes[tool] === i} aria-label={`${i + 1}`} onclick={() => (sizes[tool] = i)}
+      ><span style="--s: {dot(i)}px"></span></button
+    >
+  {/each}
+{/snippet}
 
 <div class="sketch" role="dialog" aria-label={t("sketch.title")}>
   <div class="tools">
     <button class="icon" title={`${t("setup.cancel")} (Esc)`} onclick={onClose}>{@html icons.close}</button>
     <span class="sep"></span>
-    <button class="icon" class:on={tool === "pen"} title={`${t("sketch.pen")} (P)`} onclick={() => (tool = "pen")}
-      >{@html icons.draw}</button
-    >
-    <button
-      class="icon"
-      class:on={tool === "eraser"}
-      title={`${t("sketch.eraser")} (E)`}
-      onclick={() => (tool = "eraser")}>{@html icons.eraser}</button
-    >
+    {@render inkButtons()}
     <span class="sep"></span>
-    {#each [...COLORS, ...recent] as c (c)}
-      <button
-        class="swatch"
-        class:on={color === c && tool === "pen"}
-        style="--c: {c.startsWith('--') ? `var(${c})` : c}"
-        aria-label={c.startsWith("--") ? c.slice(2) : c}
-        onclick={() => pick(c)}
-      ></button>
-    {/each}
-    {#if !COLORS.includes(color) && !recent.includes(color)}
-      <button class="swatch on" style="--c: {color}" aria-label={color} onclick={() => pick(color)}></button>
-    {/if}
-    <label class="swatch custom" title={t("sketch.color")}>
-      <input
-        type="color"
-        value={pickerValue}
-        oninput={(e) => picked(e, false)}
-        onchange={(e) => picked(e, true)}
-      />
-    </label>
+    {@render colorButtons()}
     <span class="sep"></span>
-    {#each SIZES as s (s)}
-      <button
-        class="size"
-        class:on={size === s && tool === "pen"}
-        aria-label={`${s}px`}
-        onclick={() => ((size = s), (tool = "pen"))}><span style="--s: {s + 2}px"></span></button
-      >
-    {/each}
+    {@render sizeButtons()}
     <span class="spacer"></span>
-    <button class="icon" title={`${t("sketch.undo")} (${MOD} Z)`} disabled={!strokes.length && !history.length} onclick={undo}
+    <button class="icon" title={`${t("sketch.undo")} (${MOD} Z)`} disabled={!canUndo} onclick={undo}
       >{@html icons.undo}</button
     >
-    <button class="icon" title={t("sketch.clear")} disabled={!strokes.length} onclick={clear}>{@html icons.trash}</button>
+    <button class="icon" title={`${t("sketch.redo")} (${MOD} ⇧ Z)`} disabled={!canRedo} onclick={redo}
+      >{@html icons.redo}</button
+    >
+    <button class="icon" title={t("sketch.clear")} disabled={empty} onclick={clear}>{@html icons.trash}</button>
     <span class="sep"></span>
-    <button class="icon" title={t("sketch.asText")} disabled={!strokes.length || busy} onclick={() => void finish(true)}
+    <button class="icon" title={t("sketch.asText")} disabled={empty || busy} onclick={() => void finish(true)}
       >{@html icons.ocr}</button
     >
-    <button class="done" title={t("sketch.asImage")} disabled={!strokes.length || busy} onclick={() => void finish(false)}
+    <button class="done" title={t("sketch.asImage")} disabled={empty || busy} onclick={() => void finish(false)}
       >{@html icons.check}<span class="label">{t("sketch.insert")}</span></button
     >
   </div>
   <div class="paper" bind:this={box}>
-    <canvas
-      bind:this={canvas}
-      class:erase={tool === "eraser"}
-      onpointerdown={down}
-      onpointermove={move}
-      onpointerup={up}
-      onpointercancel={up}
-    ></canvas>
-    {#if !strokes.length}<p class="hint">{t("sketch.hint")}</p>{/if}
+    {#if !native}
+      <canvas
+        bind:this={canvas}
+        class:erase={tool === "eraser"}
+        onpointerdown={down}
+        onpointermove={move}
+        onpointerup={up}
+        onpointercancel={up}
+      ></canvas>
+    {/if}
+    {#if empty}<p class="hint">{t("sketch.hint")}</p>{/if}
   </div>
+  {#if palette}
+    <!-- A tap outside closes the palette (the native canvas lets taps through meanwhile). -->
+    <div class="veil" role="presentation" onpointerdown={closePalette}></div>
+    <div class="palette" role="toolbar" aria-label={t("sketch.palette")} use:place={palette}>
+      <div class="row">{@render inkButtons()}</div>
+      <div class="row">{@render colorButtons()}</div>
+      <div class="row">{@render sizeButtons()}</div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -545,6 +772,28 @@
     text-align: center;
     color: var(--muted);
     pointer-events: none;
+  }
+  .veil {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+  }
+  .palette {
+    position: fixed;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    background: var(--bar);
+    border: 1px solid var(--line);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 0.35);
+  }
+  .palette .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    max-width: 300px;
   }
   /* Phones: two rows rather than an action scrolled out of sight. */
   @media (max-width: 560px) {

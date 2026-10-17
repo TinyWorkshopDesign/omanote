@@ -77,6 +77,11 @@ ICONS: dict[str, str] = {
     "eraser": "md-eraser",
     "undo": "md-undo",
     "check": "md-check",
+    "pen": "md-pen",
+    "marker": "md-marker",
+    "fountainPen": "md-fountain_pen_tip",
+    "redo": "md-redo",
+    "eraserStroke": "md-eraser_variant",
 }
 
 # Kept in the subset even though nothing draws them yet: the UI grows, and a
