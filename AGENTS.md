@@ -4,7 +4,7 @@ Omanote is a quick-notes scratchpad for Linux, macOS, iOS and Android that syncs
 with an unmodified **Joplin Server** and looks like **Omarchy**. Read this before
 changing code.
 
-## Project status (2026-09-22)
+## Project status (2026-10-17)
 
 Owner: Michele Belleri (writes in Italian). The repository is **English only**: code,
 comments, test data, docs and **commit messages**; Italian lives only in the UI
@@ -81,6 +81,21 @@ its history. Do not name other note apps as models or references (code, docs, co
   (`Synchronizer::fetch_resource`, served via Tauri's asset protocol scoped to
   `$APPDATA/resources`). Verified both ways against Joplin CLI with identical SHA-256
   (`crates/omanote-core/examples/resources_e2e.rs`). Images never go on line 1 (title).
+- Handwriting and sketches (`lib/components/Sketch.svelte`, header button and Mod-Shift-D):
+  a full-window canvas driven by Pointer Events, so one implementation serves Apple
+  Pencil, graphics tablets, mice and fingers. Pen pressure sets the segment width,
+  coalesced events keep fast strokes smooth, the eraser end of a pen (`buttons & 32`)
+  erases, and once a pen has touched the canvas fingers no longer draw (palm rejection).
+  Tools: pen, stroke eraser, 4 theme colours plus any colour from the system picker
+  (`<input type="color">`; the last 4 picks are kept in localStorage `omanote.sketchColors`),
+  3 sizes, undo, clear. "Insert" stores the
+  drawing, cropped to its strokes on the theme background at up to 2x, as a PNG attachment
+  through the same `add_image` path as pasted images, written as
+  `<img src=":/id" alt="sketch-….png" width="<css px>">` so it shows at the size it was drawn
+  in every Joplin client. "Text" renders black ink on white at 2x and runs it through the
+  existing OCR (`ocr_image`). Verified in Chromium with emulated pen/mouse/touch input and
+  mock data (pressure, palm rejection, erase + undo, both exits, phone-width toolbar);
+  not yet on a real iPad or in the Tauri webviews.
 - Whole-Joplin mode (`Config.whole_joplin`, Settings or first-run setup → "Tutto Joplin"): the tree root is
   Joplin's top level (`tree_root()` = "") so every notebook shows as a folder; new notes and
   notes dropped at the top level still go to `root_folder_id` (Joplin notes need a notebook).
@@ -123,10 +138,21 @@ its history. Do not name other note apps as models or references (code, docs, co
   gen/apple/build/omanote_iOS.xcarchive/Products/Applications/Omanote.app` (the iPhone must be
   unlocked, or the install fails with the misleading "developer disk image could not be mounted");
   `xcrun devicectl device process launch --device <udid> app.omanote` proves it starts.
+- iPad + Apple Pencil (needs the Mac and a real iPad; the simulator has no Pencil):
+  1. the sketch canvas in WKWebView: pressure (`pointerType "pen"`), latency, that
+     `touch-action: none` stops scrolling and the edge-swipe gestures while drawing;
+  2. **Scribble** (iPadOS turns handwriting into text in any text field) in the CodeMirror
+     `contenteditable`: plain writing, and the scratch-out / insert-space gestures, which
+     may fight CodeMirror's own input handling;
+  3. Apple Vision on handwriting through the "Text" exit (`ocr.rs`, the recognition languages).
+  If WKWebView latency is poor, a native PencilKit view behind a Tauri plugin is the
+  fallback, exporting the same PNG so notes stay unchanged.
 - Android: project not initialised; the Android SDK is not installed on the dev Mac.
 
 **Known gaps / next steps**
 - Tags are synced but not shown.
+- Sketches are flat PNGs: reopening one to keep drawing is not possible yet (it would need
+  the strokes stored alongside, e.g. as an SVG attachment with the points embedded).
 - Mobile: timer notifications are not scheduled, so they do not fire while the app is
   suspended; OCR on Android missing (ML Kit plugin planned).
 - Items the sync cannot read are skipped; their errors now go to

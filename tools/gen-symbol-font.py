@@ -73,6 +73,10 @@ ICONS: dict[str, str] = {
     "trash": "md-trash_can_outline",
     "restore": "md-backup_restore",
     "pencil": "md-pencil",
+    "draw": "md-draw",
+    "eraser": "md-eraser",
+    "undo": "md-undo",
+    "check": "md-check",
 }
 
 # Kept in the subset even though nothing draws them yet: the UI grows, and a
