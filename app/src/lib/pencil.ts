@@ -2,6 +2,7 @@
 // laid over the page, driven from the web toolbar. Elsewhere Sketch.svelte draws on
 // its own web canvas and none of this is called.
 import { addPluginListener, invoke, type PluginListener } from "@tauri-apps/api/core";
+import type { SketchData, StrokeData } from "./sketchData";
 
 export type Ink = "pen" | "pencil" | "marker" | "fountain";
 export type SketchTool = Ink | "eraser";
@@ -32,7 +33,9 @@ const frame = (r: DOMRect) => ({ x: r.left, y: r.top, width: r.width, height: r.
 const call = <T = void>(cmd: string, args?: Record<string, unknown>) => invoke<T>(`plugin:pencil|${cmd}`, args);
 
 export const pencil = {
-  open: (r: DOMRect) => call("open", frame(r)),
+  /** Shows the canvas, with the strokes of a sketch being edited. */
+  open: (r: DOMRect, initial?: SketchData | null) =>
+    call("open", { ...frame(r), drawing: initial?.pencilkit ?? null, strokes: initial?.strokes ?? null }),
   setFrame: (r: DOMRect) => call("set_frame", frame(r)),
   setTool: (t: ToolState) => call("set_tool", { ...t }),
   setEnabled: (enabled: boolean) => call("set_enabled", { enabled }),
@@ -40,12 +43,22 @@ export const pencil = {
   redo: () => call("redo"),
   clear: () => call("clear"),
   close: () => call("close"),
-  /** The drawing cropped to its strokes; null when there is nothing drawn. */
-  async export(ocr: boolean, background: string): Promise<{ png: Blob; width: number } | null> {
-    const r = await call<{ png: string | null; width: number }>("export", { ocr, background });
+  /** The drawing cropped to its strokes, and its strokes; null when there is nothing drawn. */
+  async export(
+    ocr: boolean,
+    background: string,
+  ): Promise<{ png: Blob; width: number; data: SketchData } | null> {
+    const r = await call<{ png: string | null; width: number; drawing: string; strokes: StrokeData[] }>("export", {
+      ocr,
+      background,
+    });
     if (!r?.png) return null;
     const bytes = Uint8Array.from(atob(r.png), (c) => c.charCodeAt(0));
-    return { png: new Blob([bytes], { type: "image/png" }), width: Math.ceil(r.width) };
+    return {
+      png: new Blob([bytes], { type: "image/png" }),
+      width: Math.ceil(r.width),
+      data: { v: 1, strokes: r.strokes ?? [], pencilkit: r.drawing },
+    };
   },
   onState: (cb: (s: CanvasState) => void): Promise<PluginListener> => addPluginListener("pencil", "state", cb),
   /** The Pencil changed the tool (double tap or squeeze: eraser, previous tool). */

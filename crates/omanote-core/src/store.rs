@@ -173,6 +173,24 @@ impl Store {
         Ok(id)
     }
 
+    /// Replaces the file of an attachment (an edited sketch) keeping its id, so every
+    /// note showing it shows the new picture. `blob_updated_time` tells the sync, here
+    /// and in Joplin's clients, that the file changed and has to travel again.
+    pub fn update_resource(&self, id: &str, bytes: &[u8]) -> Result<()> {
+        let (mut it, encrypted, ..) = self.raw(id)?.ok_or_else(|| Error::Sync(format!("resource {id} not found")))?;
+        if it.item_type() != TYPE_RESOURCE || encrypted {
+            return Err(Error::Sync(format!("{id} is not a readable attachment")));
+        }
+        std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
+        std::fs::write(self.blob_path(id, it.get("file_extension")), bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        let now = item::now_ms();
+        it.set("size", bytes.len().to_string());
+        it.set("blob_updated_time", now.to_string());
+        it.set_time("updated_time", now);
+        it.set_time("user_updated_time", now);
+        self.put_local(&it)
+    }
+
     /// Forgets the delta position: the next sync re-examines every item on the
     /// server and downloads what is missing or outdated (a repair tool).
     pub fn reset_delta(&self) -> Result<()> {
@@ -242,6 +260,15 @@ impl Store {
 
     /// Stores an item received from the server (clean, in sync).
     pub fn put_remote(&self, it: &RawItem, encrypted: bool) -> Result<()> {
+        if it.item_type() == TYPE_RESOURCE && !encrypted {
+            if let Some((old, false, ..)) = self.raw(it.id())? {
+                if old.get("blob_updated_time") != it.get("blob_updated_time") {
+                    // The file changed elsewhere (an edited sketch): drop the local copy,
+                    // `fetch_resource` downloads the new one when it is shown.
+                    let _ = std::fs::remove_file(self.blob_path(it.id(), old.get("file_extension")));
+                }
+            }
+        }
         self.upsert(it, encrypted, false, Some(it.time("updated_time")))
     }
 
@@ -732,6 +759,32 @@ pub fn join_text(title: &str, body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn updated_attachment_keeps_its_id_and_travels_again() {
+        let s = Store::open_in_memory().unwrap();
+        let id = s.add_resource(b"old", "image/png", "sketch.png").unwrap();
+        let (first, ..) = s.raw(&id).unwrap().unwrap();
+        s.mark_synced(&id, first.time("updated_time")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        s.update_resource(&id, b"newer").unwrap();
+        let (it, _, dirty, sync_time) = s.raw(&id).unwrap().unwrap();
+        assert!(dirty);
+        assert_eq!(it.get("size"), "5");
+        assert!(it.get("blob_updated_time").parse::<i64>().unwrap() > sync_time);
+        let path = s.resource_file(&id).unwrap().unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"newer");
+
+        // The same item coming back from the server keeps the file...
+        s.put_remote(&it, false).unwrap();
+        assert!(s.resource_file(&id).unwrap().is_some());
+        // ...a newer file made elsewhere drops it, to be downloaded again.
+        let mut remote = it.clone();
+        remote.set("blob_updated_time", (it.get("blob_updated_time").parse::<i64>().unwrap() + 1).to_string());
+        s.put_remote(&remote, false).unwrap();
+        assert!(s.resource_file(&id).unwrap().is_none());
+    }
 
     #[test]
     fn note_lifecycle() {

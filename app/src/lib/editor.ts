@@ -487,7 +487,25 @@ function continueList(view: EditorView): boolean {
 // Live preview
 // ---------------------------------------------------------------------------
 
-type ResolveImage = (id: string) => Promise<string | null>;
+/** An attachment's URL; `sketch`: an editable drawing, read fresh rather than from a cache. */
+type ResolveImage = (id: string, sketch: boolean) => Promise<string | null>;
+
+/** Event sent on the editor when a sketch is to be reopened; `from`/`to` span its tag. */
+export const SKETCH_EDIT = "omanote-sketch-edit";
+export interface SketchEdit {
+  id: string;
+  from: number;
+  to: number;
+}
+
+/** Bumped when an attachment's file changes (an edited sketch), so its picture reloads. */
+const imageVersions = new Map<string, number>();
+const imagesChanged = StateEffect.define<null>();
+
+export function refreshImage(view: EditorView, id: string) {
+  imageVersions.set(id, (imageVersions.get(id) ?? 0) + 1);
+  view.dispatch({ effects: imagesChanged.of(null) });
+}
 
 /** An attachment shown in place of `![alt](:/id)` or `<img src=":/id">`. */
 class ImageWidget extends WidgetType {
@@ -497,11 +515,14 @@ class ImageWidget extends WidgetType {
     readonly width: number,
     readonly len: number,
     readonly resolve: ResolveImage,
+    readonly version = imageVersions.get(id) ?? 0,
   ) {
     super();
   }
   eq(o: ImageWidget) {
-    return o.id === this.id && o.alt === this.alt && o.width === this.width && o.len === this.len;
+    return (
+      o.id === this.id && o.alt === this.alt && o.width === this.width && o.len === this.len && o.version === this.version
+    );
   }
   toDOM(view: EditorView) {
     const wrap = document.createElement("span");
@@ -513,16 +534,37 @@ class ImageWidget extends WidgetType {
     remove.className = "cm-image-remove";
     remove.innerHTML = icons.close;
     remove.title = this.alt;
-    remove.onmousedown = (e) => {
-      // Removes the reference only; the attachment stays in Joplin.
-      e.preventDefault();
+    /** Where the image's source text starts. */
+    const start = () => {
       const pos = view.posAtDOM(wrap);
       const doc = view.state.doc.toString();
       // Replacing widget: pos is the start; trailing widget: pos is the end.
-      const from = doc.slice(pos, pos + this.len).toLowerCase().includes(this.id) ? pos : pos - this.len;
+      return doc.slice(pos, pos + this.len).toLowerCase().includes(this.id) ? pos : pos - this.len;
+    };
+    remove.onmousedown = (e) => {
+      // Removes the reference only; the attachment stays in Joplin.
+      e.preventDefault();
+      const from = start();
       view.dispatch({ changes: { from, to: from + this.len } });
     };
     wrap.append(img, remove);
+    if (this.alt.startsWith("sketch-")) {
+      // A sketch reopens on the drawing canvas: the page listens for SKETCH_EDIT.
+      const edit = document.createElement("button");
+      edit.className = "cm-image-edit";
+      edit.innerHTML = icons.draw;
+      edit.title = t("sketch.edit");
+      const open = (e: Event) => {
+        e.preventDefault();
+        const from = start();
+        const detail: SketchEdit = { id: this.id, from, to: from + this.len };
+        view.dom.dispatchEvent(new CustomEvent(SKETCH_EDIT, { bubbles: true, detail }));
+      };
+      edit.onmousedown = open;
+      img.classList.add("cm-sketch");
+      img.onclick = open;
+      wrap.append(edit);
+    }
     const missing = () => {
       img.remove();
       const ph = document.createElement("span");
@@ -531,10 +573,14 @@ class ImageWidget extends WidgetType {
       ph.append(` ${this.alt}`);
       wrap.prepend(ph);
     };
-    this.resolve(this.id)
+    this.resolve(this.id, this.alt.startsWith("sketch-"))
       .then((src) => (src ? (img.src = src) : missing()))
       .catch(missing);
     return wrap;
+  }
+  destroy(dom: HTMLElement) {
+    const src = dom.querySelector("img")?.src;
+    if (src?.startsWith("blob:")) URL.revokeObjectURL(src);
   }
   ignoreEvent() {
     return true;
@@ -675,7 +721,15 @@ function preview(resolve: ResolveImage) {
         this.decorations = buildPreview(view, resolve, editing(view));
       }
       update(u: ViewUpdate) {
-        if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
+        const images = u.transactions.some((tr) => tr.effects.some((e) => e.is(imagesChanged)));
+        if (
+          images ||
+          u.docChanged ||
+          u.viewportChanged ||
+          u.selectionSet ||
+          u.focusChanged ||
+          syntaxTree(u.startState) !== syntaxTree(u.state)
+        ) {
           this.decorations = buildPreview(u.view, resolve, editing(u.view));
         }
       }

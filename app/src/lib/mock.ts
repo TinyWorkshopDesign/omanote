@@ -105,7 +105,11 @@ function counts() {
   for (const f of folders) f.note_count = notes.filter((n) => n.parent_id === f.id).length;
 }
 
-export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}): Promise<unknown> {
+export async function mockInvoke(
+  cmd: string,
+  args: Record<string, unknown> = {},
+  options?: { headers?: unknown },
+): Promise<unknown> {
   const a = args as Record<string, string | undefined>;
   counts();
   switch (cmd) {
@@ -249,8 +253,18 @@ export async function mockInvoke(cmd: string, args: Record<string, unknown> = {}
     }
     case "add_image_file":
       return id32();
+    case "update_image": {
+      const id = (options?.headers as Record<string, string> | undefined)?.["x-id"] ?? "";
+      images.set(id, URL.createObjectURL(new Blob([args as unknown as Uint8Array<ArrayBuffer>], { type: "image/png" })));
+      return null;
+    }
     case "resource_path":
       return images.get(a.id ?? "") ?? null;
+    case "resource_bytes": {
+      const url = images.get(a.id ?? "");
+      if (!url) throw "RESOURCE_MISSING";
+      return (await fetch(url)).arrayBuffer();
+    }
     default:
       return null;
   }

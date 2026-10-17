@@ -35,6 +35,29 @@ struct ToolArgs: Codable, Equatable {
   var eraser: String
 }
 
+/// The saved strokes of a sketch being edited (app/src/lib/sketchData.ts).
+struct OpenArgs: Decodable {
+  let x: Double
+  let y: Double
+  let width: Double
+  let height: Double
+  /// A PencilKit drawing (base64), preferred when present.
+  let drawing: String?
+  /// The common stroke format, for sketches drawn on the web canvas.
+  let strokes: [StrokeData]?
+
+  var rect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
+}
+
+/// One stroke in the format both canvases read; points are [x, y, pressure 0..1].
+struct StrokeData: Codable {
+  let kind: String
+  let color: String
+  let width: Double
+  let pen: Bool
+  let pts: [[Double]]
+}
+
 struct EnabledArgs: Decodable {
   let enabled: Bool
 }
@@ -81,7 +104,7 @@ class PencilPlugin: Plugin, PKCanvasViewDelegate, UIPencilInteractionDelegate {
   // ---------------------------------------------------------------- commands
 
   @objc func open(_ invoke: Invoke) throws {
-    let args = try invoke.parseArgs(FrameArgs.self)
+    let args = try invoke.parseArgs(OpenArgs.self)
     DispatchQueue.main.async { [self] in
       guard let webview else { return invoke.reject("no web view") }
       canvas?.removeFromSuperview()
@@ -103,6 +126,15 @@ class PencilPlugin: Plugin, PKCanvasViewDelegate, UIPencilInteractionDelegate {
       webview.addSubview(c)
       canvas = c
       c.tool = makeTool(current)
+      if let base64 = args.drawing, let data = Data(base64Encoded: base64),
+        let drawing = try? PKDrawing(data: data)
+      {
+        c.drawing = drawing
+      } else if let strokes = args.strokes {
+        c.drawing = Self.drawing(from: strokes)
+      }
+      // The reopened sketch is the starting point: undo stops there.
+      c.undoManager?.removeAllActions()
       sendState()
       invoke.resolve()
     }
@@ -191,7 +223,16 @@ class PencilPlugin: Plugin, PKCanvasViewDelegate, UIPencilInteractionDelegate {
         g.fill(CGRect(origin: .zero, size: rect.size))
         ink.draw(at: .zero)
       }
-      invoke.resolve(["png": png.base64EncodedString(), "width": Double(rect.width)])
+      // The strokes travel with the PNG, from its top-left corner, so it can be edited again.
+      let saved = c.drawing.transformed(using: CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
+      invoke.resolve([
+        "png": png.base64EncodedString(),
+        "width": Double(rect.width),
+        "drawing": saved.dataRepresentation().base64EncodedString(),
+        "strokes": Self.strokes(from: saved).map { s -> [String: Any] in
+          ["kind": s.kind, "color": s.color, "width": s.width, "pen": s.pen, "pts": s.pts]
+        },
+      ])
     }
   }
 
@@ -325,7 +366,80 @@ class PencilPlugin: Plugin, PKCanvasViewDelegate, UIPencilInteractionDelegate {
   }
 }
 
+// ------------------------------------------------------------------ stroke format
+
+extension PencilPlugin {
+  static func inkType(_ kind: String) -> PKInkingTool.InkType {
+    switch kind {
+    case "pencil": return .pencil
+    case "marker": return .marker
+    case "fountain":
+      if #available(iOS 17.0, *) { return .fountainPen }
+      return .pen
+    default: return .pen
+    }
+  }
+
+  static func kind(_ type: PKInkingTool.InkType) -> String {
+    if #available(iOS 17.0, *), type == .fountainPen { return "fountain" }
+    switch type {
+    case .pencil: return "pencil"
+    case .marker: return "marker"
+    default: return "pen"
+    }
+  }
+
+  /// Web strokes as PencilKit strokes. Pixel-eraser passes have no PencilKit
+  /// equivalent and are left out.
+  static func drawing(from list: [StrokeData]) -> PKDrawing {
+    PKDrawing(
+      strokes: list.compactMap { d in
+        guard d.kind != "erase", !d.pts.isEmpty else { return nil }
+        let points = d.pts.enumerated().map { i, q -> PKStrokePoint in
+          let p = q.count > 2 ? q[2] : 0.5
+          let w = CGFloat(d.width * (0.35 + 1.3 * p))
+          return PKStrokePoint(
+            location: CGPoint(x: q[0], y: q.count > 1 ? q[1] : 0), timeOffset: TimeInterval(i) * 0.008,
+            size: CGSize(width: w, height: w), opacity: 1, force: CGFloat(p), azimuth: 0, altitude: .pi / 2)
+        }
+        let ink = PKInk(inkType(d.kind), color: UIColor(hex: d.color) ?? .black)
+        return PKStroke(ink: ink, path: PKStrokePath(controlPoints: points, creationDate: Date()))
+      })
+  }
+
+  /// PencilKit strokes in the common format, for the web canvas. The pixel
+  /// eraser's masks are not carried over.
+  static func strokes(from drawing: PKDrawing) -> [StrokeData] {
+    let light = UITraitCollection(userInterfaceStyle: .light)
+    let r = { (v: CGFloat) in (Double(v) * 10).rounded() / 10 }
+    return drawing.strokes.map { s in
+      let points = Array(s.path.interpolatedPoints(by: .distance(3)))
+      let sizes = points.map { Double($0.size.width) }.sorted()
+      let width = sizes.isEmpty ? 4 : max(0.5, sizes[sizes.count / 2])
+      let pts = points.map { pt -> [Double] in
+        let l = pt.location.applying(s.transform)
+        let p = min(1, max(0.05, Double(pt.size.width) / width * 0.5))
+        return [r(l.x), r(l.y), (p * 100).rounded() / 100]
+      }
+      return StrokeData(
+        kind: kind(s.ink.inkType), color: s.ink.color.resolvedColor(with: light).hex,
+        width: (width * 10).rounded() / 10, pen: true, pts: pts)
+    }
+  }
+}
+
 extension UIColor {
+  /// "#rrggbb".
+  var hex: String {
+    var red: CGFloat = 0
+    var green: CGFloat = 0
+    var blue: CGFloat = 0
+    var alpha: CGFloat = 0
+    getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+    let byte = { (v: CGFloat) in Int((min(1, max(0, v)) * 255).rounded()) }
+    return String(format: "#%02x%02x%02x", byte(red), byte(green), byte(blue))
+  }
+
   /// "#rrggbb".
   convenience init?(hex: String) {
     var s = hex.trimmingCharacters(in: .whitespaces)
