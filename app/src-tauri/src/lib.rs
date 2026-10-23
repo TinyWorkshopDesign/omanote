@@ -711,11 +711,21 @@ fn image_mime(name: &str) -> &'static str {
     }
 }
 
+/// The bytes of a binary request body. Desktop and iOS send them raw; Android has no
+/// custom-protocol IPC, so Tauri's postMessage fallback turns the `Uint8Array` into
+/// a JSON array of numbers.
+fn body_bytes(request: &tauri::ipc::Request<'_>) -> Option<Vec<u8>> {
+    match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => Some(bytes.clone()),
+        tauri::ipc::InvokeBody::Json(json) => serde_json::from_value(json.clone()).ok(),
+    }
+}
+
 /// Stores a pasted image (raw request body; `x-name` / `x-mime` headers) as an
 /// attachment and returns its id, to be referenced as `![name](:/id)`.
 #[tauri::command]
 fn add_image(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<String, String> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+    let Some(bytes) = body_bytes(&request) else {
         return Err("expected raw image bytes".into());
     };
     let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
@@ -727,18 +737,18 @@ fn add_image(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Re
         let m = header("x-mime");
         if m.is_empty() { image_mime(&name).to_string() } else { m }
     };
-    state.db().add_resource(bytes, &mime, &name).map_err(err)
+    state.db().add_resource(&bytes, &mime, &name).map_err(err)
 }
 
 /// Replaces the file of an attachment (raw request body; `x-id` header): an edited
 /// sketch keeps its id, so the notes showing it need no change.
 #[tauri::command]
 fn update_image(state: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Result<(), String> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+    let Some(bytes) = body_bytes(&request) else {
         return Err("expected raw image bytes".into());
     };
     let id = request.headers().get("x-id").and_then(|v| v.to_str().ok()).unwrap_or("");
-    state.db().update_resource(id, bytes).map_err(err)
+    state.db().update_resource(id, &bytes).map_err(err)
 }
 
 /// The bytes of an attachment, downloading it if needed. Sketches are read this way
@@ -789,10 +799,9 @@ async fn resource_path(state: State<'_, AppState>, id: String) -> Result<Option<
 /// Text from an image sent as the raw request body (paste / drop in the UI).
 #[tauri::command]
 async fn ocr_image(request: tauri::ipc::Request<'_>) -> Result<String, String> {
-    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+    let Some(bytes) = body_bytes(&request) else {
         return Err("OCR_FAILED|expected raw image bytes".into());
     };
-    let bytes = bytes.clone();
     tauri::async_runtime::spawn_blocking(move || ocr::recognize(&bytes)).await.map_err(err)?
 }
 

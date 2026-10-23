@@ -194,6 +194,14 @@ its history. Do not name other note apps as models or references (code, docs, co
     Kotlin half comes from the local Maven repository inside the `rustls-platform-verifier-android`
     crate, found with `cargo metadata` in `gen/android/app/build.gradle.kts`, plus a ProGuard
     keep rule in `proguard-rules.pro` for release builds.
+  - Binary IPC: Android has no custom-protocol IPC, so Tauri's postMessage fallback sends a
+    `Uint8Array` argument as a JSON array of numbers, never `InvokeBody::Raw`. Commands taking
+    bytes (`add_image`, `update_image`, `ocr_image`) read them through `body_bytes()`, which
+    accepts both; until 2026-10-23 sketches, pasted images and OCR failed on Android with
+    "expected raw image bytes". Headers (`x-name`, `x-id`) do arrive. Binary *responses*
+    (`resource_bytes`) reach JS as an `ArrayBuffer` on Android too.
+  - The sync fails with "network error" while the phone dozes (Android cuts background apps
+    off the network); not a bug, it resumes when the app is in front.
   - `MainActivity.kt`: Android 15+ always draws edge to edge, so the content view is padded
     by the system bars, cutout and keyboard insets; the strip behind the bars is fixed at the
     default theme's `#1a1b26` with light icons (does not follow the chosen theme yet).
