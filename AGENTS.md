@@ -4,7 +4,7 @@ Omanote is a quick-notes scratchpad for Linux, macOS, iOS and Android that syncs
 with an unmodified **Joplin Server** and looks like **Omarchy**. Read this before
 changing code.
 
-## Project status (2026-10-17)
+## Project status (2026-10-23)
 
 Owner: Michele Belleri (writes in Italian). The repository is **English only**: code,
 comments, test data, docs and **commit messages**; Italian lives only in the UI
@@ -182,7 +182,38 @@ its history. Do not name other note apps as models or references (code, docs, co
   (the Rust build phase fails outside Tauri, but the profile is refreshed first), then build
   with Tauri again. The device also needs Developer Mode (Settings → Privacy & Security; the
   switch appears only after Xcode has seen the device).
-- Android: project not initialised; the Android SDK is not installed on the dev Mac.
+- Android: project initialised and committed in `app/src-tauri/gen/android`. Debug APK built on
+  the Omarchy box and installed on a Pixel Fold (Android 17 beta, 2026-10-23): it starts, shows
+  the setup screen and fetches the ECB rates over HTTPS. **Not verified yet**: login and sync
+  with a real Joplin Server, the launcher icon and the system-bar insets as seen on screen,
+  the sketch canvas with touch and stylus, the Fold's inner display and posture changes.
+  - TLS: reqwest 0.13 checks certificates with `rustls-platform-verifier`, which panics on
+    Android ("Expect rustls-platform-verifier to be initialized") unless it gets the JVM and
+    the app context first. `src/android_tls.rs` does that at setup from tao's
+    `main_android_context()` (retrying up to 5 s if the activity is not registered yet); its
+    Kotlin half comes from the local Maven repository inside the `rustls-platform-verifier-android`
+    crate, found with `cargo metadata` in `gen/android/app/build.gradle.kts`, plus a ProGuard
+    keep rule in `proguard-rules.pro` for release builds.
+  - `MainActivity.kt`: Android 15+ always draws edge to edge, so the content view is padded
+    by the system bars, cutout and keyboard insets; the strip behind the bars is fixed at the
+    default theme's `#1a1b26` with light icons (does not follow the chosen theme yet).
+  - Icon: an adaptive icon (launchers cut it to a circle on Pixel, which would clip the stepped
+    tile): `tools/gen-icons.py` also writes `design/android-{bg,fg,mono}.svg` (tile surface full
+    bleed, glowing pencil inside the safe circle, monochrome for themed icons); render them to
+    PNG with `rsvg-convert -w 1024`, run `npx tauri icon ../design/android-icon.json -o <tmp>`
+    from `app/` and copy its `android/` folder over `gen/android/app/src/main/res` and
+    `src-tauri/icons/android` (writing to `src-tauri/icons` directly would also replace the
+    desktop and iOS icons).
+  - Toolchain (no root needed; Arch's `rust` package has no Android targets): rustup in
+    `~/.cargo` with `--no-modify-path` and the four `*-linux-android*` targets, a Temurin JDK 21,
+    Google's command-line tools in `~/Android/Sdk/cmdline-tools/latest` (`sdkmanager` is now
+    replaced by `android sdk install platform-tools ndk/<ver> build-tools/<ver>
+    platforms/android-36`). Put `JAVA_HOME`, `ANDROID_HOME`, `NDK_HOME` and `~/.cargo/bin` first
+    in `PATH`, then `cd app && npx tauri android build --debug --target aarch64 --apk` and
+    `adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`.
+    Debug builds may use cleartext `http://` servers (`usesCleartextTraffic`), release builds
+    may not. On a Fold, `adb exec-out screencap -p -d <id>` needs a display id
+    (`adb shell dumpsys SurfaceFlinger --display-id`).
 
 **Known gaps / next steps**
 - Tags are synced but not shown.

@@ -12,6 +12,9 @@ Then:
   rsvg-convert -w 1024 design/icon.svg -o design/icon.png
   cd app && PATH=/usr/bin:$PATH npx tauri icon ../design/icon.png
   rsvg-convert -w 64 design/tray.svg -o app/src-tauri/icons/tray.png
+  for l in bg fg mono; do rsvg-convert -w 1024 design/android-$l.svg -o design/android-$l.png; done
+  cd app && npx tauri icon ../design/android-icon.json -o <scratch dir>, then copy
+  its android/ folder over app/src-tauri/gen/android/app/src/main/res
 
 (`tools/gen-symbol-font.py` must have run first: it writes the subset font.)
 """
@@ -126,8 +129,36 @@ TRAY = 64
 </svg>
 ''')
 
+# Android adaptive icon: launchers cut it to their own shape (a circle on Pixel),
+# which would clip the stepped tile. So the tile surface becomes the background
+# layer, full bleed, and the glowing pencil the foreground, sized so it stays inside
+# the 66/108 safe circle. The monochrome layer feeds Android 13+ themed icons.
+# Layers are 108dp squares drawn on the same 1024 canvas.
+A_MARK = 400
+DEFS = svg[svg.index("<defs>"):svg.index("</defs>") + len("</defs>")]
+pencil = centred(d, bbox, A_MARK, 512, 512)
+android = {
+    "android-bg.svg": f'''<rect width="{CANVAS}" height="{CANVAS}" fill="url(#bg)"/>
+  <rect width="{CANVAS}" height="{CANVAS}" fill="url(#grid)"/>
+  <circle cx="512" cy="512" r="430" fill="url(#haze)"/>
+  <rect width="{CANVAS}" height="{CANVAS}" fill="url(#scan)"/>''',
+    # Scanlines run over the pencil too, as on the tile.
+    "android-fg.svg": f'''<mask id="ink"><g fill="#fff" filter="url(#glow)">{pencil}</g></mask>
+  <g fill="{G}" filter="url(#glow)">{pencil}</g>
+  <rect width="{CANVAS}" height="{CANVAS}" fill="url(#scan)" mask="url(#ink)"/>''',
+    "android-mono.svg": f'<g fill="#fff">{pencil}</g>',
+}
+for name, body in android.items():
+    (DESIGN / name).write_text(f'''<svg xmlns="http://www.w3.org/2000/svg" width="{CANVAS}" height="{CANVAS}" viewBox="0 0 {CANVAS} {CANVAS}">
+  <!-- Android adaptive icon layer, see tools/gen-icons.py. -->
+  {DEFS}
+  {body}
+</svg>
+''')
+
 print(f"wrote {DESIGN / 'icon.svg'}")
 print(f"wrote {TRAY_SVG}")
+print(f"wrote {', '.join(str(DESIGN / n) for n in android)}")
 print("next: rsvg-convert -w 1024 design/icon.svg -o design/icon.png")
 print("      cd app && PATH=/usr/bin:$PATH npx tauri icon ../design/icon.png")
 print("      rsvg-convert -w 64 design/tray.svg -o app/src-tauri/icons/tray.png")
