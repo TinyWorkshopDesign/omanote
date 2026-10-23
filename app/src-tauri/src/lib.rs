@@ -1,3 +1,5 @@
+#[cfg(target_os = "android")]
+mod android_tls;
 mod ocr;
 mod theme;
 mod timer;
@@ -1090,6 +1092,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_pencil::init())
         .setup(|app| {
+            #[cfg(target_os = "android")]
+            android_tls::init();
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let store = Store::open(dir.join(omanote_core::config::DB_FILE)).map_err(|e| e.to_string())?;

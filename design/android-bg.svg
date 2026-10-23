@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Android adaptive icon layer, see tools/gen-icons.py. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#101814"/>
+      <stop offset="1" stop-color="#040706"/>
+    </linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#2bff88" stroke-opacity="0.06" stroke-width="2"/>
+    </pattern>
+    <pattern id="scan" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="8" height="3" fill="#000" fill-opacity="0.32"/>
+    </pattern>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <radialGradient id="haze">
+      <stop offset="0" stop-color="#2bff88" stop-opacity="0.13"/>
+      <stop offset="1" stop-color="#2bff88" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile"><path d="M160 96 L864 96 L864 128 L896 128 L896 160 L928 160 L928 864 L896 864 L896 896 L864 896 L864 928 L160 928 L160 896 L128 896 L128 864 L96 864 L96 160 L128 160 L128 128 L160 128Z"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#grid)"/>
+  <circle cx="512" cy="512" r="430" fill="url(#haze)"/>
+  <rect width="1024" height="1024" fill="url(#scan)"/>
+</svg>

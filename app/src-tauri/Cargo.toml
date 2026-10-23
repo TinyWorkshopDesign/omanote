@@ -37,6 +37,12 @@ chrono = "0.4.45"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 
+# Android's certificate verifier needs the JVM and the app context (android_tls.rs).
+[target.'cfg(target_os = "android")'.dependencies]
+rustls-platform-verifier = "0.7"
+jni = { version = "0.22", default-features = false }
+tao = "0.35"
+
 
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies.objc2-vision]
