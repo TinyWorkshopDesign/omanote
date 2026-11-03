@@ -24,14 +24,17 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
 ## Features
 
 **Quick notes**
-- Opens on a fresh note; `⌘[` / `⌘]` or a two-finger swipe move between notes. Going past
-  the newest one starts a new note; a note left empty deletes itself.
-- Hidden menu: it shows when the pointer nears the top edge (always visible on touch screens).
-- Auto-hiding bottom bar: ‹ one dot per note › and "+" for a new note; it shows near the
-  bottom edge or briefly when you switch notes.
-- Folder tree panel (notebook → folders → notes): expandable branches, current note
-  highlighted, per-folder actions, drag and drop, cut / copy / paste, and a **Trash** with
-  restore, delete permanently and empty.
+- Three columns on wide windows — **folders**, **notes**, the **note** — two on an iPad in
+  portrait, and a Folders → Notes → Note stack on a phone or a narrow tile. A focus mode
+  (`⌘⇧\`) leaves only the note.
+- Folders sidebar with **All Notes**, the folder tree and **Recently Deleted** (Joplin's
+  trash: restore, delete permanently, empty); drag notes and folders onto folders, cut /
+  copy / paste, rename inline, sync status at the bottom.
+- Note list with search (this folder or all notes), sorting by date or title, date sections
+  (Today, Yesterday, Previous 7 Days…), previews, a context menu and swipe actions on touch.
+- A note left empty deletes itself. Settings let you choose whether the app opens on the last
+  note or a new one, and whether the toolbar stays visible or hides until the pointer nears
+  the top edge.
 - Keywords on the first line (also translated):
   - `list` / `list: Title`: every line becomes a checkbox; `/x` at the end of a line ticks it;
   - `math`: results show even without `=`;
@@ -119,17 +122,16 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
 | | |
 | --- | --- |
 | `⌘N` | new note |
-| `⌘[` `⌘]` | previous / next note |
-| `⌘1` / `⌘⇧1` | go to the newest / bring to the top |
-| `⌘D` | delete note |
-| `⌘F` | search (Enter with no results creates a note) |
+| `⌘D` | delete note (it goes to Recently Deleted) |
+| `⌘F` / `⌘K` | search the list / quick open (Enter with no results creates a note) |
+| `↑` `↓` | previous / next note in the list |
 | `⌘⇧K` / `⌘⇧M` | tick line / checkbox → bullet → number |
 | `⌘B` `⌘I` `⌘U` `⌘⇧X` | bold, italic, underline (`++`), strikethrough |
 | `⌘⇧H` / `⌘/` | heading level / comment |
 | `⌥↑` `⌥↓` | move line |
 | `⌘P` / `⌘W` | keep on top / hide window |
 | `⌘+` `⌘−` | text size |
-| `⌘\` / `⌘E` | folders / move note |
+| `⌘\` / `⌘⇧\` / `⌘E` | show or hide folders / focus mode / move note |
 | `⌘⇧O` / `⌘S` / `⌘,` | screen OCR / sync / settings |
 | `Esc` | stop the timer |
 

@@ -1,4 +1,7 @@
 <script lang="ts">
+  // The app shell: folders sidebar · note list · note, laid out by the window
+  // width (3 columns, 2 columns with a sliding sidebar, or a navigation stack
+  // on phones and narrow windows), plus the note editor and its dialogs.
   import { onMount } from "svelte";
   import type { EditorView } from "@codemirror/view";
   import {
@@ -15,6 +18,7 @@
     type NoteSummary,
     type Status,
     type TimerTick,
+    type TrashItem,
   } from "$lib/api";
   import {
     createEditor,
@@ -30,24 +34,38 @@
   import { errText, i18n, t } from "$lib/i18n.svelte";
   import { initTheme, type ThemeState } from "$lib/theme";
   import { fitIconsToScreen, icons } from "$lib/icons";
+  import { FONT_DEFAULT, FONT_MAX, FONT_MIN, prefs, savePrefs } from "$lib/prefs.svelte";
+  import { fullDate } from "$lib/dates";
   import Setup from "$lib/components/Setup.svelte";
-  import Sidebar from "$lib/components/Sidebar.svelte";
+  import FolderSidebar from "$lib/components/FolderSidebar.svelte";
+  import NoteList from "$lib/components/NoteList.svelte";
   import Palette from "$lib/components/Palette.svelte";
   import Settings from "$lib/components/Settings.svelte";
   import Sketch from "$lib/components/Sketch.svelte";
   import { readSketchData, type SketchData } from "$lib/sketchData";
 
-  const FONT_KEY = "omanote.fontSize";
+  type Level = "folders" | "list" | "note";
 
   let status = $state<Status | null>(null);
   let folders = $state<Folder[]>([]);
-  let notes = $state<NoteSummary[]>([]); // newest first
-  let selectedFolder = $state("");
+  let allNotes = $state<NoteSummary[]>([]); // the whole working tree, newest first
+  let trashItems = $state<TrashItem[]>([]);
+  /** "all", "trash" or a folder id. */
+  let selection = $state(prefs.lastFolder || "all");
+  let query = $state("");
+  let searchAll = $state(true);
+  let searchHits = $state<NoteSummary[]>([]);
   let current = $state<Note | null>(null);
   let draftFolder = $state<string | null>(null); // a new, not yet saved note
-  let sidebar = $state(false);
+  /** A note of Recently Deleted, shown read-only. */
+  let trashed = $state<Note | null>(null);
+  let width = $state(typeof window === "undefined" ? 1200 : window.innerWidth);
+  let level = $state<Level>("note"); // stack layout only
+  let sidebarOverlay = $state(false); // 2-column layout
   let palette = $state<"search" | "move" | null>(null);
+  let moveId = $state<string | null>(null); // note being moved (null = the open one)
   let settings = $state(false);
+  let moreMenu = $state(false);
   let sketch = $state(false); // handwriting / drawing canvas
   /** The sketch being edited (its tag in the note) and its saved strokes. */
   let sketchEditing: SketchEdit | null = null;
@@ -55,6 +73,7 @@
   let connecting = $state(false); // local mode → Joplin Server login
   let syncState = $state<"idle" | "syncing" | "error">("idle");
   let syncMsg = $state("");
+  let lastSync = $state(0);
   let toast = $state("");
   let unlockPw = $state("");
   let theme = $state<ThemeState>({ current: "tokyo-night", fromSystem: false });
@@ -62,10 +81,6 @@
   let timerDone = $state(false);
   let pinned = $state(false);
   let nearTop = $state(false);
-  let nearBottom = $state(false);
-  let bottomFlash = $state(false); // bottom bar shown briefly after moving between notes
-  let treeVersion = $state(0); // reloads the navigation tree
-  let fontSize = $state(readFontSize());
   const touch = typeof matchMedia !== "undefined" && matchMedia("(hover: none)").matches;
 
   let host: HTMLElement | undefined = $state();
@@ -74,57 +89,69 @@
   let syncTimer: ReturnType<typeof setTimeout> | undefined;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let pendingText: string | null = null;
-  let flashTimer: ReturnType<typeof setTimeout> | undefined;
   /** Pending "image or text?" question for a pasted/dropped image. */
   let imageAsk = $state<((choice: "image" | "ocr" | null) => void) | null>(null);
   let currentText = "";
 
-  const index = $derived(current ? notes.findIndex((n) => n.id === current!.id) : -1);
-  const position = $derived(index >= 0 ? `${notes.length - index}/${notes.length}` : `+`);
-  const folderName = $derived(
-    folders.find((f) => f.id === (current?.parent_id ?? draftFolder ?? selectedFolder))?.title ?? "Omanote",
+  // ------------------------------------------------------------------ layout
+
+  const layout = $derived(width >= 1000 ? "three" : width >= 700 ? "two" : "stack");
+  const showSidebar = $derived(layout === "three" ? !prefs.focus && !prefs.sidebarHidden : layout === "stack" && level === "folders");
+  const showList = $derived(layout === "stack" ? level === "list" : !prefs.focus);
+  const showEditor = $derived(layout !== "stack" || level === "note");
+  const mac = $derived(status?.platform === "macos");
+  /** Leftmost column, which leaves room for the macOS traffic lights. */
+  const leftmost = $derived(showSidebar ? "sidebar" : showList ? "list" : "editor");
+  const overlayOpen = $derived(sidebarOverlay || !!palette || settings || moreMenu);
+  const barVisible = $derived(
+    !prefs.autoHideToolbar || touch || nearTop || overlayOpen || syncState === "error" || layout === "stack",
   );
-  // Bottom bar: the note stack oldest → newest, one dot per note; the last
-  // slot is "+" (a new note). Shown near the bottom edge or right after moving.
-  const stack = $derived([...notes].reverse());
-  const stackPos = $derived(current ? stack.findIndex((n) => n.id === current!.id) : stack.length);
-  const dotWindow = $derived.by(() => {
-    const slots = stack.length + 1;
-    const size = Math.min(11, slots);
-    const start = Math.max(0, Math.min(stackPos - Math.floor(size / 2), slots - size));
-    return Array.from({ length: size }, (_, i) => start + i);
+
+  // macOS: the traffic lights stay with the sidebar or list; over the bare note
+  // they follow the toolbar.
+  $effect(() => {
+    if (mac) void api.setWindowControls(leftmost !== "editor" || barVisible);
   });
-  /** Top of the tree: the working notebook, or "" when showing all of Joplin. */
+
+  $effect(() => savePrefs(prefs));
+
   const treeRoot = $derived(status?.whole_joplin ? "" : (status?.root_folder_id ?? ""));
-  const overlayOpen = $derived(sidebar || !!palette || settings);
-  const bottomVisible = $derived(!overlayOpen && (nearBottom || bottomFlash));
-
-  const barVisible = $derived(touch || nearTop || sidebar || !!palette || settings || syncState === "error");
-
-  // macOS: the traffic lights appear and disappear with the hover menu.
-  $effect(() => {
-    if (status?.platform === "macos") void api.setWindowControls(barVisible);
+  const isFolder = $derived(selection !== "all" && selection !== "trash");
+  const folderTitle = (id: string) => folders.find((f) => f.id === id)?.title ?? "Omanote";
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const listTitle = $derived(
+    selection === "all" ? t("nav.allNotes") : selection === "trash" ? t("nav.recentlyDeleted") : folderTitle(selection),
+  );
+  const listNotes = $derived.by(() => {
+    if (query.trim()) return !searchAll && isFolder ? searchHits.filter((n) => n.parent_id === selection) : searchHits;
+    if (selection === "all") return allNotes;
+    if (selection === "trash") return [];
+    return allNotes.filter((n) => n.parent_id === selection);
   });
+  const trashNotes = $derived(trashItems.filter((x) => !x.is_folder).length);
+  const openFolder = $derived(current?.parent_id ?? draftFolder ?? "");
 
-  function readFontSize(): number {
-    try {
-      return Number(localStorage.getItem(FONT_KEY)) || 14;
-    } catch {
-      return 14;
-    }
-  }
-
+  // Search: the whole tree, narrowed to the folder by `searchAll`.
   $effect(() => {
-    try {
-      localStorage.setItem(FONT_KEY, String(fontSize));
-    } catch {
-      /* ignore */
+    const q = query.trim();
+    if (!q) {
+      searchHits = [];
+      return;
     }
+    let alive = true;
+    const timerId = setTimeout(() => api.search(q).then((r) => alive && (searchHits = r)), 120);
+    return () => {
+      alive = false;
+      clearTimeout(timerId);
+    };
   });
 
   onMount(() => {
     fitIconsToScreen();
     const offs: (() => void)[] = [];
+    const onResize = () => (width = window.innerWidth);
+    window.addEventListener("resize", onResize);
+    offs.push(() => window.removeEventListener("resize", onResize));
     host?.addEventListener(SKETCH_EDIT, editSketch);
     offs.push(() => host?.removeEventListener(SKETCH_EDIT, editSketch));
     void (async () => {
@@ -145,24 +172,24 @@
         }
       })();
       await refresh();
+      if (selection !== "all" && selection !== "trash" && !folders.some((f) => f.id === selection)) selection = "all";
+      if (selection === "trash") selection = "all";
       timer = await api.timerState();
-      const launch = await api.takeLaunchNote();
-      if (launch && (await api.note(launch))) await open(launch);
-      else if (notes.length) await open(notes[0].id);
-      else newNote();
+      await startup();
 
       offs.push(
         await onSyncStatus((e) => {
           syncState = e.state;
           syncMsg = e.message;
+          if (e.state === "idle" && e.report) lastSync = Date.now();
           if (e.report?.needs_password) void refreshStatus();
         }),
         await onDataChanged(async () => {
           await refresh();
           if (current && !pendingText) {
             const fresh = await api.note(current.id);
-            if (!fresh) newNote();
-            else if (fresh.updated_time !== current.updated_time && fresh.text !== currentText) await open(current.id, false);
+            if (!fresh) newNote(undefined, false);
+            else if (fresh.updated_time !== current.updated_time && fresh.text !== currentText) await open(current.id, false, false);
           }
         }),
         await onQuickNote(() => newNote()),
@@ -183,6 +210,21 @@
     return () => offs.forEach((off) => off());
   });
 
+  /** What the app shows when it opens: the launch note, the last note or a new one. */
+  async function startup() {
+    const launch = await api.takeLaunchNote();
+    if (launch && (await api.note(launch))) return open(launch, true, true);
+    if (prefs.launch === "last") {
+      const last = allNotes.find((n) => n.id === prefs.lastNote) ?? listNotes[0];
+      if (last) {
+        await open(last.id, true, !touch);
+        if (layout === "stack" && last.id !== prefs.lastNote) level = "list";
+        return;
+      }
+    }
+    newNote(undefined, !touch);
+  }
+
   function say(msg: string, ms = 3500) {
     toast = msg;
     clearTimeout(toastTimer);
@@ -195,14 +237,7 @@
 
   async function refresh() {
     if (!status?.configured || !status.root_folder_id) return;
-    [folders, notes] = await Promise.all([api.folders(), api.notes(selectedFolder || undefined)]);
-    treeVersion++;
-  }
-
-  function flashBottom() {
-    bottomFlash = true;
-    clearTimeout(flashTimer);
-    flashTimer = setTimeout(() => (bottomFlash = false), 2000);
+    [folders, allNotes, trashItems] = await Promise.all([api.folders(), api.notes(), api.trash()]);
   }
 
   function scheduleSync(ms = 3000) {
@@ -212,45 +247,47 @@
 
   // ------------------------------------------------------------------ editor
 
-  const noteKeys = () => [
-    { key: "Mod-n", run: () => (newNote(), true) },
-    { key: "Mod-[", run: () => (go(-1), true) },
-    { key: "Mod-]", run: () => (go(1), true) },
-    { key: "Mod-1", run: () => (jumpToFront(), true) },
-    { key: "Mod-Shift-1", run: () => (void promote(), true) },
-    { key: "Mod-d", run: () => (void trash(true), true) },
-    { key: "Mod-f", run: () => ((palette = "search"), true) },
-    { key: "Mod-k", run: () => ((palette = "search"), true) },
-    { key: "Mod-e", run: () => ((palette = "move"), true) },
-    { key: "Mod-\\", run: () => ((sidebar = !sidebar), true) },
-    { key: "Mod-,", run: () => ((settings = true), true) },
-    { key: "Mod-s", run: () => (void syncNow(), true) },
-    { key: "Mod-p", run: () => (void togglePin(), true) },
-    { key: "Mod-w", run: () => (void api.hideWindow(), true) },
-    { key: "Mod-o", run: () => (void api.hideWindow(), true) },
-    { key: "Mod-Shift-o", run: () => (void captureText(), true) },
-    { key: "Mod-Shift-d", run: () => ((sketch = true), true) },
-    { key: "Mod-=", run: () => ((fontSize = Math.min(24, fontSize + 1)), true) },
-    { key: "Mod-+", run: () => ((fontSize = Math.min(24, fontSize + 1)), true) },
-    { key: "Mod--", run: () => ((fontSize = Math.max(11, fontSize - 1)), true) },
-    { key: "Mod-0", run: () => ((fontSize = 14), true) },
+  const MOD_KEYS: { key: string; run: () => void }[] = [
+    { key: "Mod-n", run: () => newNote() },
+    { key: "Mod-d", run: () => current && void deleteNote(current.id) },
+    { key: "Mod-f", run: () => focusSearch() },
+    { key: "Mod-k", run: () => (palette = "search") },
+    { key: "Mod-e", run: () => openMove(null) },
+    { key: "Mod-\\", run: () => toggleSidebar() },
+    { key: "Mod-Shift-\\", run: () => toggleFocus() },
+    { key: "Mod-|", run: () => toggleFocus() },
+    { key: "Mod-,", run: () => (settings = true) },
+    { key: "Mod-s", run: () => void syncNow() },
+    { key: "Mod-p", run: () => void togglePin() },
+    { key: "Mod-w", run: () => void api.hideWindow() },
+    { key: "Mod-Shift-o", run: () => void captureText() },
+    { key: "Mod-Shift-d", run: () => (sketch = true) },
+    { key: "Mod-=", run: () => zoom(1) },
+    { key: "Mod-+", run: () => zoom(1) },
+    { key: "Mod--", run: () => zoom(-1) },
+    { key: "Mod-0", run: () => (prefs.fontSize = FONT_DEFAULT) },
   ];
 
-  function mountEditor(text: string, focus = true) {
+  function zoom(step: number) {
+    prefs.fontSize = Math.max(FONT_MIN, Math.min(FONT_MAX, prefs.fontSize + step));
+  }
+
+  function mountEditor(text: string, focus = true, readOnly = false) {
     view?.destroy();
     currentText = text;
     if (!host) return;
     view = createEditor({
       parent: host,
       doc: text,
+      readOnly,
       onChange: scheduleSave,
       onTimer: (line) => api.timerCommand(line),
       onImages: (files) => void handleImages(files),
       resolveImage: async (id, sketch) =>
         sketch ? URL.createObjectURL(await api.resourceBlob(id)) : api.resourceSrc(id),
-      extraKeys: noteKeys(),
+      extraKeys: MOD_KEYS.map((k) => ({ key: k.key, run: () => (k.run(), true) })),
     });
-    if (focus) view.focus();
+    if (focus && !readOnly) view.focus();
   }
 
   /** Leaving a note that was emptied deletes it. */
@@ -265,40 +302,43 @@
     }
   }
 
-  async function open(id: string, leave = true) {
-    if (leave) await leaveCurrent();
+  async function open(id: string, leave = true, focus = true) {
+    if (leave && current?.id !== id) await leaveCurrent();
     const n = await api.note(id);
     if (!n) return;
     current = n;
+    trashed = null;
     draftFolder = null;
-    mountEditor(n.text);
+    prefs.lastNote = id;
+    mountEditor(n.text, focus && !touch);
+    if (layout === "stack") level = "note";
     await refresh();
   }
 
-  function newNote() {
-    void leaveCurrent().then(refresh);
+  /** Opens a note picked in the list; Recently Deleted notes open read-only. */
+  async function pick(id: string, focus: boolean) {
+    sidebarOverlay = false;
+    if (selection !== "trash") return open(id, true, focus);
+    const item = trashItems.find((x) => x.id === id);
+    if (!item || item.is_folder) return;
+    await leaveCurrent();
     current = null;
-    draftFolder = selectedFolder || status?.root_folder_id || "";
-    mountEditor("");
-    sidebar = false;
+    trashed = await api.note(id);
+    mountEditor(trashed?.text ?? "", false, true);
+    if (layout === "stack") level = "note";
+  }
+
+  /** A new, empty note; it is written to the database with its first character. */
+  function newNote(folder?: string, focus = true) {
+    void leaveCurrent().then(refresh);
+    if (selection === "trash") selection = "all";
+    current = null;
+    trashed = null;
+    draftFolder = folder ?? (isFolder ? selection : (status?.root_folder_id ?? ""));
+    mountEditor("", focus);
     palette = null;
-  }
-
-  /** "+" on a folder in the tree: new note there, and that folder becomes the stack. */
-  function newNoteIn(folderId: string) {
-    selectedFolder = folderId === treeRoot ? "" : folderId;
-    newNote();
-  }
-
-  /** A note picked in the tree; the stack follows its folder unless showing everything. */
-  async function openFromTree(id: string) {
-    // Wide windows keep the tree open (to keep organizing); narrow ones close it.
-    if (window.innerWidth < 760) sidebar = false;
-    if (current?.id !== id) await open(id);
-    if (current && selectedFolder && current.parent_id !== selectedFolder) {
-      selectedFolder = current.parent_id === treeRoot ? "" : current.parent_id;
-      await refresh();
-    }
+    sidebarOverlay = false;
+    if (layout === "stack") level = "note";
   }
 
   function scheduleSave(text: string) {
@@ -317,8 +357,9 @@
     try {
       if (current) {
         current = await api.updateNote(current.id, text);
-      } else if (text.trim() !== "") {
+      } else if (text.trim() !== "" && !trashed) {
         current = await api.createNote(draftFolder ?? undefined, text);
+        prefs.lastNote = current.id;
         draftFolder = null;
       } else {
         return;
@@ -342,43 +383,122 @@
 
   // -------------------------------------------------------------- navigation
 
-  /** -1 = older, +1 = newer; going past the newest note starts a new one. */
-  function go(dir: -1 | 1) {
-    flashBottom();
-    if (!current) {
-      if (dir === -1 && notes.length) void open(notes[0].id);
+  /** A sidebar entry: "all", "trash" or a folder. */
+  async function select(sel: string) {
+    await flush();
+    selection = sel;
+    prefs.lastFolder = sel === "trash" ? prefs.lastFolder : sel;
+    query = "";
+    sidebarOverlay = false;
+    if (layout === "stack") {
+      level = "list";
       return;
     }
-    const next = index - dir;
-    if (next < 0) newNote();
-    else if (next < notes.length) void open(notes[next].id);
+    if (sel === "trash") {
+      const first = trashItems.find((x) => !x.is_folder);
+      if (first) await pick(first.id, false);
+      else {
+        await leaveCurrent();
+        current = null;
+        trashed = null;
+        mountEditor("", false, true);
+      }
+      return;
+    }
+    if (current && listNotes.some((n) => n.id === current!.id)) return;
+    if (listNotes.length) await open(listNotes[0].id, true, false);
+    else newNote(undefined, false);
   }
 
-  function jumpToFront() {
-    flashBottom();
-    if (notes.length) void open(notes[0].id);
+  function back() {
+    if (level === "note") {
+      void leaveCurrent().then(refresh);
+      level = "list";
+    } else level = "folders";
   }
 
-  async function promote() {
-    if (!current) return;
-    await flush();
-    await api.promoteNote(current.id);
+  function toggleSidebar() {
+    if (layout === "three") {
+      if (prefs.focus) prefs.focus = false;
+      else prefs.sidebarHidden = !prefs.sidebarHidden;
+    } else if (layout === "two") sidebarOverlay = !sidebarOverlay;
+    else if (level !== "folders") level = "folders";
+  }
+
+  function toggleFocus() {
+    prefs.focus = !prefs.focus;
+    moreMenu = false;
+    view?.focus();
+  }
+
+  function focusSearch() {
+    if (prefs.focus) prefs.focus = false;
+    if (layout === "stack" && level === "note") back();
+    setTimeout(() => document.querySelector<HTMLInputElement>("[data-search]")?.focus(), 30);
+  }
+
+  async function deleteNote(id: string) {
+    const wasCurrent = current?.id === id;
+    if (wasCurrent) await flush();
+    const order = listNotes.map((n) => n.id);
+    const pos = order.indexOf(id);
+    await api.trashNote(id);
+    if (wasCurrent) current = null;
     await refresh();
+    say(t("note.movedToTrash"));
+    scheduleSync(1500);
+    if (!wasCurrent) return;
+    if (layout === "stack") {
+      level = "list";
+      return;
+    }
+    const next = listNotes[Math.min(Math.max(pos, 0), listNotes.length - 1)];
+    if (next) await open(next.id, false, false);
+    else newNote(undefined, false);
+  }
+
+  async function duplicateNote(id: string) {
+    await flush();
+    const n = await api.note(id);
+    if (!n) return;
+    const [first, ...rest] = n.text.split("\n");
+    const copy = await api.createNote(n.parent_id, [`${first} ${t("ctx.copySuffix")}`, ...rest].join("\n"));
+    await refresh();
+    await open(copy.id, true, false);
     scheduleSync();
   }
 
-  async function trash(ask: boolean) {
-    if (!current) return;
-    if (ask && currentText.trim() !== "" && !confirm(t("note.deleteConfirm"))) return;
-    const id = current.id;
+  function openMove(id: string | null) {
+    moreMenu = false;
+    moveId = id;
+    palette = "move";
+  }
+
+  async function moveTo(folderId: string) {
+    palette = null;
+    const id = moveId ?? current?.id ?? null;
+    moveId = null;
     await flush();
-    await api.trashNote(id);
-    const pos = notes.findIndex((n) => n.id === id);
-    current = null;
+    if (!id) {
+      draftFolder = folderId;
+      view?.focus();
+      return;
+    }
+    await api.moveNote(id, folderId);
+    if (current?.id === id) current = await api.note(id);
     await refresh();
-    if (notes.length) await open(notes[Math.min(pos, notes.length - 1)].id, false);
-    else newNote();
+    say(t("note.movedTo", { folder: folderTitle(folderId) }));
     scheduleSync(1500);
+  }
+
+  async function createFromSearch(text: string) {
+    palette = null;
+    await leaveCurrent();
+    current = await api.createNote(isFolder ? selection : undefined, text);
+    draftFolder = null;
+    mountEditor(current.text);
+    await refresh();
+    scheduleSync();
   }
 
   /** Tree changed (moves, copies, renames): reload lists and the open note's folder. */
@@ -386,57 +506,40 @@
     await flush();
     await refresh();
     if (current) current = (await api.note(current.id)) ?? current;
+    if (isFolder && !folders.some((f) => f.id === selection)) selection = "all";
     scheduleSync(1500);
   }
 
-  /** Note trashed from the tree. */
-  async function trashNoteById(id: string) {
-    if (current?.id === id) {
-      await trash(false);
-      return;
-    }
-    await api.trashNote(id);
+  async function restoreItem(id: string) {
+    await api.restore(id);
+    if (trashed?.id === id) trashed = null;
+    await refresh();
+    say(t("trash.restored"));
+    scheduleSync(1500);
+    const next = trashItems.find((x) => !x.is_folder);
+    if (next) await pick(next.id, false);
+    else mountEditor("", false, true);
+  }
+
+  async function purgeItem(id: string) {
+    const item = trashItems.find((x) => x.id === id);
+    if (!confirm(t("trash.purgeConfirm", { name: item?.title || t("note.untitled") }))) return;
+    await api.purge(id);
+    if (trashed?.id === id) trashed = null;
     await refresh();
     scheduleSync(1500);
+    const next = trashItems.find((x) => !x.is_folder);
+    if (next) await pick(next.id, false);
+    else mountEditor("", false, true);
   }
 
-  /** Folder picked in the tree: the note stack now shows that folder (tree stays open). */
-  async function selectFolder(id: string) {
-    await flush();
-    selectedFolder = id === treeRoot ? "" : id;
-    await refresh();
-    if (current && notes.some((n) => n.id === current!.id)) return;
-    if (notes.length) await open(notes[0].id);
-    else {
-      const keep = sidebar;
-      newNote();
-      sidebar = keep;
-    }
-  }
-
-  async function moveTo(folderId: string) {
-    palette = null;
-    await flush();
-    if (!current) {
-      draftFolder = folderId;
-      view?.focus();
-      return;
-    }
-    await api.moveNote(current.id, folderId);
-    current = await api.note(current.id);
+  async function emptyTrash() {
+    if (!trashItems.length || !confirm(t("trash.emptyConfirm"))) return;
+    await api.emptyTrash();
+    trashed = null;
+    mountEditor("", false, true);
     await refresh();
     scheduleSync(1500);
-    view?.focus();
-  }
-
-  async function createFromSearch(text: string) {
-    palette = null;
-    await leaveCurrent();
-    current = await api.createNote(selectedFolder || undefined, text);
-    draftFolder = null;
-    mountEditor(current.text);
-    await refresh();
-    scheduleSync();
   }
 
   async function togglePin() {
@@ -496,7 +599,7 @@
     try {
       for (const f of files) {
         const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-        const name = f.name && f.name !== "image.png" ? f.name : `immagine-${stamp}.png`;
+        const name = f.name && f.name !== "image.png" ? f.name : `image-${stamp}.png`;
         const id = await api.addImage(f, name);
         insertBlock(view, `![${name}](:/${id})`, name.replace(/\.[^.]+$/, ""));
       }
@@ -593,29 +696,11 @@
 
   // ---------------------------------------------------------- input gestures
 
-  // Two-finger horizontal swipe (trackpad) and touch swipe move between notes.
-  let wheelX = 0;
-  let wheelLock = 0;
-  function wheel(e: WheelEvent) {
-    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Date.now() < wheelLock) return;
-    wheelX += e.deltaX;
-    if (Math.abs(wheelX) > 140) {
-      go(wheelX > 0 ? 1 : -1);
-      wheelX = 0;
-      wheelLock = Date.now() + 700;
-    }
-  }
-
-  let touchX = 0;
-  let touchY = 0;
-  function touchStart(e: TouchEvent) {
-    touchX = e.changedTouches[0].clientX;
-    touchY = e.changedTouches[0].clientY;
-  }
-  function touchEnd(e: TouchEvent) {
-    const dx = e.changedTouches[0].clientX - touchX;
-    const dy = e.changedTouches[0].clientY - touchY;
-    if (Math.abs(dx) > 80 && Math.abs(dy) < 45) go(dx < 0 ? 1 : -1);
+  /** `Mod-x` style shortcut string for a key event. */
+  function shortcutOf(e: KeyboardEvent): string {
+    const mod = status?.platform === "macos" || status?.platform === "ios" ? e.metaKey : e.ctrlKey;
+    if (!mod) return "";
+    return `Mod-${e.shiftKey && e.key.length === 1 && /[a-z\\]/i.test(e.key) ? "Shift-" : ""}${e.key.length === 1 ? e.key.toLowerCase() : e.key}`;
   }
 
   function windowKey(e: KeyboardEvent) {
@@ -630,11 +715,26 @@
       e.stopPropagation();
       return;
     }
+    // Shortcuts work outside the editor too (list, sidebar); the editor's own
+    // keymap handles them while it has the focus.
+    const inEditor = (e.target as HTMLElement | null)?.closest?.(".cm-editor");
+    if (!inEditor && !settings && !palette) {
+      const sc = shortcutOf(e);
+      const hit = sc && MOD_KEYS.find((k) => k.key.toLowerCase() === sc.toLowerCase());
+      if (hit) {
+        e.preventDefault();
+        hit.run();
+        return;
+      }
+    }
     if (e.key !== "Escape") return;
-    if (palette) palette = null;
-    else if (sidebar) sidebar = false;
+    if (moreMenu) moreMenu = false;
+    else if (palette) palette = null;
+    else if (sidebarOverlay) sidebarOverlay = false;
     else if (settings) settings = false;
+    else if (prefs.focus) prefs.focus = false;
     else if (timer) void api.timerStop();
+    else return;
     view?.focus();
   }
 
@@ -649,7 +749,7 @@
     if (!e.dataTransfer?.types.includes("Files")) return;
     const handled = e.defaultPrevented;
     e.preventDefault();
-    if (handled) return;
+    if (handled || trashed) return;
     const files = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
     if (!files.length) return;
     // Insert at the text position nearest to the drop point (below the last line → end).
@@ -662,7 +762,6 @@
 
   function pointer(e: MouseEvent) {
     nearTop = e.clientY < 72;
-    nearBottom = e.clientY > window.innerHeight - 70;
   }
 </script>
 
@@ -675,34 +774,110 @@
   ondrop={windowDrop}
 />
 
-<div class="app" style="--editor-size: {fontSize}px">
-  <header class:shown={barVisible} class:mac={status?.platform === "macos"} data-tauri-drag-region>
-    <button class="icon" title={t("nav.folders")} onclick={() => (sidebar = true)}>{@html icons.menu}</button>
-    <button class="crumb" title={t("act.move")} onclick={() => (palette = "move")}>{folderName}</button>
-    <span class="pos">{position}</span>
-    <span class="spacer" data-tauri-drag-region></span>
-    {#if status && !status.mobile}
-      <button class="icon" class:on={pinned} title={t("act.pin")} onclick={togglePin}>{@html icons.pin}</button>
-      <button class="icon" title={t("act.capture")} onclick={() => void captureText()}>{@html icons.capture}</button>
-    {/if}
-    <button class="icon" title={t("act.draw")} onclick={() => (sketch = true)}>{@html icons.draw}</button>
-    {#if !status?.local}<button
-      class="icon dot"
-      class:syncing={syncState === "syncing"}
-      class:error={syncState === "error"}
-      title={syncState === "error" ? `${t("sync.error")}: ${syncMsg}` : t("act.sync")}
-      onclick={() => void syncNow()}>{@html icons.sync}</button
-    >{/if}
-    <button class="icon" title={t("act.search")} onclick={() => (palette = "search")}>{@html icons.search}</button>
-    <button class="icon" title={t("act.newNote")} onclick={newNote}>{@html icons.plus}</button>
-    <button class="icon" title={t("nav.settings")} onclick={() => (settings = true)}>{@html icons.settings}</button>
-  </header>
-
-  <main bind:this={host} onwheel={wheel} ontouchstart={touchStart} ontouchend={touchEnd}></main>
-
-  {#if current?.encrypted}
-    <div class="notice">{@html icons.lock} {t("note.encryptedHint")}</div>
+<div class="shell {layout}" class:focus={prefs.focus} style="--editor-size: {prefs.fontSize}px">
+  {#if status?.configured && showSidebar}
+    <div class="col sidebar-col">
+      {@render sidebarView(mac && leftmost === "sidebar")}
+    </div>
   {/if}
+
+  {#if status?.configured && showList}
+    <div class="col list-col">
+      <NoteList
+        title={listTitle}
+        trashMode={selection === "trash"}
+        notes={listNotes}
+        trash={trashItems}
+        {folders}
+        showFolder={selection === "all" || !!query.trim()}
+        currentId={selection === "trash" ? (trashed?.id ?? null) : (current?.id ?? null)}
+        bind:query
+        bind:searchAll
+        scopeName={isFolder ? folderTitle(selection) : ""}
+        back={layout === "stack" ? t("nav.folders") : null}
+        sidebarButton={layout === "two" || (layout === "three" && prefs.sidebarHidden)}
+        lights={mac && leftmost === "list"}
+        onToggleSidebar={toggleSidebar}
+        onBack={() => (level = "folders")}
+        onOpen={(id, focus) => void pick(id, focus)}
+        onNew={() => newNote()}
+        onMove={(id) => openMove(id)}
+        onDuplicate={(id) => void duplicateNote(id)}
+        onDelete={(id) => void deleteNote(id)}
+        onRestore={(id) => void restoreItem(id)}
+        onPurge={(id) => void purgeItem(id)}
+        onEmptyTrash={() => void emptyTrash()}
+      />
+    </div>
+  {/if}
+
+  <div class="col editor-col" class:hidden={!showEditor}>
+    <header class="toolbar" class:shown={barVisible} class:auto={prefs.autoHideToolbar && layout !== "stack"} class:lights={mac && leftmost === "editor"} data-tauri-drag-region>
+      {#if layout === "stack"}
+        <button class="back" onclick={back}>{@html icons.prev}<span>{selection === "trash" ? t("nav.recentlyDeleted") : listTitle}</span></button>
+      {:else if prefs.focus}
+        <button class="icon" title={t("act.unfocus")} aria-label={t("act.unfocus")} onclick={toggleFocus}>{@html icons.unfocus}</button>
+      {/if}
+      <span class="spacer" data-tauri-drag-region></span>
+      {#if !trashed}
+        {#if status && !status.mobile}
+          <button class="icon" class:on={pinned} title={t("act.pin")} aria-label={t("act.pin")} onclick={togglePin}>{@html icons.pin}</button>
+          <button class="icon" title={t("act.capture")} aria-label={t("act.capture")} onclick={() => void captureText()}>{@html icons.capture}</button>
+        {/if}
+        <button class="icon" title={t("act.draw")} aria-label={t("act.draw")} onclick={() => (sketch = true)}>{@html icons.draw}</button>
+        <span class="anchor">
+          <button class="icon" title={t("act.more")} aria-label={t("act.more")} onclick={() => (moreMenu = !moreMenu)}>{@html icons.more}</button>
+          {#if moreMenu}
+            <div class="menu-scrim" onclick={() => (moreMenu = false)} role="presentation"></div>
+            <div class="menu more" role="menu">
+              <button role="menuitem" disabled={!current && !draftFolder} onclick={() => openMove(null)}>{@html icons.move} {t("act.move")}</button>
+              <button role="menuitem" disabled={!current} onclick={() => ((moreMenu = false), current && void duplicateNote(current.id))}
+                >{@html icons.duplicate} {t("act.duplicate")}</button
+              >
+              <button role="menuitem" class="danger" disabled={!current} onclick={() => ((moreMenu = false), current && void deleteNote(current.id))}
+                >{@html icons.trash} {t("act.deleteShort")}</button
+              >
+              <hr />
+              {#if layout !== "stack"}
+                <button role="menuitem" onclick={toggleFocus}>{@html prefs.focus ? icons.unfocus : icons.focus} {t(prefs.focus ? "act.unfocus" : "act.focus")}</button>
+              {/if}
+              <div class="menu-row">
+                <span>{t("set.textSize")}</span>
+                <button class="step" onclick={() => zoom(-1)} aria-label="−">−</button>
+                <span class="num">{prefs.fontSize}</span>
+                <button class="step" onclick={() => zoom(1)} aria-label="+">+</button>
+              </div>
+              {#if !status?.local}
+                <button role="menuitem" onclick={() => ((moreMenu = false), void syncNow())}>{@html icons.sync} {t("act.sync")}</button>
+              {/if}
+              <button role="menuitem" onclick={() => ((moreMenu = false), (settings = true))}>{@html icons.settings} {t("nav.settings")}</button>
+            </div>
+          {/if}
+        </span>
+        <button class="icon" title={t("act.newNote")} aria-label={t("act.newNote")} onclick={() => newNote()}>{@html icons.compose}</button>
+      {/if}
+    </header>
+
+    {#if trashed}
+      <div class="banner">
+        <span>{t("note.inTrash")}</span>
+        <button onclick={() => trashed && void restoreItem(trashed.id)}>{@html icons.restore} {t("trash.restore")}</button>
+        <button class="danger" onclick={() => trashed && void purgeItem(trashed.id)}>{@html icons.trash} {t("trash.purge")}</button>
+      </div>
+    {/if}
+    <div class="meta">
+      {#if current}
+        {t("note.editedOn", { when: fullDate(current.updated_time, i18n.lang) })}{#if selection === "all" || layout !== "three"} · {folderTitle(current.parent_id)}{/if}
+      {:else if draftFolder !== null && !trashed && selection !== "trash"}
+        {capitalize(t("note.newIn", { folder: folderTitle(openFolder) }))}
+      {/if}
+    </div>
+    <main bind:this={host} class:readonly={!!trashed}></main>
+
+    {#if current?.encrypted}
+      <div class="notice">{@html icons.lock} {t("note.encryptedHint")}</div>
+    {/if}
+  </div>
 
   {#if timer}
     <button
@@ -720,29 +895,32 @@
   {/if}
 </div>
 
-{#if status?.configured}
-  <nav class="bottombar" class:shown={bottomVisible} aria-label={t("key.prevNext")}>
-    <button class="nav" disabled={stackPos <= 0} onclick={() => go(-1)} aria-label="‹">{@html icons.prev}</button>
-    <div class="dots">
-      {#each dotWindow as i (i)}
-        {#if i === stack.length}
-          <button class="dot plus" class:cur={stackPos === i} title={t("act.newNote")} onclick={() => (flashBottom(), newNote())}
-            >{@html icons.plus}</button
-          >
-        {:else}
-          <button
-            class="dot"
-            class:cur={stackPos === i}
-            title={stack[i].title || t("note.untitled")}
-            aria-label={stack[i].title || t("note.untitled")}
-            onclick={() => (flashBottom(), void open(stack[i].id))}
-          ></button>
-        {/if}
-      {/each}
-    </div>
-    <button class="nav" onclick={() => go(1)} aria-label="›">{@html icons.next}</button>
-    <span class="count">{position}</span>
-  </nav>
+{#snippet sidebarView(lights: boolean)}
+  <FolderSidebar
+    {folders}
+    notes={allNotes}
+    rootId={treeRoot}
+    noteHome={status?.root_folder_id ?? ""}
+    {selection}
+    trashCount={trashNotes}
+    {syncState}
+    syncMessage={syncMsg}
+    {lastSync}
+    local={!!status?.local}
+    {lights}
+    onSelect={(s) => void select(s)}
+    onNewNote={(f) => newNote(f)}
+    onTrashNote={(id) => void deleteNote(id)}
+    onHomeChanged={() => void refreshStatus()}
+    onChanged={() => void treeChanged()}
+    onSync={() => void syncNow()}
+    onSettings={() => ((sidebarOverlay = false), (settings = true))}
+  />
+{/snippet}
+
+{#if status?.configured && layout === "two" && sidebarOverlay}
+  <div class="scrim" onclick={() => (sidebarOverlay = false)} role="presentation"></div>
+  <div class="overlay-sidebar">{@render sidebarView(mac)}</div>
 {/if}
 
 {#if imageAsk}
@@ -778,35 +956,15 @@
 
 {#if toast}<div class="toast">{toast}</div>{/if}
 
-{#if sidebar}
-  <Sidebar
-    {folders}
-    rootId={treeRoot}
-    noteHome={status?.root_folder_id ?? ""}
-    currentId={current?.id ?? null}
-    scope={selectedFolder}
-    version={treeVersion}
-    onOpenNote={(id) => void openFromTree(id)}
-    onSelectFolder={selectFolder}
-    onNewNote={newNoteIn}
-    onDeleteNote={(id) => void trashNoteById(id)}
-    onHomeChanged={() => void refreshStatus()}
-    onChanged={() => void treeChanged()}
-    mac={status?.platform === "macos"}
-    onClose={() => (sidebar = false)}
-    onSettings={() => ((sidebar = false), (settings = true))}
-  />
-{/if}
-
 {#if palette}
   <Palette
     mode={palette}
     {folders}
-    {notes}
+    notes={allNotes}
     onPickNote={(id) => ((palette = null), void open(id))}
     onPickFolder={moveTo}
     onCreate={createFromSearch}
-    onClose={() => ((palette = null), view?.focus())}
+    onClose={() => ((palette = null), (moveId = null), view?.focus())}
   />
 {/if}
 
@@ -818,7 +976,7 @@
       connecting = false;
       await refreshStatus();
       await refresh();
-      if (notes.length) await open(notes[0].id, false);
+      if (allNotes.length) await open(allNotes[0].id, false);
       else newNote();
     }}
   />
@@ -836,14 +994,17 @@
     {status}
     {folders}
     bind:theme
-    bind:fontSize
+    {syncState}
+    {lastSync}
+    narrow={width < 700}
+    onSync={() => void syncNow()}
     onRootChanged={async () => {
       await refreshStatus();
-      selectedFolder = "";
+      selection = "all";
       current = null;
       await refresh();
-      if (notes.length) await open(notes[0].id, false);
-      else newNote();
+      if (allNotes.length) await open(allNotes[0].id, false, false);
+      else newNote(undefined, false);
     }}
     onLogout={refreshStatus}
     onConnect={() => ((settings = false), (connecting = true))}
@@ -852,43 +1013,73 @@
 {/if}
 
 <style>
-  .app {
+  .shell {
     position: relative;
     height: 100dvh;
+    display: flex;
+    overflow: hidden;
   }
-  header {
+  .col {
+    height: 100%;
+    min-width: 0;
+  }
+  .sidebar-col {
+    flex: 0 0 16.5rem;
+  }
+  .list-col {
+    flex: 0 0 21rem;
+  }
+  .editor-col {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+  .editor-col.hidden {
+    display: none;
+  }
+  /* Narrow layouts: one column at a time, full width. */
+  .stack .sidebar-col,
+  .stack .list-col {
+    flex: 1;
+  }
+  .two .list-col {
+    flex-basis: 19rem;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: env(safe-area-inset-top) 8px 0;
+    min-height: calc(var(--bar-h) + env(safe-area-inset-top));
+    background: var(--bg);
+    flex: none;
+  }
+  .toolbar.lights {
+    padding-left: 84px;
+  }
+  /* Auto-hide: the bar floats over the note and slides away. */
+  .toolbar.auto {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     z-index: 5;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: env(safe-area-inset-top) 10px 0;
-    min-height: calc(var(--bar-h) + env(safe-area-inset-top));
     background: var(--bar);
     border-bottom: 1px solid var(--line);
-    font-size: 1.05rem;
     transform: translateY(-100%);
     opacity: 0;
     transition:
       transform 0.14s ease,
       opacity 0.14s ease;
   }
-  /* Room for the macOS traffic lights (no title bar). */
-  header.mac {
-    padding-left: 88px;
-  }
-  header.shown {
+  .toolbar.auto.shown {
     transform: none;
     opacity: 1;
   }
-  main {
-    position: absolute;
-    inset: 0;
-    padding-top: calc(var(--bar-h) + 6px + env(safe-area-inset-top));
-    overflow: hidden;
+  .toolbar.auto ~ .meta {
+    margin-top: calc(var(--bar-h) + env(safe-area-inset-top));
   }
   .spacer {
     flex: 1;
@@ -896,10 +1087,9 @@
   }
   .icon {
     line-height: 1;
-    /* Pixel icons: sized by fitIconsToScreen() so every cell lands on whole pixels. */
-    font-size: var(--ico-l, 24px);
-    min-width: 50px;
-    min-height: 48px;
+    font-size: var(--ico-l, 22px);
+    min-width: 44px;
+    min-height: 44px;
     padding: 4px 8px;
     color: var(--muted);
   }
@@ -909,131 +1099,157 @@
   .icon.on {
     color: var(--accent);
   }
-  .crumb {
-    font-weight: 700;
-    font-size: 1.2rem;
+  .back {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 44px;
+    padding-right: 8px;
     color: var(--accent);
-    padding: 6px 8px;
+    max-width: 55%;
   }
-  .pos {
+  .back :global(.ico) {
+    font-size: var(--ico-l, 22px);
+  }
+  .back span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .anchor {
+    position: relative;
+  }
+  .meta {
+    flex: none;
+    min-height: 1.4em;
+    padding: 2px 20px 0;
+    text-align: center;
+    font-size: 0.74rem;
     color: var(--muted);
-    font-size: 1rem;
-    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .dot {
-    color: var(--result);
+  main {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
   }
-  .dot.syncing {
+  main.readonly {
+    opacity: 0.8;
+  }
+  .banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 4px 16px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    font-size: 0.82rem;
+    color: var(--muted);
+  }
+  .banner span {
+    flex: 1;
+  }
+  .banner button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     color: var(--accent);
+    padding: 4px 6px;
   }
-  .dot.syncing :global(.ico) {
-    animation: spin 1.2s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-  .dot.error {
+  .banner .danger {
     color: var(--danger);
   }
-  @keyframes pulse {
-    50% {
-      opacity: 0.25;
-    }
-  }
-  .bottombar {
+  .scrim {
     position: fixed;
-    left: 50%;
-    bottom: calc(12px + env(safe-area-inset-bottom));
-    z-index: 6;
+    inset: 0;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.3);
+  }
+  .overlay-sidebar {
+    position: fixed;
+    z-index: 11;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(18rem, 86vw);
+    border-right: 1px solid var(--accent);
+  }
+  .menu-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+  }
+  .menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 41;
+    min-width: 15rem;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    background: var(--bg-elev);
+    border: 1px solid var(--accent);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+  .menu button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    padding: 7px 10px;
+  }
+  .menu button:hover:not(:disabled) {
+    background: var(--panel);
+  }
+  .menu button:disabled {
+    opacity: 0.35;
+  }
+  .menu .danger {
+    color: var(--danger);
+  }
+  .menu hr {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 4px 0;
+  }
+  .menu-row {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    background: var(--bar);
+  }
+  .menu-row span:first-child {
+    flex: 1;
+  }
+  .menu-row .step {
+    padding: 2px 9px;
     border: 1px solid var(--line);
-    transform: translate(-50%, 12px);
-    opacity: 0;
-    pointer-events: none;
-    transition:
-      transform 0.18s ease,
-      opacity 0.18s ease;
   }
-  .bottombar.shown {
-    transform: translate(-50%, 0);
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .bottombar .nav {
-    font-size: var(--ico-l, 24px);
-    line-height: 1;
-    padding: 2px 8px;
-    color: var(--muted);
-  }
-  .bottombar .nav:hover:not(:disabled) {
-    color: var(--accent);
-  }
-  .bottombar .nav:disabled {
-    opacity: 0.25;
-  }
-  .dots {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-  }
-  .dots .dot {
-    width: 9px;
-    height: 9px;
-    padding: 0;
-    border-radius: 0;
-    background: var(--muted);
-    opacity: 0.5;
-  }
-  .dots .dot:hover {
-    opacity: 1;
-    background: var(--accent);
-  }
-  .dots .dot.cur {
-    opacity: 1;
-    background: var(--accent);
-    transform: scale(1.35);
-  }
-  .dots .dot.plus {
-    width: auto;
-    height: auto;
-    border-radius: 0;
-    background: none;
-    color: var(--muted);
-    font-size: var(--ico-s, 16px);
-    line-height: 1;
-    opacity: 0.8;
-  }
-  .dots .dot.plus.cur,
-  .dots .dot.plus:hover {
-    color: var(--accent);
-    background: none;
-    transform: none;
-  }
-  .bottombar .count {
-    color: var(--muted);
-    font-size: 0.8rem;
+  .menu-row .num {
+    min-width: 2ch;
+    text-align: center;
     font-variant-numeric: tabular-nums;
-    min-width: 3.5em;
-    text-align: right;
   }
   .notice {
     position: absolute;
     left: 50%;
-    bottom: calc(64px + env(safe-area-inset-bottom));
+    bottom: calc(24px + env(safe-area-inset-bottom));
     transform: translateX(-50%);
     color: var(--muted);
     font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .timer {
     position: absolute;
     right: 12px;
     bottom: calc(12px + env(safe-area-inset-bottom));
+    z-index: 6;
     display: flex;
     align-items: baseline;
     gap: 8px;
@@ -1051,6 +1267,11 @@
     background: var(--accent);
     color: var(--bg);
     animation: pulse 0.8s infinite;
+  }
+  @keyframes pulse {
+    50% {
+      opacity: 0.25;
+    }
   }
   .t-time {
     font-weight: 700;
@@ -1133,14 +1354,9 @@
     align-self: center;
     color: var(--muted);
   }
-  .notice {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
   .toast {
     position: fixed;
-    top: calc(var(--bar-h) + 12px + env(safe-area-inset-top));
+    bottom: calc(18px + env(safe-area-inset-bottom));
     left: 50%;
     transform: translateX(-50%);
     background: var(--bg-elev);
