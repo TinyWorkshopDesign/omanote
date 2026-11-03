@@ -282,6 +282,9 @@ its history. Do not name other note apps as models or references (code, docs, co
   `.stignore` is local, so other devices need the same lines.
 - macOS keychain: each debug rebuild changes the binary signature, so macOS may ask
   again for keychain access; the sync waits on that prompt (the UI must not).
+- CI: `.github/workflows/ci.yml` builds and tests the whole workspace (app included) and the UI
+  on Ubuntu for every push to `main` and every pull request; it publishes nothing. It is the
+  check that Linux still compiles when the dev machine is a Mac.
 - Public builds: pushing a tag `vX.Y.Z` (matching `version` in `app/src-tauri/tauri.conf.json`)
   runs `.github/workflows/release.yml`, which builds a universal macOS `.dmg` (ad-hoc signed,
   not notarized) and Linux AppImage/.deb/.rpm and attaches them to a **draft** release (not marked pre-release, so `/releases/latest` keeps working);

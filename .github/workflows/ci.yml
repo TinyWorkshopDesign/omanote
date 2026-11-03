@@ -1,0 +1,48 @@
+# Checks every push and pull request: the whole workspace (core, CLI/MCP and
+# the Tauri app) builds and passes its tests on Linux, and the UI type-checks
+# and passes its tests. Nothing is published: releases come from release.yml.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libxdo-dev libssl-dev libdbus-1-dev pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install UI dependencies
+        run: npm ci --prefix app
+
+      - name: UI type check and tests
+        run: |
+          npm run --prefix app check
+          npm run --prefix app test
+
+      # The app crate embeds the built UI, so build it first.
+      - name: Build the UI
+        run: npm run --prefix app build
+
+      - name: Rust tests (whole workspace, app included)
+        run: cargo test --workspace
