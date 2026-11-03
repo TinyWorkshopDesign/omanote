@@ -100,6 +100,12 @@
   const showList = $derived(layout === "stack" ? level === "list" : !prefs.focus);
   const showEditor = $derived(layout !== "stack" || level === "note");
   const mac = $derived(status?.platform === "macos");
+  // The PencilKit canvas is for the iPad and its Apple Pencil; an iPhone draws
+  // with the finger on the web canvas. (iPadOS web views claim to be a Mac, so
+  // the screen size tells the two apart.)
+  const ipad = $derived(
+    status?.platform === "ios" && typeof screen !== "undefined" && Math.min(screen.width, screen.height) >= 700,
+  );
   /** Leftmost column, which leaves room for the macOS traffic lights. */
   const leftmost = $derived(showSidebar ? "sidebar" : showList ? "list" : "editor");
   const overlayOpen = $derived(sidebarOverlay || !!palette || settings || moreMenu);
@@ -946,7 +952,7 @@
 
 {#if sketch}
   <Sketch
-    native={status?.platform === "ios"}
+    native={ipad}
     initial={sketchInitial}
     onImage={insertSketch}
     onText={sketchToText}

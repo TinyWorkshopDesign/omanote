@@ -114,14 +114,16 @@ its history. Do not name other note apps as models or references (code, docs, co
   `add_image` path as pasted images, written as `<img src=":/id" alt="sketch-….png"
   width="<css px>">` so it shows at the size it was drawn in every Joplin client. "Text"
   renders black ink on white at 2x and runs it through the existing OCR (`ocr_image`).
-  - Web engine (macOS, Linux, everything but iPadOS): Pointer Events with coalesced points;
+  - Web engine (macOS, Linux, iPhone, everything but the iPad): Pointer Events with coalesced points;
     strokes are drawn as filled outlines by `perfect-freehand` (input smoothing, width from
     pen pressure or, for mice and fingers, from speed); finished strokes are cached in an
     offscreen canvas. The pixel eraser is a stroke painted with `destination-out`; export
     paints the strokes on a transparent layer first so it never cuts the background. The
     eraser end of a pen (`buttons & 32`) erases; once a pen has touched the canvas, fingers
     no longer draw (palm rejection). Verified in Chrome with emulated pen input.
-  - Native engine (iPadOS, `crates/tauri-plugin-pencil`, JS side `lib/pencil.ts`): a
+  - Native engine (iPad only, `crates/tauri-plugin-pencil`, JS side `lib/pencil.ts`; chosen in
+    `+page.svelte` by screen size, since iPadOS web views report a Mac user agent — on an
+    iPhone the PencilKit canvas ignored the finger, so phones use the web engine): a
     transparent `PKCanvasView` laid over the paper area of the page; the web toolbar drives
     it (`set_tool`, `undo`, `export`, …) and it reports `state`, `tool` and `palette` events.
     It handles the Pencil's double tap and Apple Pencil Pro squeeze as set in the system
