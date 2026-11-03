@@ -133,6 +133,27 @@ struct Status {
     /// Showing every Joplin notebook (tree root ""), not just the working one.
     whole_joplin: bool,
     data_dir: String,
+    /// An iPad (UIKit's idiom), whatever its screen size: the native PencilKit
+    /// canvas is used only there. A foldable iPhone stays a phone when open.
+    tablet: bool,
+}
+
+/// Set once at startup on the main thread (UIKit is read there).
+static TABLET: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+#[cfg(target_os = "ios")]
+fn detect_ipad() -> bool {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    // SAFETY: UIDevice is always available in a UIKit app; called on the main thread.
+    unsafe {
+        let device: *mut AnyObject = msg_send![class!(UIDevice), currentDevice];
+        if device.is_null() {
+            return false;
+        }
+        let idiom: isize = msg_send![device, userInterfaceIdiom];
+        idiom == 1 // UIUserInterfaceIdiomPad
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -262,6 +283,7 @@ async fn get_status(state: State<'_, AppState>) -> Result<Status, String> {
         platform: std::env::consts::OS,
         omarchy: is_omarchy(),
         data_dir: state.dir.display().to_string(),
+        tablet: TABLET.get().copied().unwrap_or(false),
     })
 }
 
@@ -1107,6 +1129,8 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let store = Store::open(dir.join(omanote_core::config::DB_FILE)).map_err(|e| e.to_string())?;
             let config = Config::load(&dir);
+            #[cfg(target_os = "ios")]
+            let _ = TABLET.set(detect_ipad());
             let interval = config.sync_interval_secs.max(30);
             app.manage(AppState {
                 dir,

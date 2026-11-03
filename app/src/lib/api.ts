@@ -29,6 +29,8 @@ export interface Status {
   /** Showing every Joplin notebook (tree root ""), new notes still go to root_folder_id. */
   whole_joplin: boolean;
   data_dir: string;
+  /** An iPad (not just a large screen): the native PencilKit canvas is used there. */
+  tablet: boolean;
 }
 
 export interface TimerTick {

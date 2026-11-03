@@ -116,6 +116,7 @@ const status: Status = {
   local: false,
   whole_joplin: false,
   data_dir: "~/Library/Application Support/app.omanote",
+  tablet: false,
 };
 
 const empty: SyncReport = {
