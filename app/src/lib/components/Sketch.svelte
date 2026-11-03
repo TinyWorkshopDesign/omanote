@@ -24,7 +24,7 @@
   import { roundPoint, withSketchData, type SketchData, type StrokeData } from "$lib/sketchData";
 
   interface Props {
-    /** Draw on the native PencilKit canvas (iPadOS) instead of the web one. */
+    /** Draw on the native PencilKit canvas (iPad) instead of the web one (iPhone: the web one). */
     native?: boolean;
     /** The strokes of a sketch being edited (see lib/sketchData.ts). */
     initial?: SketchData | null;
@@ -371,7 +371,11 @@
     if (e.pointerType === "mouse" && e.button !== 0) return;
     e.preventDefault();
     activePointer = e.pointerId;
-    canvas!.setPointerCapture(e.pointerId);
+    try {
+      canvas!.setPointerCapture(e.pointerId);
+    } catch {
+      /* the pointer is already gone: draw without capture */
+    }
     // The eraser end of a pen (buttons bit 32) erases whatever tool is selected.
     const eraser = tool === "eraser" || (e.buttons & 32) !== 0;
     const pen = e.pointerType === "pen";
