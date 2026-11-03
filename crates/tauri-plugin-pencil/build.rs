@@ -5,6 +5,7 @@ const COMMANDS: &[&str] = &[
     "set_frame",
     "set_tool",
     "set_enabled",
+    "set_ruler",
     "undo",
     "redo",
     "clear",

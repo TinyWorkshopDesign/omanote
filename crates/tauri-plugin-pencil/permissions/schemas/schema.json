@@ -403,6 +403,18 @@
           "markdownDescription": "Denies the set_frame command without any pre-configured scope."
         },
         {
+          "description": "Enables the set_ruler command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-ruler",
+          "markdownDescription": "Enables the set_ruler command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_ruler command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-ruler",
+          "markdownDescription": "Denies the set_ruler command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_tool command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-tool",
@@ -427,10 +439,10 @@
           "markdownDescription": "Denies the undo command without any pre-configured scope."
         },
         {
-          "description": "Everything the sketch canvas uses.\n#### This default permission set includes:\n\n- `allow-open`\n- `allow-set-frame`\n- `allow-set-tool`\n- `allow-set-enabled`\n- `allow-undo`\n- `allow-redo`\n- `allow-clear`\n- `allow-export`\n- `allow-close`\n- `allow-register-listener`\n- `allow-remove-listener`",
+          "description": "Everything the sketch canvas uses.\n#### This default permission set includes:\n\n- `allow-open`\n- `allow-set-frame`\n- `allow-set-tool`\n- `allow-set-enabled`\n- `allow-set-ruler`\n- `allow-undo`\n- `allow-redo`\n- `allow-clear`\n- `allow-export`\n- `allow-close`\n- `allow-register-listener`\n- `allow-remove-listener`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Everything the sketch canvas uses.\n#### This default permission set includes:\n\n- `allow-open`\n- `allow-set-frame`\n- `allow-set-tool`\n- `allow-set-enabled`\n- `allow-undo`\n- `allow-redo`\n- `allow-clear`\n- `allow-export`\n- `allow-close`\n- `allow-register-listener`\n- `allow-remove-listener`"
+          "markdownDescription": "Everything the sketch canvas uses.\n#### This default permission set includes:\n\n- `allow-open`\n- `allow-set-frame`\n- `allow-set-tool`\n- `allow-set-enabled`\n- `allow-set-ruler`\n- `allow-undo`\n- `allow-redo`\n- `allow-clear`\n- `allow-export`\n- `allow-close`\n- `allow-register-listener`\n- `allow-remove-listener`"
         }
       ]
     }

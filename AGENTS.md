@@ -167,6 +167,16 @@ its history. Do not name other note apps as models or references (code, docs, co
     Chrome with mock data.
   - Below 1000 px (iPad portrait) the toolbar tightens and shows only the 2 latest
     picked colours; the Pencil palette shows all of them.
+  - Shape snapping (`lib/shapes.ts`, tests in `tests/shapes.test.ts`): keep the pen still
+    (within `HOLD_RADIUS` 6 px) for `HOLD_MS` 450 ms at the end of a stroke and a line
+    (snapped to 45° steps within 5°), triangle, rectangle (upright when its sides are
+    within 12°), quadrilateral, circle or ellipse replaces it with evenly spaced points.
+    The web canvas snaps while the pen rests (one undo step removes the shape); the iPad
+    runs the same steps in Swift (`ios/Sources/ShapeRecognizer.swift`, keep the two in
+    step) when the pen lifts, measuring the rest from the stroke's point timestamps, and
+    the swap is its own undo step (undo brings the hand-drawn stroke back).
+  - iPad only: the lasso (`PKLassoTool`, tool "lasso", key L) and PencilKit's ruler
+    (`set_ruler`, key R; two fingers move and turn it).
 - Whole-Joplin mode (`Config.whole_joplin`, Settings or first-run setup → "Tutto Joplin"): the tree root is
   Joplin's top level (`tree_root()` = "") so every notebook shows as a folder; new notes and
   notes dropped at the top level still go to `root_folder_id` (Joplin notes need a notebook).
@@ -209,6 +219,11 @@ its history. Do not name other note apps as models or references (code, docs, co
   gen/apple/build/omanote_iOS.xcarchive/Products/Applications/Omanote.app` (the iPhone must be
   unlocked, or the install fails with the misleading "developer disk image could not be mounted");
   `xcrun devicectl device process launch --device <udid> app.omanote` proves it starts.
+- iPad sketch tools added on Linux without a device (2026-11-03), **not built or run yet**:
+  the lasso, the ruler and shape snapping in `PencilPlugin.swift` / `ShapeRecognizer.swift`.
+  To check: it compiles; whether PencilKit already snaps shapes by itself in third-party
+  canvases (then ours would act on top of it); that `interpolatedPoints` timestamps make
+  the rest measurable; snapped strokes keep their ink and look; undo order.
 - iPad + Apple Pencil, still to check: **Scribble** (iPadOS turns handwriting into text in
   any text field) in the CodeMirror `contenteditable`, including the scratch-out /
   insert-space gestures, and Apple Vision on handwriting through the sketch "Text" exit.

@@ -7,6 +7,7 @@ permissions = [
   "allow-set-frame",
   "allow-set-tool",
   "allow-set-enabled",
+  "allow-set-ruler",
   "allow-undo",
   "allow-redo",
   "allow-clear",

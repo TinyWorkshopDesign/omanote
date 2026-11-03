@@ -102,6 +102,9 @@ ICONS: dict[str, str] = {
     "info": "md-information_outline",
     "cloudOk": "md-cloud_check_outline",
     "cloudOff": "md-cloud_off_outline",
+    # iPad sketch tools (PencilKit).
+    "ruler": "md-ruler",
+    "lasso": "md-lasso",
 }
 
 # Kept in the subset even though nothing draws them yet: the UI grows, and a

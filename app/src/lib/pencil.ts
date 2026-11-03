@@ -5,7 +5,8 @@ import { addPluginListener, invoke, type PluginListener } from "@tauri-apps/api/
 import type { SketchData, StrokeData } from "./sketchData";
 
 export type Ink = "pen" | "pencil" | "marker" | "fountain";
-export type SketchTool = Ink | "eraser";
+/** "lasso" exists only on the iPad (PencilKit): it selects, moves and resizes strokes. */
+export type SketchTool = Ink | "eraser" | "lasso";
 export type EraserMode = "pixel" | "stroke";
 
 export interface ToolState {
@@ -39,6 +40,8 @@ export const pencil = {
   setFrame: (r: DOMRect) => call("set_frame", frame(r)),
   setTool: (t: ToolState) => call("set_tool", { ...t }),
   setEnabled: (enabled: boolean) => call("set_enabled", { enabled }),
+  /** PencilKit's ruler: lines along it come out straight; two fingers move and turn it. */
+  setRuler: (active: boolean) => call("set_ruler", { active }),
   undo: () => call("undo"),
   redo: () => call("redo"),
   clear: () => call("clear"),
