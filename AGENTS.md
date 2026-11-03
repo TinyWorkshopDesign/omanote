@@ -122,8 +122,9 @@ its history. Do not name other note apps as models or references (code, docs, co
     eraser end of a pen (`buttons & 32`) erases; once a pen has touched the canvas, fingers
     no longer draw (palm rejection). Verified in Chrome with emulated pen input.
   - Native engine (iPad only, `crates/tauri-plugin-pencil`, JS side `lib/pencil.ts`; chosen in
-    `+page.svelte` by screen size, since iPadOS web views report a Mac user agent — on an
-    iPhone the PencilKit canvas ignored the finger, so phones use the web engine): a
+    `+page.svelte` from `Status.tablet`, UIKit's `userInterfaceIdiom` read once at startup —
+    not the screen size, which overlaps with the iPhone Duo (Apple's foldable, iOS 27) when
+    open; on an iPhone the PencilKit canvas ignored the finger, so phones use the web engine): a
     transparent `PKCanvasView` laid over the paper area of the page; the web toolbar drives
     it (`set_tool`, `undo`, `export`, …) and it reports `state`, `tool` and `palette` events.
     It handles the Pencil's double tap and Apple Pencil Pro squeeze as set in the system
