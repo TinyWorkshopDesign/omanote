@@ -6,8 +6,10 @@
 // tap, and squeeze on Apple Pencil Pro) are handled here and reported back with
 // the "tool" and "palette" events, so the toolbar always shows the real tool.
 // PencilKit brings the rest: pressure and tilt, barrel roll on the fountain pen,
-// palm rejection, stroke smoothing, the pixel and stroke erasers, and the
-// system's "only draw with Apple Pencil" setting.
+// palm rejection, stroke smoothing, the pixel and stroke erasers, the lasso, the
+// ruler, and the system's "only draw with Apple Pencil" setting. Shape snapping
+// (ShapeRecognizer.swift) turns a stroke that ends with the pen resting into a
+// clean line, triangle, rectangle, circle or ellipse.
 
 import PencilKit
 import Tauri
@@ -25,7 +27,7 @@ struct FrameArgs: Decodable {
 
 /// A tool as the web toolbar knows it: also sent back when the Pencil changes it.
 struct ToolArgs: Codable, Equatable {
-  /// "pen", "pencil", "marker", "fountain" or "eraser".
+  /// "pen", "pencil", "marker", "fountain", "eraser" or "lasso".
   var tool: String
   /// "#rrggbb".
   var color: String
@@ -62,6 +64,10 @@ struct EnabledArgs: Decodable {
   let enabled: Bool
 }
 
+struct RulerArgs: Decodable {
+  let active: Bool
+}
+
 struct ExportArgs: Decodable {
   /// Black ink on white for OCR, instead of the colours on the theme background.
   let ocr: Bool
@@ -96,6 +102,11 @@ class PencilPlugin: Plugin, PKCanvasViewDelegate, UIPencilInteractionDelegate {
   private var previous = ToolArgs(tool: "eraser", color: "#000000", size: 1, eraser: "pixel")
   /// The last inking tool, where "switch to eraser" returns.
   private var lastInk = ToolArgs(tool: "pen", color: "#000000", size: 1, eraser: "pixel")
+  private var rulerActive = false
+  /// Strokes in the drawing after the last change: one more means the user just drew one.
+  private var strokeCount = 0
+  /// A snapped shape is being put in place (its own drawing change is not a new stroke).
+  private var snapping = false
 
   override func load(webview: WKWebView) {
     self.webview = webview
@@ -133,6 +144,8 @@ class PencilPlugin: Plugin, PKCanvasViewDelegate, UIPencilInteractionDelegate {
       } else if let strokes = args.strokes {
         c.drawing = Self.drawing(from: strokes)
       }
+      c.isRulerActive = rulerActive
+      strokeCount = c.drawing.strokes.count
       // The reopened sketch is the starting point: undo stops there.
       c.undoManager?.removeAllActions()
       sendState()
@@ -161,6 +174,16 @@ class PencilPlugin: Plugin, PKCanvasViewDelegate, UIPencilInteractionDelegate {
     let args = try invoke.parseArgs(EnabledArgs.self)
     DispatchQueue.main.async { [self] in
       canvas?.isUserInteractionEnabled = args.enabled
+      invoke.resolve()
+    }
+  }
+
+  /// The ruler: lines drawn along it come out straight; two fingers move and turn it.
+  @objc func setRuler(_ invoke: Invoke) throws {
+    let args = try invoke.parseArgs(RulerArgs.self)
+    DispatchQueue.main.async { [self] in
+      rulerActive = args.active
+      canvas?.isRulerActive = args.active
       invoke.resolve()
     }
   }
@@ -253,7 +276,45 @@ class PencilPlugin: Plugin, PKCanvasViewDelegate, UIPencilInteractionDelegate {
   }
 
   func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-    sendState()
+    let count = canvasView.drawing.strokes.count
+    defer {
+      strokeCount = canvasView.drawing.strokes.count
+      sendState()
+    }
+    // A stroke just drawn with an ink, ending with the pen resting: snap it to its shape.
+    guard !snapping, count == strokeCount + 1, current.tool != "eraser", current.tool != "lasso",
+      let c = canvas, canvasView === c, let stroke = c.drawing.strokes.last,
+      let shape = snapped(stroke)
+    else { return }
+    var drawing = c.drawing
+    drawing.strokes[drawing.strokes.count - 1] = shape
+    snapping = true
+    // Undoable on its own: undo brings the hand-drawn stroke back.
+    replace(c, with: drawing)
+    snapping = false
+  }
+
+  /// The stroke as a clean shape when the pen rested at its end long enough and it
+  /// looks like one; nil otherwise.
+  private func snapped(_ stroke: PKStroke) -> PKStroke? {
+    let points = Array(stroke.path.interpolatedPoints(by: .distance(2)))
+    guard points.count >= 3 else { return nil }
+    let locations = points.map(\.location)
+    // The drawing changes when the pen lifts: the rest lasted from its arrival until now.
+    let arrival = stroke.path.creationDate.addingTimeInterval(points[ShapeRecognizer.restStart(locations)].timeOffset)
+    guard Date().timeIntervalSince(arrival) >= ShapeRecognizer.holdSeconds,
+      let shape = ShapeRecognizer.recognize(locations)
+    else { return nil }
+    // Every point gets the size, force and angle of one from the middle of the stroke.
+    let ref = points[points.count / 2]
+    let path = PKStrokePath(
+      controlPoints: shape.points.enumerated().map { i, p in
+        PKStrokePoint(
+          location: p, timeOffset: TimeInterval(i) * 0.008, size: ref.size, opacity: ref.opacity,
+          force: ref.force, azimuth: ref.azimuth, altitude: ref.altitude)
+      },
+      creationDate: stroke.path.creationDate)
+    return PKStroke(ink: stroke.ink, path: path, transform: stroke.transform, mask: stroke.mask)
   }
 
   private func replace(_ c: SketchCanvas, with drawing: PKDrawing) {
@@ -280,12 +341,13 @@ class PencilPlugin: Plugin, PKCanvasViewDelegate, UIPencilInteractionDelegate {
   private func select(_ tool: ToolArgs) {
     if tool.tool != current.tool { previous = current }
     current = tool
-    if tool.tool != "eraser" { lastInk = tool }
+    if tool.tool != "eraser" && tool.tool != "lasso" { lastInk = tool }
     canvas?.tool = makeTool(tool)
   }
 
   private func makeTool(_ t: ToolArgs) -> PKTool {
     let i = max(0, min(2, t.size))
+    if t.tool == "lasso" { return PKLassoTool() }
     if t.tool == "eraser" {
       let type: PKEraserTool.EraserType = t.eraser == "stroke" ? .vector : .bitmap
       if #available(iOS 16.4, *) {

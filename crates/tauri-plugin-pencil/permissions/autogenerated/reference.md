@@ -8,6 +8,7 @@ Everything the sketch canvas uses.
 - `allow-set-frame`
 - `allow-set-tool`
 - `allow-set-enabled`
+- `allow-set-ruler`
 - `allow-undo`
 - `allow-redo`
 - `allow-clear`
@@ -255,6 +256,32 @@ Enables the set_frame command without any pre-configured scope.
 <td>
 
 Denies the set_frame command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`pencil:allow-set-ruler`
+
+</td>
+<td>
+
+Enables the set_ruler command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`pencil:deny-set-ruler`
+
+</td>
+<td>
+
+Denies the set_ruler command without any pre-configured scope.
 
 </td>
 </tr>

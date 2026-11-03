@@ -21,6 +21,7 @@
   import { MOD, t, type Key } from "$lib/i18n.svelte";
   import { icons } from "$lib/icons";
   import { pencil, type EraserMode, type Ink, type SketchTool, type ToolState } from "$lib/pencil";
+  import { HOLD_MS, HOLD_RADIUS, recognize } from "$lib/shapes";
   import { roundPoint, withSketchData, type SketchData, type StrokeData } from "$lib/sketchData";
 
   interface Props {
@@ -81,7 +82,9 @@
   let lastInk: Ink = "pen";
   let eraserMode = $state<EraserMode>("pixel");
   /** The size index (0..2) of each tool. */
-  let sizes = $state<Record<SketchTool, number>>({ pen: 1, pencil: 1, marker: 1, fountain: 1, eraser: 1 });
+  let sizes = $state<Record<SketchTool, number>>({ pen: 1, pencil: 1, marker: 1, fountain: 1, eraser: 1, lasso: 1 });
+  /** PencilKit's ruler (iPad only). */
+  let ruler = $state(false);
   let color = $state("--text");
   let recent = $state<string[]>(readRecent());
   let busy = $state(false);
@@ -113,6 +116,11 @@
   let erasing = false;
   /** A pen was used in this session: ignore fingers from now on. */
   let penSeen = false;
+  /** Shape snapping on the web canvas: where the pen came to rest, and its timer. */
+  let restAt: Point | null = null;
+  let restTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The live stroke became a clean shape: further movement is ignored until the pen lifts. */
+  let snapped = false;
   let listeners: Promise<PluginListener>[] = [];
 
   const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -141,12 +149,17 @@
   function choose(next: SketchTool) {
     if (next === "eraser" && tool === "eraser") eraserMode = eraserMode === "pixel" ? "stroke" : "pixel";
     tool = next;
-    if (next !== "eraser") lastInk = next;
+    if (next !== "eraser" && next !== "lasso") lastInk = next;
+  }
+
+  function toggleRuler() {
+    ruler = !ruler;
+    void pencil.setRuler(ruler);
   }
 
   function pick(c: string) {
     color = c;
-    if (tool === "eraser") tool = lastInk;
+    if (tool === "eraser" || tool === "lasso") tool = lastInk;
   }
 
   /** The system colour picker: preview while choosing, remember on confirm. */
@@ -198,7 +211,7 @@
         pencil.onTool((s: ToolState) => {
           tool = s.tool;
           eraserMode = s.eraser;
-          if (s.tool !== "eraser") lastInk = s.tool;
+          if (s.tool !== "eraser" && s.tool !== "lasso") lastInk = s.tool;
         }),
         pencil.onPalette((p) => openPalette(p.x, p.y)),
       ];
@@ -385,13 +398,36 @@
       eraseAt(point(e));
       return;
     }
+    snapped = false;
+    restAt = null;
     if (eraser) {
       live = { kind: "erase", color: "", width: ERASER_WIDTHS[sizes.eraser], pen, pts: [point(e)] };
     } else {
-      const ink = tool === "eraser" ? lastInk : tool;
+      const ink = tool === "eraser" || tool === "lasso" ? lastInk : tool;
       const width = INKS[ink].widths[sizes[ink]];
       live = { kind: ink, color: resolve(color) || "#888", width, pen, pts: [point(e)] };
+      rest(live.pts[0]);
     }
+    schedule();
+  }
+
+  /** The pen moved: wait again for it to rest (HOLD_RADIUS) for HOLD_MS before snapping. */
+  function rest(p: Point) {
+    if (restAt && Math.hypot(p.x - restAt.x, p.y - restAt.y) < HOLD_RADIUS) return;
+    restAt = p;
+    clearTimeout(restTimer);
+    restTimer = setTimeout(snapLive, HOLD_MS);
+  }
+
+  /** The pen rests at the end of an ink stroke: if it is a shape, draw the clean one. */
+  function snapLive() {
+    if (!live || live.kind === "erase" || snapped || activePointer === null) return;
+    const shape = recognize(live.pts);
+    if (!shape) return;
+    const pressures = live.pts.map((q) => q.p).sort((a, b) => a - b);
+    const p = pressures[Math.floor(pressures.length / 2)] ?? 0.5;
+    live.pts = shape.points.map((q) => ({ x: q.x, y: q.y, p }));
+    snapped = true;
     schedule();
   }
 
@@ -402,18 +438,21 @@
       for (const p of points(e)) eraseAt(p);
       return;
     }
-    if (!live) return;
+    if (!live || snapped) return;
     for (const p of points(e)) {
       const last = live.pts[live.pts.length - 1];
       if (Math.hypot(p.x - last.x, p.y - last.y) < 0.5) continue;
       live.pts.push(p);
     }
+    if (live.kind !== "erase") rest(live.pts[live.pts.length - 1]);
     schedule();
   }
 
   function up(e: PointerEvent) {
     if (e.pointerId !== activePointer) return;
     activePointer = null;
+    clearTimeout(restTimer);
+    restAt = null;
     if (erasing) {
       erasing = false;
       // Nothing was erased: drop the snapshot taken on pointerdown.
@@ -563,17 +602,19 @@
     else if (k === "b") choose("pencil");
     else if (k === "h") choose("marker");
     else if (k === "e") choose("eraser");
+    else if (native && k === "l") choose("lasso");
+    else if (native && k === "r") toggleRuler();
     else return;
     e.preventDefault();
     e.stopPropagation();
   }
 
-  const KEYS: Partial<Record<SketchTool, string>> = { pen: "P", pencil: "B", marker: "H", eraser: "E" };
+  const KEYS: Partial<Record<SketchTool, string>> = { pen: "P", pencil: "B", marker: "H", eraser: "E", lasso: "L" };
   const keyHint = (k: SketchTool) => (KEYS[k] ? ` (${KEYS[k]})` : "");
   const eraserLabel = $derived(t(eraserMode === "stroke" ? "sketch.eraserStroke" : "sketch.eraser"));
   /** The dot shown on a size button: the real width, kept within the button. */
   const dot = (i: number) => {
-    const w = tool === "eraser" ? ERASER_WIDTHS[i] : INKS[tool].widths[i];
+    const w = tool === "eraser" ? ERASER_WIDTHS[i] : INKS[tool === "lasso" ? lastInk : tool].widths[i];
     return Math.min(26, Math.max(4, w));
   };
 </script>
@@ -588,6 +629,16 @@
   {/each}
   <button class="icon" class:on={tool === "eraser"} title={eraserLabel + keyHint("eraser")} onclick={() => choose("eraser")}
     >{@html eraserMode === "stroke" ? icons.eraserStroke : icons.eraser}</button
+  >
+{/snippet}
+
+<!-- PencilKit's own tools, on the iPad only. -->
+{#snippet ipadButtons()}
+  <button class="icon" class:on={tool === "lasso"} title={t("sketch.lasso") + keyHint("lasso")} onclick={() => choose("lasso")}
+    >{@html icons.lasso}</button
+  >
+  <button class="icon" class:on={ruler} title={`${t("sketch.ruler")} (R)`} aria-pressed={ruler} onclick={toggleRuler}
+    >{@html icons.ruler}</button
   >
 {/snippet}
 
@@ -623,10 +674,13 @@
     <button class="icon" title={`${t("setup.cancel")} (Esc)`} onclick={onClose}>{@html icons.close}</button>
     <span class="sep"></span>
     {@render inkButtons()}
+    {#if native}{@render ipadButtons()}{/if}
     <span class="sep"></span>
     {@render colorButtons()}
-    <span class="sep"></span>
-    {@render sizeButtons()}
+    {#if tool !== "lasso"}
+      <span class="sep"></span>
+      {@render sizeButtons()}
+    {/if}
     <span class="spacer"></span>
     <button class="icon" title={`${t("sketch.undo")} (${MOD} Z)`} disabled={!canUndo} onclick={undo}
       >{@html icons.undo}</button
@@ -654,7 +708,7 @@
         onpointercancel={up}
       ></canvas>
     {/if}
-    {#if empty}<p class="hint">{t("sketch.hint")}</p>{/if}
+    {#if empty}<p class="hint">{t("sketch.hint")}<br />{t("sketch.shapesHint")}</p>{/if}
   </div>
   {#if palette}
     <!-- A tap outside closes the palette (the native canvas lets taps through meanwhile). -->

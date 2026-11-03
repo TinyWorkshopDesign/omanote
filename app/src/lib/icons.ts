@@ -96,6 +96,10 @@ export const icons = {
   marker: glyph("marker"),
   /** Sketch ink: fountain pen (follows the nib angle and barrel roll). */
   fountainPen: glyph("fountainPen"),
+  /** Sketch lasso: select, move and resize strokes (iPad). */
+  lasso: glyph("lasso"),
+  /** Sketch ruler for straight lines (iPad). */
+  ruler: glyph("ruler"),
   /** Undo a stroke. */
   undo: glyph("undo"),
   /** Redo a stroke. */

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-ruler"
+description = "Enables the set_ruler command without any pre-configured scope."
+commands.allow = ["set_ruler"]
+
+[[permission]]
+identifier = "deny-set-ruler"
+description = "Denies the set_ruler command without any pre-configured scope."
+commands.deny = ["set_ruler"]
