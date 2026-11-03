@@ -78,7 +78,18 @@ its history. Do not name other note apps as models or references (code, docs, co
   `#040706` — the tile's darkest tone — and the iOS icon looks like the macOS one); `design/tray.svg` → `app/src-tauri/icons/tray.png`
   (macOS template image). Render SVGs with `rsvg-convert`. The bar plugin draws the same
   glyph in QML (`omarchy-plugin/PencilIcon.qml`, through `OpticalGlyph`).
-- `omanote-cli` + MCP server tested on real synced data.
+- `omanote-cli` + MCP server tested on real synced data. `resource <id>` prints an
+  attachment's local file (downloading it like the app's `resource_path`; `--json` adds a
+  sketch's strokes); `sketch` reads `{"strokes": [...]}` as one JSON line on stdin and
+  stores an editable sketch PNG made like the web canvas's export (`src/sketch.rs`:
+  tiny-skia, 12 px margin, 2x, theme background, strokes in the `omanote-sketch` iTXt
+  chunk, read back by `sketchData.ts`), printing the note's `<img>` tag. The bar plugin
+  draws with it.
+- Bar plugin and QML's JavaScript engine (Quickshell, 2026-11): roughly ES2017. No `Intl`,
+  no `matchAll` / `flatMap` / `flat` / `Object.fromEntries` / `trimEnd` / `replaceAll` /
+  `at`, no object spread, no `\p{…}` / lookbehind / named groups / `s` and `y` flags in
+  regular expressions, and `RegExp.source` doubles the backslash of `\/` (write `[/]`).
+  `calc.ts` stays inside that subset (the generator fails otherwise).
 - Trash (Joplin ≥ 3 semantics, `store.trashed/restore/purge/empty_trash`): a "Cestino" row
   at the bottom of the tree panel lists trashed notes and folders (content of a trashed
   folder nested inside it); restore brings a folder back with its content, a note whose
@@ -303,8 +314,9 @@ its history. Do not name other note apps as models or references (code, docs, co
 | `crates/omanote-cli` | `omanote-cli`: terminal commands and the MCP server (`mcp.rs`) over the same database |
 | `app/src-tauri` | Tauri 2 shell: commands (`lib.rs`), timers (`timer.rs`), OCR (`ocr.rs`), Omarchy theme (`theme.rs`) |
 | `app/src` | Svelte 5 UI: editor (`lib/editor.ts`), inline math and note modes (`lib/calc.ts`), translations (`lib/i18n.svelte.ts`), themes (`lib/theme.ts`, generated `themes.css`) |
-| `omarchy-plugin` | Omarchy shell bar widget `tinyworkshop.omanote` (QML): quick capture and recent notes through `omanote-cli`, opens notes with `omanote --open <id>`; `install.sh` copies it into `~/.config/omarchy/plugins/`; when it is installed the app skips its Linux tray icon (`omarchy_bar_plugin_installed`) |
+| `omarchy-plugin` | Omarchy shell bar widget `tinyworkshop.omanote` (QML): phone-style stack Folders → Notes → Note (search, date sections, quick capture, note edited in the panel with autosave, trash; calculator results, images and sketches in place; a simple drawing canvas) through `omanote-cli` (`folders`/`list`/`search`/`show`/`new`/`edit`/`trash`/`resource`/`sketch`), opens notes in the app with `omanote --open <id>`; `Calc.js` is generated from `app/src/lib/calc.ts` by `tools/gen-plugin-calc.mjs` (CI checks it); `install.sh` copies it into `~/.config/omarchy/plugins/`; when it is installed the app skips its Linux tray icon (`omarchy_bar_plugin_installed`) |
 | `tools/gen-symbol-font.py` | Cuts the icon font subset (`app/static/fonts/omanote-symbols.woff2`) and the glyph map from the pinned Nerd Fonts release (needs `fonttools` + `brotli`) |
+| `tools/gen-plugin-calc.mjs` | Generates `omarchy-plugin/Calc.js` from `app/src/lib/calc.ts` for QML's JavaScript engine (`--check` verifies it) |
 | `tools/gen-themes.py` | Regenerates `app/src/themes.css` from the Omarchy repo |
 | `tools/gen-icons.py` | Composes the app and tray icons in `design/` from the icon font's pencil glyph |
 

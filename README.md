@@ -101,14 +101,16 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
 
   (`omanote --new` opens a new note, `omanote --capture` starts screen OCR,
   `omanote --open <id>` opens a note.)
-- **Omarchy bar plugin** (`omarchy-plugin/`): a pencil in the bar; click to jot a note or
-  search and open recent ones, right-click to show or hide the app, middle-click for a new
-  note. Install it with `omarchy-plugin/install.sh`.
+- **Omarchy bar plugin** (`omarchy-plugin/`): a pencil in the bar; click for a panel that
+  works like the app on a phone (folders → notes → note, editable, saved as you type, with
+  calculations, images and a simple drawing canvas),
+  right-click to show or hide the app, middle-click for a new note. Install it with
+  `omarchy-plugin/install.sh`.
 - On macOS the global shortcut is `⌥A`.
 
 **AI friendly**
 - The command line works on the same notes as the app: `list`, `show`, `search`, `new`,
-  `append`, `edit`, `move`, `trash`, `sync`, with `--json` for scripts. It is both
+  `append`, `edit`, `move`, `trash`, `resource`, `sketch`, `sync`, with `--json` for scripts. It is both
   `omanote-cli` and the app itself (`omanote <command>`): on macOS Omanote.app is enough,
   `/Applications/Omanote.app/Contents/MacOS/omanote list`.
 - `mcp` starts an MCP server (an open standard, not tied to one agent). Settings → AI has a

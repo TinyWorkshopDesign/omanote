@@ -1,6 +1,7 @@
 # Checks every push and pull request: the whole workspace (core, CLI/MCP and
-# the Tauri app) builds and passes its tests on Linux, and the UI type-checks
-# and passes its tests. Nothing is published: releases come from release.yml.
+# the Tauri app) builds and passes its tests on Linux, the UI type-checks and
+# passes its tests, and the bar plugin's generated calculator matches calc.ts.
+# Nothing is published: releases come from release.yml.
 
 name: ci
 
@@ -39,6 +40,10 @@ jobs:
         run: |
           npm run --prefix app check
           npm run --prefix app test
+
+      # The Omarchy bar plugin carries a copy of the calculator generated from calc.ts.
+      - name: Bar plugin calculator is up to date
+        run: node tools/gen-plugin-calc.mjs --check
 
       # The app crate embeds the built UI, so build it first.
       - name: Build the UI

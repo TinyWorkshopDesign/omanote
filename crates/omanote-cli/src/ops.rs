@@ -157,6 +157,48 @@ impl Ctx {
         self.db().trash(&id).map_err(e)
     }
 
+    /// Local file of an attachment, downloading it from Joplin Server if needed.
+    pub fn resource(&self, id: &str) -> Result<Option<PathBuf>, String> {
+        if let Some(p) = self.db().resource_file(id).map_err(e)? {
+            return Ok(Some(p));
+        }
+        let password = secrets::get(&self.dir, secrets::SERVER_PASSWORD)
+            .ok_or("the attachment is not downloaded and there is no saved Joplin Server password")?;
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(e)?;
+        rt.block_on(async {
+            let mut api = JoplinServer::new(&self.cfg.server_url, &self.cfg.email, &password);
+            let mut keys = KeyRing::new();
+            let mut sync = self.synchronizer(&mut api, &mut keys);
+            let info = sync.fetch_info().await.map_err(e)?;
+            if info.e2ee_enabled() {
+                if let Some(master) = secrets::get(&self.dir, secrets::MASTER_PASSWORD) {
+                    unlock_keys(&info, &master, sync.keys);
+                }
+            }
+            sync.fetch_resource(id).await.map_err(e)
+        })
+    }
+
+    fn synchronizer<'a>(&'a self, api: &'a mut JoplinServer, keys: &'a mut KeyRing) -> Synchronizer<'a> {
+        Synchronizer {
+            api,
+            store: &self.store,
+            keys,
+            client_id: format!("{}cli", &self.cfg.client_id.get(..29).unwrap_or("omanotecli")),
+            client_type: LOCK_CLIENT_DESKTOP,
+        }
+    }
+
+    /// Stores a sketch PNG as a new attachment and returns its id.
+    pub fn add_sketch(&self, png: &[u8], name: &str) -> Result<String, String> {
+        self.db().add_resource(png, "image/png", name).map_err(e)
+    }
+
+    /// Replaces the file of an edited sketch, keeping its id.
+    pub fn replace_sketch(&self, id: &str, png: &[u8]) -> Result<(), String> {
+        self.db().update_resource(id, png).map_err(e)
+    }
+
     /// Syncs with Joplin Server using the credentials the app saved in the keychain.
     pub fn sync(&self) -> Result<SyncReport, String> {
         let password = secrets::get(&self.dir, secrets::SERVER_PASSWORD)

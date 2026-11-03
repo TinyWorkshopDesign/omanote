@@ -547,9 +547,9 @@ export const MODE_KEYWORDS: Record<Exclude<Mode, "plain">, string[]> = {
   code: ["code", "codice", "código", "codigo", "kod"],
 };
 
-const KEYWORD_OF = new Map<string, Mode>(
-  Object.entries(MODE_KEYWORDS).flatMap(([mode, words]) => words.map((w) => [w, mode as Mode])),
-);
+// A loop, not `flatMap`: the Omarchy bar plugin runs this file in QML's JS engine (ES2017).
+const KEYWORD_OF = new Map<string, Mode>();
+for (const [mode, words] of Object.entries(MODE_KEYWORDS)) for (const w of words) KEYWORD_OF.set(w, mode as Mode);
 
 /** Reads the note mode from its first line ("list" or "list: Title"). */
 export function detectMode(firstLine: string): { mode: Mode; title: string } {
@@ -565,8 +565,9 @@ export function numbersIn(text: string): number[] {
   const out: number[] = [];
   for (const line of text.split("\n").slice(1)) {
     if (/^\s*\/\//.test(line)) continue;
-    for (const n of line.replace(/^\s*(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/, "").matchAll(NUMBER_RE)) {
-      out.push(parseFloat(n[0].replace(",", ".")));
+    // `match`, not `matchAll`: the Omarchy bar plugin runs this file in QML's JS engine.
+    for (const n of line.replace(/^\s*(?:[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/, "").match(NUMBER_RE) ?? []) {
+      out.push(parseFloat(n.replace(",", ".")));
     }
   }
   return out;
