@@ -8,6 +8,7 @@
 
 pub mod mcp;
 pub mod ops;
+pub mod sketch;
 
 use std::io::Read;
 
@@ -29,6 +30,11 @@ COMMANDS
   edit <note> [text|-]             Replace the text of a note
   move <note> <folder>             Move a note to another folder
   trash <note>                     Move a note to the Joplin trash
+  resource <id>                    Print the local file of an attachment (downloads it if
+                                   needed); --json adds the strokes of a sketch
+  sketch [--replace <id>] [--background #rrggbb]
+                                   Read {\"strokes\": [...]} as one JSON line on stdin and save
+                                   it as an editable sketch PNG; prints the note's <img> tag
   sync                             Sync with Joplin Server now
   mcp                              Run as an MCP server on stdio
 
@@ -41,7 +47,7 @@ ENVIRONMENT
 
 /// Commands understood by [`main_with`]; the app binary hands these over.
 pub const COMMANDS: &[&str] =
-    &["folders", "list", "show", "search", "new", "append", "edit", "move", "trash", "sync", "mcp", "help"];
+    &["folders", "list", "show", "search", "new", "append", "edit", "move", "trash", "resource", "sketch", "sync", "mcp", "help"];
 
 /// Runs one command and returns the process exit code. `prog` names the binary in messages.
 pub fn main_with(args: Vec<String>, prog: &str) -> i32 {
@@ -152,6 +158,36 @@ fn run(mut args: Vec<String>, prog: &str) -> Result<(), String> {
             ctx.move_note(id, folder)?;
         }
         "trash" => ctx.trash(args.first().ok_or("missing note id")?)?,
+        "resource" => {
+            let id = args.first().ok_or("missing attachment id")?;
+            let path = ctx.resource(id)?.ok_or("attachment not found")?;
+            let sketch = if json { std::fs::read(&path).ok().and_then(|b| sketch::read_sketch_data(&b)) } else { None };
+            print(serde_json::json!({ "id": id, "path": path, "sketch": sketch }), path.display().to_string());
+        }
+        "sketch" => {
+            let replace = take_opt(&mut args, "--replace");
+            let background = take_opt(&mut args, "--background").unwrap_or_else(|| "#ffffff".into());
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line).map_err(|e| e.to_string())?;
+            #[derive(serde::Deserialize)]
+            struct Input {
+                strokes: Vec<sketch::StrokeData>,
+            }
+            let input: Input = serde_json::from_str(&line).map_err(|e| format!("bad strokes: {e}"))?;
+            let r = sketch::render(&input.strokes, &background)?.ok_or("nothing drawn")?;
+            let (id, name) = match replace {
+                Some(id) => {
+                    ctx.replace_sketch(&id, &r.png)?;
+                    (id, String::new())
+                }
+                None => {
+                    let name = format!("sketch-{}.png", sketch_stamp());
+                    (ctx.add_sketch(&r.png, &name)?, name)
+                }
+            };
+            let tag = format!("<img src=\":/{id}\" alt=\"{name}\" width=\"{}\">", r.width);
+            print(serde_json::json!({ "id": id, "name": name, "width": r.width, "tag": tag }), tag);
+        }
         "sync" => {
             let report = ctx.sync()?;
             print(
@@ -162,4 +198,21 @@ fn run(mut args: Vec<String>, prog: &str) -> Result<(), String> {
         other => return Err(format!("unknown command '{other}' (see --help)")),
     }
     Ok(())
+}
+
+/// `2026-11-03-07-30-00`, like the app's sketch names (UTC, as `toISOString`).
+fn sketch_stamp() -> String {
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let (days, rem) = (secs / 86_400, secs % 86_400);
+    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}-{:02}-{:02}-{:02}", rem / 3600, rem % 3600 / 60, rem % 60)
 }
