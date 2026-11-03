@@ -4,7 +4,7 @@ Omanote is a quick-notes scratchpad for Linux, macOS, iOS and Android that syncs
 with an unmodified **Joplin Server** and looks like **Omarchy**. Read this before
 changing code.
 
-## Project status (2026-10-23)
+## Project status (2026-11-03)
 
 Owner: Michele Belleri (writes in Italian). The repository is **English only**: code,
 comments, test data, docs and **commit messages**; Italian lives only in the UI
@@ -22,8 +22,8 @@ its history. Do not name other note apps as models or references (code, docs, co
   names may start with a digit and hold several words), currency conversion (`100 € in $ =`,
   ECB rates cached in `fx-rates.json` next to the database and refreshed at most once a day;
   a "1 € = 1.05 $" line overrides them for one note; two different currencies in one sum are
-  refused instead of silently added with the left unit), timers,
-  swipe navigation, auto-deleted empty notes, keyboard shortcuts.
+  refused instead of silently added with the left unit), timers, auto-deleted empty notes,
+  keyboard shortcuts.
 - Editor rendering: `@codemirror/lang-markdown` (CommonMark + GFM) with a `HighlightStyle`
   for headings/emphasis/code/quotes, plus a live-preview plugin in `editor.ts` that hides
   Markdown marks, renders Joplin rich-text HTML (`<span style="color">` across lines, `<img
@@ -33,14 +33,37 @@ its history. Do not name other note apps as models or references (code, docs, co
   (Markdown bold).
 - OCR with Apple Vision (tested in the real app); tesseract/grim/slurp path for Linux.
 - 8 LTR languages; Omarchy look (JetBrains Mono, 22 bundled themes, live system theme).
-- Navigation: tree panel (`Sidebar.svelte`: notebook → folders → notes, expand/collapse,
-  current note revealed; notes *and* folders can be dragged onto folders or the root,
-  cut/copy/paste with Mod-X/C/V or the right-click / ⋯ menu (copy duplicates notes and
-  whole folders), arrows/Enter/⌫ on the selection; picking a folder limits the note stack
-  to it). Tree rows are `div`s: WebKit does not start drags from `<button>`s. The in-app
-  clipboard lives in `treeClipboard.svelte.ts` and an auto-hiding bottom bar
-  (‹ dots › + "+" slot, shown near the bottom edge or for 2 s after moving).
-- macOS window: no title bar, traffic lights shown only with the hover menu (58 px bar).
+- Navigation (2026-11 revamp, folder-centred like a classic notes app, Omarchy look): the
+  layout follows the window width, not the platform (`routes/+page.svelte`): ≥ 1000 px three
+  columns (folders sidebar · note list · note), 700–999 px list + note with the sidebar
+  sliding in (Mod-\), below 700 px a navigation stack Folders → Notes → Note with back
+  buttons. Focus mode (Mod-Shift-\ / Mod-|, Esc leaves) hides sidebar and list.
+  - `FolderSidebar.svelte`: All Notes, the folder tree (the working notebook starts open,
+    folders collapsed state in localStorage `omanote.expanded`, "!<id>" = root collapsed),
+    Recently Deleted (Joplin's trash), a footer with New Folder, sync status and Settings.
+    Folders and notes drop onto folders or onto Recently Deleted; rename inline; context
+    menu; cut/copy/paste through `treeClipboard.svelte.ts` (`DRAG_TYPE` lives there too).
+    Rows are `div`s: WebKit does not start drags from `<button>`s.
+  - `NoteList.svelte`: the notes of the selection (or search results across the tree with
+    an All Notes / this-folder scope), sorted by date edited (with Today / Yesterday /
+    Previous 7 / 30 days / month sections, `lib/dates.ts`) or by title; context menu
+    (right-click, long press), touch swipe revealing Move / Delete, ↑↓ / Enter / ⌫, rows
+    drag onto sidebar folders. Recently Deleted lists trashed items with Restore / Delete
+    permanently; a trashed note opens read-only (`createEditor({ readOnly })`).
+  - Editor column: toolbar (back in the stack, pin + screen OCR on desktop, draw, ⋯ menu
+    with Move / Duplicate / Delete / focus / text size / sync / settings, compose), an
+    "edited …" line, the note. Deleting needs no confirmation: notes go to Recently Deleted.
+  - Per-device preferences in `lib/prefs.svelte.ts` (localStorage `omanote.prefs`): toolbar
+    always visible or auto-hiding (it then floats and shows near the top edge; always shown
+    on touch and in the stack), launch with the last note or a new one (the global hotkey
+    always starts a new note), sort, text size, sidebar/focus, last folder and note.
+  - The folderless "note stack" of the first iteration is gone (bottom dot bar, Mod-[ ],
+    swipes between notes, position counter, promote / Mod-1).
+- Settings (`Settings.svelte`): a sheet with categories (General, Appearance, Account & Sync,
+  Notebooks, Keyboard, AI agents (desktop), Repair (with a server), About); on narrow
+  screens the category list pushes the pane.
+- macOS window: no title bar; the traffic lights sit over the leftmost column (sidebar or list
+  headers leave room for them) and over the bare note follow the toolbar.
 - Icons: the interface draws Nerd Font glyphs, the way Omarchy draws its bar, menu and
   panels (its `shell/Ui/OpticalGlyph.qml`; the menu names glyphs such as U+F035C for
   "menu"). `tools/gen-symbol-font.py` cuts a subset of Nerd Fonts' Symbols Nerd Font

@@ -68,6 +68,28 @@ const images = new Map<string, string>();
 const trashed: { item: TrashItem; note?: (typeof notes)[number]; folder?: Folder }[] = [];
 
 const id32 = () => Array.from({ length: 32 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
+
+// Older notes, so the list shows its date sections (yesterday, last week, months ago).
+const DAY = 86_400_000;
+for (const [days, folder, text] of [
+  [1, "a", "Pantry\n- [x] flour\n- [ ] olive oil\n- [ ] coffee"],
+  [3, "b", "Quarterly review\nrevenue = 48000 €\ncosts = 31500 €\nrevenue - costs ="],
+  [5, "r", "Ideas for the weekend\n- hike to the lake\n- try the new bakery"],
+  [12, "c", "Project timeline\n# Milestones\n- design done\n- beta in two weeks"],
+  [24, "b", "Meeting notes\nAgree on the budget, then hire."],
+  [70, "r", "Books to read\n- [ ] Dune\n- [ ] The Left Hand of Darkness"],
+  [400, "a", "Old shopping list\nmilk, eggs"],
+] as [number, string, string][]) {
+  notes.push({
+    id: id32(),
+    parent_id: folder.repeat(32),
+    title: text.split("\n")[0],
+    text,
+    updated_time: Date.now() - days * DAY - 3_600_000,
+    created_time: Date.now() - days * DAY - 3_600_000,
+    encrypted: false,
+  });
+}
 const summary = (n: (typeof notes)[number]): NoteSummary => ({
   id: n.id,
   parent_id: n.parent_id,
@@ -146,7 +168,7 @@ export async function mockInvoke(
     case "search_notes":
       return notes.filter((n) => n.text.toLowerCase().includes((a.query ?? "").toLowerCase())).map(summary);
     case "get_note":
-      return notes.find((n) => n.id === a.id) ?? null;
+      return notes.find((n) => n.id === a.id) ?? trashed.find((x) => x.item.id === a.id)?.note ?? null;
     case "create_note": {
       const n = {
         id: id32(),

@@ -82,6 +82,26 @@ ICONS: dict[str, str] = {
     "fountainPen": "md-fountain_pen_tip",
     "redo": "md-redo",
     "eraserStroke": "md-eraser_variant",
+    # Notes-style navigation and Settings (2026-11 revamp).
+    "compose": "md-square_edit_outline",
+    "sidebar": "md-dock_left",
+    "folder": "md-folder_outline",
+    "allNotes": "md-note_multiple_outline",
+    "sort": "md-sort",
+    "focus": "md-arrow_expand",
+    "unfocus": "md-arrow_collapse",
+    "move": "md-folder_move_outline",
+    "duplicate": "md-content_copy",
+    "general": "md-tune_variant",
+    "appearance": "md-palette_outline",
+    "account": "md-account_circle_outline",
+    "notebook": "md-notebook_outline",
+    "keyboard": "md-keyboard_outline",
+    "robot": "md-robot_outline",
+    "wrench": "md-wrench_outline",
+    "info": "md-information_outline",
+    "cloudOk": "md-cloud_check_outline",
+    "cloudOff": "md-cloud_off_outline",
 }
 
 # Kept in the subset even though nothing draws them yet: the UI grows, and a

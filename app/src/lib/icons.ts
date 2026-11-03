@@ -58,9 +58,9 @@ export const icons = {
   sync: glyph("sync"),
   /** Folder options. */
   more: glyph("more"),
-  /** Previous note in the stack. */
+  /** Back (stack navigation), previous. */
   prev: glyph("prev"),
-  /** Next note in the stack. */
+  /** Forward, disclosure. */
   next: glyph("next"),
   /** Collapsed tree branch. */
   expand: glyph("expand"),
@@ -102,4 +102,34 @@ export const icons = {
   redo: glyph("redo"),
   /** Confirm. */
   check: glyph("check"),
+  /** New note (compose). */
+  compose: glyph("compose"),
+  /** Show or hide the folders sidebar. */
+  sidebar: glyph("sidebar"),
+  /** A folder in the sidebar. */
+  folder: glyph("folder"),
+  /** "All Notes" in the sidebar. */
+  allNotes: glyph("allNotes"),
+  /** Sorting menu of the note list. */
+  sort: glyph("sort"),
+  /** Focus mode: only the note. */
+  focus: glyph("focus"),
+  /** Leave focus mode. */
+  unfocus: glyph("unfocus"),
+  /** Move a note to another folder. */
+  move: glyph("move"),
+  /** Duplicate a note. */
+  duplicate: glyph("duplicate"),
+  /** Settings categories. */
+  general: glyph("general"),
+  appearance: glyph("appearance"),
+  account: glyph("account"),
+  notebook: glyph("notebook"),
+  keyboard: glyph("keyboard"),
+  robot: glyph("robot"),
+  wrench: glyph("wrench"),
+  info: glyph("info"),
+  /** Sync status in the sidebar footer. */
+  cloudOk: glyph("cloudOk"),
+  cloudOff: glyph("cloudOff"),
 };

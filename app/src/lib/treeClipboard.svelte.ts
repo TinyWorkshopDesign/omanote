@@ -10,3 +10,6 @@ export interface TreeClip {
 }
 
 export const treeClipboard = $state<{ clip: TreeClip | null }>({ clip: null });
+
+/** Data type of a note or folder dragged inside the app (list rows, sidebar folders). */
+export const DRAG_TYPE = "text/omanote-item";

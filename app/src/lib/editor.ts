@@ -795,6 +795,8 @@ export interface EditorOptions {
   /** URL of an attachment (`:/id`) to display, or null if unavailable. */
   resolveImage?: ResolveImage;
   extraKeys?: { key: string; run: () => boolean }[];
+  /** Show the note without letting it change (a note in the trash). */
+  readOnly?: boolean;
 }
 
 /** Inserts text at the cursor (used for OCR results). */
@@ -811,7 +813,14 @@ export function insertText(view: EditorView, text: string) {
 const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "transparent" },
   ".cm-scroller": { fontFamily: "var(--font)", lineHeight: "1.65" },
-  ".cm-content": { caretColor: "var(--accent)" },
+  // Comfortable margins beside the note and a readable line length on wide
+  // screens (set here: the editor's base theme outranks app.css).
+  ".cm-content": {
+    caretColor: "var(--accent)",
+    padding: "0 clamp(14px, 3.5vw, 36px)",
+    maxWidth: "52rem",
+    margin: "0 auto",
+  },
 });
 
 export function createEditor(o: EditorOptions): EditorView {
@@ -893,6 +902,7 @@ export function createEditor(o: EditorOptions): EditorView {
       },
     }),
     EditorView.contentAttributes.of({ autocapitalize: "sentences", spellcheck: "true" }),
+    ...(o.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
   ];
   const view = new EditorView({
     parent: o.parent,
@@ -900,7 +910,7 @@ export function createEditor(o: EditorOptions): EditorView {
   });
   // A "list" note written elsewhere (Joplin, CLI, an AI agent) may lack the
   // "- [ ] " markers: add them so every app sees a real checklist.
-  if (modeOf(view.state.doc) === "list") {
+  if (!o.readOnly && modeOf(view.state.doc) === "list") {
     const changes: ChangeSpec[] = [];
     const marked = new Set<number>();
     const doc = view.state.doc;

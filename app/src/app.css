@@ -109,8 +109,6 @@ input:focus {
 
 .cm-content {
   caret-color: var(--accent);
-  padding: 0 14px;
-  max-width: 52rem;
 }
 
 .cm-line {
