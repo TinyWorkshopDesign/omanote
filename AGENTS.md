@@ -261,6 +261,13 @@ its history. Do not name other note apps as models or references (code, docs, co
     accepts both; until 2026-10-23 sketches, pasted images and OCR failed on Android with
     "expected raw image bytes". Headers (`x-name`, `x-id`) do arrive. Binary *responses*
     (`resource_bytes`) reach JS as an `ArrayBuffer` on Android too.
+  - Secrets: there is no keychain backend, so `secrets.rs` keeps the server password and
+    the E2EE master password in **plain text** in `secrets.json` inside the app sandbox
+    (owner-only 0600). Backups and device-to-device transfers are therefore off:
+    `allowBackup="false"` (which on Android 12+ does not stop device-to-device transfer),
+    plus `res/xml/data_extraction_rules.xml` (12+) and `backup_rules.xml` (≤ 11) excluding
+    every domain. The real fix, the Android Keystore through JNI, is not done; until then a
+    rooted device or a full-device forensic copy exposes both passwords.
   - The sync fails with "network error" while the phone dozes (Android cuts background apps
     off the network); not a bug, it resumes when the app is in front.
   - `MainActivity.kt`: Android 15+ always draws edge to edge, so the content view is padded
