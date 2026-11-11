@@ -8,7 +8,8 @@
 
 mod common;
 
-use common::{info_e2ee, info_plain, read, Device, FakeServer};
+use common::{info_e2ee, info_plain, master_key, read, Device, FakeServer, MASTER_KEY_ID};
+use omanote_core::e2ee::KeyRing;
 use omanote_core::item::{self, RawItem, TYPE_NOTE};
 
 fn md(id: &str) -> String {
@@ -899,4 +900,118 @@ async fn a_remote_edit_from_a_device_with_a_slow_clock_is_not_lost() {
     let rb = b.sync().await.unwrap();
     assert_eq!(rb.downloaded, 1);
     assert_eq!(b.text(&note).as_deref(), Some("Shared\nv2 from a device whose clock is late"));
+}
+
+// -- item ids must match file names ------------------------------------------------------------
+
+/// Item `id` as stored on `device`, edited and dated a minute later: the content a
+/// hostile server or client would put in another item's file to overwrite `id`.
+fn forged_copy(device: &Device, id: &str, body: &str) -> RawItem {
+    let (mut it, encrypted, ..) = device.db().raw(id).unwrap().expect("item on the device");
+    assert!(!encrypted);
+    let later = it.time("updated_time") + 60_000;
+    it.set_time("updated_time", later);
+    it.set_time("user_updated_time", later);
+    it.body = Some(body.into());
+    it
+}
+
+/// `it` encrypted under the test master key, in an envelope whose clear-text id is `envelope_id`.
+fn encrypted_as(it: &RawItem, envelope_id: &str) -> String {
+    let mut keys = KeyRing::new();
+    keys.insert(MASTER_KEY_ID, master_key());
+    keys.active_id = Some(MASTER_KEY_ID.into());
+    let mut envelope = it.encrypted_envelope(keys.encrypt_string(&it.serialize()).unwrap());
+    envelope.set("id", envelope_id);
+    envelope.serialize()
+}
+
+#[tokio::test]
+async fn a_file_holding_another_items_id_does_not_overwrite_it() {
+    let server = FakeServer::start(&info_plain());
+    let mut a = Device::new(&server);
+    let mut b = Device::new(&server);
+    let (_, note) = shared_note(&mut a, &mut b, "Plan\nv1").await;
+
+    let x = item::new_id();
+    server.put_item(&md(&x), forged_copy(&a, &note, "overwritten").serialize().as_bytes());
+
+    let rb = b.sync().await.unwrap();
+    assert_eq!(rb.errors.len(), 1, "{:?}", rb.errors);
+    assert!(rb.errors[0].contains(&md(&x)), "{:?}", rb.errors);
+    assert_eq!(rb.downloaded, 0);
+    assert_eq!(b.text(&note).as_deref(), Some("Plan\nv1"));
+    assert!(b.db().raw(&x).unwrap().is_none());
+    assert!(b.db().dirty_items().unwrap().is_empty());
+}
+
+/// Encrypted envelope named and labelled X whose cipher text is item Y.
+#[tokio::test]
+async fn an_encrypted_file_decrypting_to_another_item_does_not_overwrite_it() {
+    let server = FakeServer::start(&info_e2ee());
+    let mut a = Device::with_key(&server);
+    let mut b = Device::with_key(&server);
+    let (_, note) = shared_note(&mut a, &mut b, "Secret\nv1").await;
+
+    let x = item::new_id();
+    server.put_item(&md(&x), encrypted_as(&forged_copy(&a, &note, "overwritten"), &x).as_bytes());
+
+    let rb = b.sync().await.unwrap();
+    assert_eq!(rb.errors.len(), 1, "{:?}", rb.errors);
+    assert!(rb.errors[0].contains(&md(&x)), "{:?}", rb.errors);
+    assert_eq!(b.text(&note).as_deref(), Some("Secret\nv1"));
+    assert!(b.db().raw(&x).unwrap().is_none());
+}
+
+/// Downloaded without the key, the forged envelope is stored encrypted under X; once
+/// the key arrives it must not be decrypted into Y.
+#[tokio::test]
+async fn an_envelope_decrypting_to_another_item_stays_encrypted_after_unlocking() {
+    let server = FakeServer::start(&info_e2ee());
+    let mut a = Device::with_key(&server);
+    let mut b = Device::new(&server);
+    let folder = a.create_folder("Shared");
+    let note = a.create_note(&folder, "Secret\nv1");
+    a.sync().await.unwrap();
+
+    let x = item::new_id();
+    server.put_item(&md(&x), encrypted_as(&forged_copy(&a, &note, "overwritten"), &x).as_bytes());
+
+    let rb = b.sync().await.unwrap();
+    assert!(rb.needs_password);
+    assert_eq!(rb.still_encrypted, 3);
+
+    b.give_key();
+    assert_eq!(b.decrypt_pending().unwrap(), 1, "the forged envelope stays encrypted");
+    assert_eq!(b.text(&note).as_deref(), Some("Secret\nv1"));
+    let (_, x_encrypted, ..) = b.db().raw(&x).unwrap().expect("envelope kept under its own id");
+    assert!(x_encrypted);
+
+    let rb = b.sync().await.unwrap();
+    assert_eq!(rb.still_encrypted, 1);
+    assert_eq!(b.text(&note).as_deref(), Some("Secret\nv1"));
+}
+
+/// The upload reads the server's copy of each dirty item: a copy claiming another id
+/// must not be settled as a conflict that stores it over that other item.
+#[tokio::test]
+async fn an_upload_does_not_store_a_remote_copy_holding_another_id() {
+    let server = FakeServer::start(&info_plain());
+    let mut a = Device::new(&server);
+    let mut b = Device::new(&server);
+    let (folder, note) = shared_note(&mut a, &mut b, "Plan\nv1").await;
+    let other = a.create_note(&folder, "Other\nv1");
+    a.sync().await.unwrap();
+    b.sync().await.unwrap();
+
+    b.edit(&note, "Plan\nfrom B");
+    server.replace_silently(&md(&note), forged_copy(&a, &other, "overwritten").serialize().as_bytes());
+
+    let rb = b.sync().await.unwrap();
+    assert!(!rb.errors.is_empty());
+    assert!(rb.errors.iter().all(|e| e.contains(&md(&note))), "{:?}", rb.errors);
+    assert_eq!(rb.conflicts, 0);
+    assert_eq!(b.text(&other).as_deref(), Some("Other\nv1"));
+    assert_eq!(b.text(&note).as_deref(), Some("Plan\nfrom B"));
+    assert!(b.conflicts().is_empty());
 }
