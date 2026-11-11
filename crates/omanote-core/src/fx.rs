@@ -78,7 +78,7 @@ pub fn save(dir: &Path, rates: &FxRates) -> bool {
     let path = cache_path(dir);
     let tmp = path.with_extension("json.tmp");
     // Write then rename, so a half-written table is never read.
-    std::fs::write(&tmp, body).is_ok() && std::fs::rename(&tmp, &path).is_ok()
+    crate::private_fs::write(&tmp, body.as_bytes()).is_ok() && std::fs::rename(&tmp, &path).is_ok()
 }
 
 pub fn is_fresh(rates: &FxRates, now_secs: i64) -> bool {
@@ -152,6 +152,8 @@ mod tests {
         assert!(load_cached(&dir).is_none());
         let table = parse(SAMPLE, 1_000_000).unwrap();
         assert!(save(&dir, &table));
+        #[cfg(unix)]
+        assert_eq!(crate::private_fs::tests::mode(&cache_path(&dir)), 0o600);
         assert_eq!(load_cached(&dir).as_ref(), Some(&table));
         assert!(is_fresh(&table, 1_000_000 + MAX_AGE_SECS - 1));
         assert!(!is_fresh(&table, 1_000_000 + MAX_AGE_SECS));

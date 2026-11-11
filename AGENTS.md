@@ -428,6 +428,10 @@ cargo run -p omanote-cli -- --help  # CLI
 - **One database, several processes.** The app, `omanote-cli` and the MCP server share
   `<data dir>/app.omanote/omanote.sqlite` (WAL + busy timeout). The app notices external
   writes through `PRAGMA data_version`.
+- **Local data is owner-only on Unix.** Create files and folders in the data directory
+  through `omanote_core::private_fs` (0700 folders, 0600 files, existing installs
+  tightened when opened); `Store::open` pre-creates the database 0600 so SQLite's
+  `-wal`/`-shm` files get the same mode.
 - **Errors to the UI** are codes (`CODE` or `CODE|detail`) translated in `i18n.svelte.ts`.
 - **Languages**: left-to-right only. Add strings to the `en` dictionary first; other
   languages fall back to English.

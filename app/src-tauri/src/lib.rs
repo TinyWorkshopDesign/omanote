@@ -105,7 +105,7 @@ fn log_errors(dir: &std::path::Path, context: &str, lines: &[String]) {
     let stamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
     all.extend(lines.iter().map(|l| format!("{stamp} [{context}] {l}")));
     let start = all.len().saturating_sub(500);
-    let _ = std::fs::write(&path, all[start..].join("\n") + "\n");
+    let _ = omanote_core::private_fs::write(&path, (all[start..].join("\n") + "\n").as_bytes());
 }
 
 /// Drops the local copy of an account (logout, switching server/account): the
@@ -1149,7 +1149,8 @@ pub fn run() {
             #[cfg(target_os = "android")]
             android_tls::init();
             let dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&dir)?;
+            // Owner-only (0700), also tightening the folder of an older install.
+            omanote_core::private_fs::create_dir(&dir)?;
             let store = Store::open(dir.join(omanote_core::config::DB_FILE)).map_err(|e| e.to_string())?;
             let config = Config::load(&dir);
             #[cfg(target_os = "ios")]
