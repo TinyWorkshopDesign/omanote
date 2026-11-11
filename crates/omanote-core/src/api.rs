@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 use crate::error::{Error, Result};
 
 pub const LOCK_SYNC: i64 = 1;
+pub const LOCK_EXCLUSIVE: i64 = 2;
 pub const LOCK_CLIENT_DESKTOP: i64 = 1;
 pub const LOCK_CLIENT_MOBILE: i64 = 2;
 
@@ -34,6 +35,25 @@ pub struct DeltaPage {
     pub cursor: String,
     #[serde(default)]
     pub has_more: bool,
+}
+
+/// A sync target lock as Joplin Server's `api/locks` returns it.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Lock {
+    #[serde(rename = "type")]
+    pub lock_type: i64,
+    #[serde(rename = "clientType")]
+    pub client_type: i64,
+    #[serde(rename = "clientId")]
+    pub client_id: String,
+    #[serde(rename = "updatedTime", default)]
+    pub updated_time: i64,
+}
+
+#[derive(Deserialize)]
+struct LockList {
+    #[serde(default)]
+    items: Vec<Lock>,
 }
 
 #[derive(Clone)]
@@ -190,6 +210,8 @@ impl JoplinServer {
         }
     }
 
+    /// Takes a sync lock. For a client that already holds one the server only moves its
+    /// `updatedTime` forward, so calling this again is also how the lock is refreshed.
     pub async fn acquire_lock(&mut self, client_type: i64, client_id: &str) -> Result<()> {
         let body = json!({ "type": LOCK_SYNC, "clientType": client_type, "clientId": client_id });
         let res = self
@@ -197,6 +219,12 @@ impl JoplinServer {
             .await?;
         check(res).await?;
         Ok(())
+    }
+
+    /// The locks the server holds (expired ones are dropped by the server).
+    pub async fn locks(&mut self) -> Result<Vec<Lock>> {
+        let res = self.send(reqwest::Method::GET, "api/locks", &[], None).await?;
+        Ok(check(res).await?.json::<LockList>().await?.items)
     }
 
     pub async fn release_lock(&mut self, client_type: i64, client_id: &str) -> Result<()> {
