@@ -296,6 +296,9 @@ impl<'a> Synchronizer<'a> {
 
     /// Downloads (and decrypts) an attachment file, saving it next to the database.
     pub async fn fetch_resource(&mut self, id: &str) -> Result<Option<std::path::PathBuf>> {
+        if !item::is_valid_id(id) {
+            return Ok(None); // never let a malformed id reach a server path
+        }
         if let Some(p) = self.db().resource_file(id)? {
             return Ok(Some(p));
         }

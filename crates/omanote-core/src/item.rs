@@ -195,7 +195,7 @@ impl RawItem {
             .ok_or_else(|| Error::Format("missing type_".into()))?;
 
         if let Some(id) = props.get("id") {
-            if !id.is_empty() && !(id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())) {
+            if !id.is_empty() && !is_valid_id(id) {
                 return Err(Error::Format(format!("invalid item id: {id:?}")));
             }
         }
@@ -302,6 +302,11 @@ pub fn parse_time(s: &str) -> i64 {
     DateTime::parse_from_rfc3339(s)
         .map(|d| d.timestamp_millis())
         .unwrap_or(0)
+}
+
+/// A Joplin item id: 32 hex digits. Ids end up in file names and server paths.
+pub fn is_valid_id(id: &str) -> bool {
+    id.len() == 32 && id.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 pub fn new_id() -> String {

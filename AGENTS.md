@@ -115,6 +115,9 @@ its history. Do not name other note apps as models or references (code, docs, co
   (`Synchronizer::fetch_resource`, served via Tauri's asset protocol scoped to
   `$APPDATA/resources`). Verified both ways against Joplin CLI with identical SHA-256
   (`crates/omanote-core/examples/resources_e2e.rs`). Images never go on line 1 (title).
+  Local files are `resources/<id>.<ext>`, built only by `Store::blob_path`: `id` and
+  `file_extension` come from the server, so the id must be 32 hex digits and the extension
+  keeps only ASCII letters and digits (≤ 20); `fetch_resource` ignores malformed ids.
 - Handwriting and sketches (`lib/components/Sketch.svelte`, header button and Mod-Shift-D):
   one Omarchy toolbar over two engines. Tools: ballpoint pen, pencil, highlighter (and
   fountain pen on iPadOS), a pixel eraser and a stroke eraser (tap the eraser again to
