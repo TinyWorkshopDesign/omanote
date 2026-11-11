@@ -3,6 +3,8 @@ mod android_tls;
 mod ocr;
 mod theme;
 mod timer;
+#[cfg(desktop)]
+mod update;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -1125,6 +1127,7 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             handle_args(app, &args);
         }));
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
 
     let app = builder
@@ -1252,6 +1255,10 @@ pub fn run() {
             fx_rates,
             hide_window,
             set_window_controls,
+            #[cfg(desktop)]
+            update::check_update,
+            #[cfg(desktop)]
+            update::install_update,
             #[cfg(debug_assertions)]
             debug_log,
         ])

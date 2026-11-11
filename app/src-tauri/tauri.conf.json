@@ -53,5 +53,13 @@
     "iOS": {
       "minimumSystemVersion": "16.0"
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIxOTNDMDA3OEFFMDBBQ0MKUldUTUN1Q0tCOENUc2JlL1l5ZlZyU1dTSkJDZ3RGSFFXVHlBb0NYQk5CaWVEQkdEYVhqMDR6SmsK",
+      "endpoints": [
+        "https://github.com/TinyWorkshopDesign/omanote/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

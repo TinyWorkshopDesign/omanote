@@ -323,6 +323,19 @@ its history. Do not name other note apps as models or references (code, docs, co
   relies on (`BarIconButton`, `OpticalGlyph`, `IconContentBounds`, the `Style.bar` tokens)
   are the same files in both. The bar fits an icon's painted bounds to `Style.bar.iconSize`
   whatever size the plugin asks for (see `shell/plugins/bar/README.md`, "Icon geometry").
+- In-app updater (desktop only, `app/src-tauri/src/update.rs`, `tauri-plugin-updater`; added
+  2026-11-11, **not yet tried against a real release**): `check_update` / `install_update`
+  read `latest.json` from `/releases/latest/download/` (`plugins.updater` in `tauri.conf.json`,
+  with the public key) and replace the macOS `.app` or the running AppImage (`$APPIMAGE` set);
+  other Linux installs only get the notice and a link. The UI is Settings → About plus one
+  check per launch (`prefs.autoUpdateCheck`, a toast, never an automatic install). The
+  release workflow builds with `--config src-tauri/tauri.release.conf.json`
+  (`createUpdaterArtifacts`), which needs the repository secret `TAURI_SIGNING_PRIVATE_KEY`
+  (minisign key made with `tauri signer generate`, no password; the private half is kept
+  outside the repository, in `~/.tauri/omanote.key` on the Omarchy box — **never commit it**,
+  and losing it means installed apps can no longer be updated). Local builds do not use
+  that config, so they need no key. Publishing the draft release is what makes the update
+  visible to installed apps.
 - Release build on the dev Mac: `cd app && PATH=/usr/bin:$PATH npm run tauri build -- --bundles app`.
   A Python `xattr` (from python.org's framework) shadows `/usr/bin/xattr` and lacks `-r`,
   which breaks Tauri's ad-hoc signing step. Install with `ditto` into /Applications.

@@ -1,6 +1,10 @@
 # Builds Omanote for macOS and Linux and attaches the bundles to a draft GitHub
 # Release. Runs when a version tag (v0.1.0, …) is pushed, or by hand.
 #
+# The bundles are signed for the in-app updater (the TAURI_SIGNING_PRIVATE_KEY
+# secret; its public half is in tauri.conf.json) and a latest.json listing them is
+# attached too: installed apps read it once the draft is published.
+#
 # macOS: one universal .dmg (Apple Silicon + Intel), ad-hoc signed only: it is not
 # notarized, so the first launch has to be allowed in System Settings.
 # Linux: AppImage, .deb and .rpm, built on the oldest supported Ubuntu so the
@@ -60,6 +64,8 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: app
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
@@ -77,4 +83,5 @@ jobs:
             `omarchy-plugin/` (see the README).
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          # tauri.release.conf.json turns the updater artifacts (and their signing) on.
+          args: --config src-tauri/tauri.release.conf.json ${{ matrix.args }}
