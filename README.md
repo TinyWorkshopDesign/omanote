@@ -21,6 +21,12 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
   Arch and Omarchy install `fuse2` first). `.deb` and `.rpm` packages are there too.
 - Or build it from source (see [Development](#development)).
 
+From the version after 0.2.0 the macOS app and the Linux AppImage **update themselves**:
+Settings → About → *Check for updates* downloads the new version, verifies its signature and
+restarts. At launch the app only asks GitHub whether a newer release exists (it can be turned
+off there). `.deb` / `.rpm` installs and builds from source are told about the new version and
+keep being updated by hand or by the package manager.
+
 ## Features
 
 **Quick notes**

@@ -200,6 +200,11 @@ export async function mockInvoke(
       trashed.push({ item: { id: n.id, parent_id: n.parent_id, title, is_folder: false, deleted_time: Date.now(), encrypted: false }, note: n });
       return null;
     }
+    case "check_update":
+      // `?update` in the address shows the "update available" state.
+      return location.search.includes("update") ? { version: "9.9.9", notes: "", can_install: true } : null;
+    case "install_update":
+      return null;
     case "cli_path":
       return "/Applications/Omanote.app/Contents/MacOS/omanote";
     case "list_trash":

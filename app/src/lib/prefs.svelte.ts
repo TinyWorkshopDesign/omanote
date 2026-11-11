@@ -19,6 +19,8 @@ export interface Prefs {
   /** Selection restored at launch: a folder id, "all" or "trash". */
   lastFolder: string;
   lastNote: string;
+  /** Desktop: look for a newer version on GitHub when the app starts. */
+  autoUpdateCheck: boolean;
 }
 
 const KEY = "omanote.prefs";
@@ -34,6 +36,7 @@ const defaults: Prefs = {
   focus: false,
   lastFolder: "all",
   lastNote: "",
+  autoUpdateCheck: true,
 };
 
 function load(): Prefs {

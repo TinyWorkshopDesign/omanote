@@ -239,6 +239,17 @@
     status = await api.status();
   }
 
+  /** Desktop, once per launch: says when a newer version is on GitHub (Settings → About installs it). */
+  let updateChecked = false;
+  $effect(() => {
+    if (!status || status.mobile || !prefs.autoUpdateCheck || updateChecked) return;
+    updateChecked = true;
+    api
+      .checkUpdate()
+      .then((u) => u && say(t("upd.toast", { v: u.version }), 8000))
+      .catch(() => {}); // offline, or no release yet: nothing to say
+  });
+
   async function refresh() {
     if (!status?.configured || !status.root_folder_id) return;
     [folders, allNotes, trashItems] = await Promise.all([api.folders(), api.notes(), api.trash()]);
