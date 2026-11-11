@@ -20,7 +20,11 @@ its history. Do not name other note apps as models or references (code, docs, co
   list, inline math and variables (also in list notes, only `code` notes are raw; a result
   shows right after a trailing "=" — "2+2=" — while "math" notes show every result; variable
   names may start with a digit and hold several words), currency conversion (`100 € in $ =`,
-  ECB rates cached in `fx-rates.json` next to the database and refreshed at most once a day;
+  ECB rates from `api.frankfurter.dev` cached in `fx-rates.json` next to the database and
+  refreshed at most once a day, requested only when a conversion needs them: `calc.evaluate`
+  calls its `onMissingRates` argument, the editor forwards it to `+page.svelte`, which loads the
+  table once and dispatches `ratesChanged`; the bar plugin only reads the cache, the CLI never
+  touches it;
   a "1 € = 1.05 $" line overrides them for one note; two different currencies in one sum are
   refused instead of silently added with the left unit), timers, auto-deleted empty notes,
   keyboard shortcuts.

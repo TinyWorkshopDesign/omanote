@@ -1,9 +1,11 @@
-//! Daily exchange rates for the calculator, from the European Central Bank
-//! (frankfurter.app publishes them, no key, no account). The table is fetched at
-//! most once a day and cached next to the database, so the calculator keeps
-//! converting offline with the last known rates. This is the only request
-//! Omanote makes to anything other than the user's own Joplin Server, and it
-//! carries no note content.
+//! Daily exchange rates for the calculator: the European Central Bank's reference
+//! rates as published by the third-party service Frankfurter (`api.frankfurter.dev`,
+//! no key, no account). The app asks for them only when a note converts a currency
+//! without declaring the rate; the table is then fetched at most once a day and
+//! cached next to the database, so the calculator keeps converting offline with the
+//! last known rates. This is the only request Omanote makes to anything other than
+//! the user's own Joplin Server; it carries no note content, but the service sees
+//! the device's IP address and the time.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
