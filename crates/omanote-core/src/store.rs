@@ -197,10 +197,22 @@ impl Store {
         self.kv_delete("delta_cursor")
     }
 
-    /// Wipes all local data (used when switching server/account).
+    /// Wipes all local data (used at logout and when switching server/account):
+    /// the items, the sync state and the decrypted attachment files.
     pub fn reset(&self) -> Result<()> {
         self.conn.execute_batch("DELETE FROM items; DELETE FROM kv;")?;
-        Ok(())
+        // Deleted rows stay readable in SQLite's free pages and in the WAL until they
+        // are reused: rebuild the file and empty the WAL so no note text is left behind.
+        // Best effort: another process (the CLI) holding a read transaction can make
+        // the checkpoint incomplete, and the logical wipe above has already happened.
+        let _ = self.conn.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);");
+        match std::fs::remove_dir_all(&self.res_dir) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(Error::Sync(format!(
+                "cannot delete {}: {e}",
+                self.res_dir.display()
+            ))),
+            _ => Ok(()),
+        }
     }
 
     // -- key/value ---------------------------------------------------------
@@ -784,6 +796,37 @@ mod tests {
         remote.set("blob_updated_time", (it.get("blob_updated_time").parse::<i64>().unwrap() + 1).to_string());
         s.put_remote(&remote, false).unwrap();
         assert!(s.resource_file(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn reset_leaves_no_account_data_on_disk() {
+        let dir = std::env::temp_dir().join(format!("omanote-reset-{}", item::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("omanote.sqlite");
+        let s = Store::open(&db).unwrap();
+        let f = s.create_folder("Omanote", "").unwrap();
+        s.create_note(&f.id, "Secret\nzebra-quokka-7421").unwrap();
+        let id = s.add_resource(b"\x89PNG private picture", "image/png", "photo.png").unwrap();
+        s.kv_set("delta_cursor", "abc").unwrap();
+        assert!(s.resource_file(&id).unwrap().is_some());
+
+        s.reset().unwrap();
+        assert!(s.raw(&id).unwrap().is_none());
+        assert!(s.kv_get("delta_cursor").unwrap().is_none());
+        assert!(!dir.join("resources").exists(), "decrypted attachments must be deleted");
+        // Neither the database file nor its WAL still holds the deleted text.
+        for name in ["omanote.sqlite", "omanote.sqlite-wal"] {
+            if let Ok(bytes) = std::fs::read(dir.join(name)) {
+                let found = bytes.windows(17).any(|w| w == b"zebra-quokka-7421");
+                assert!(!found, "{name} still holds a deleted note");
+            }
+        }
+        // The store keeps working, and a second reset with nothing to delete is fine.
+        s.add_resource(b"new", "image/png", "new.png").unwrap();
+        s.reset().unwrap();
+        s.reset().unwrap();
+        drop(s);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

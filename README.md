@@ -86,6 +86,8 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
 - Conflicts are handled like Joplin: the remote version wins and the local one is kept as a
   conflict copy.
 - Deleting a note moves it to Joplin's trash.
+- Disconnecting the account (Settings) or switching to another one deletes the local copy
+  from the device, attachment files included. Notes on the server are not touched.
 - Repair tools in Settings: "Resync everything" and "Re-upload local data" (like Joplin
   desktop's, for a server that lost data).
 

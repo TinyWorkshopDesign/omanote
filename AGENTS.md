@@ -186,6 +186,10 @@ its history. Do not name other note apps as models or references (code, docs, co
   connecting a Joplin Server later uploads those notes instead of resetting the store
   (only switching from one server/account to another resets it). Verified with
   `crates/omanote-core/examples/local_then_sync.rs` + the official Joplin CLI.
+  Logout and an account switch (`forget_account` in `lib.rs`) leave nothing of the account
+  on disk: `Store::reset` empties the tables, `VACUUM`s and truncates the WAL (deleted rows
+  would otherwise stay readable in free pages) and deletes `resources/`; `sync-errors.log`
+  goes too. `config.json` keeps `client_id` and the preferences; `fx-rates.json` is public data.
 - Linux/Omarchy (Omarchy 4, real hardware, 2026-09-21): release build installed in `~/.local/bin`
   with a desktop entry, theme from `colors.toml` incl. ANSI-only themes, `omanote --toggle` on a
   Hyprland binding (Super+Alt+N), undecorated window, keyring via gnome-keyring, bar plugin.
