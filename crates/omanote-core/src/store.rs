@@ -1094,6 +1094,40 @@ mod tests {
         let _ = std::fs::remove_dir_all(&s.res_dir);
     }
 
+    /// The attachment branch of resolve_conflict builds its paths through blob_path too.
+    #[test]
+    fn attachment_conflict_paths_stay_inside_the_resources_folder() {
+        let s = Store::open_in_memory().unwrap();
+        s.create_folder("Inbox", "").unwrap();
+
+        // A hostile extension: both files keep to res_dir, with only letters and digits.
+        let mut it = RawItem::new_with_fields(TYPE_RESOURCE, RESOURCE_FIELDS);
+        let id = item::new_id();
+        it.set("id", &id);
+        it.set("file_extension", "../../../escaped");
+        it.set("blob_updated_time", "1");
+        s.put_remote(&it, false).unwrap();
+        s.save_resource_blob(&id, b"local file").unwrap();
+        let mut remote = it.clone();
+        remote.set("blob_updated_time", "2");
+        let kept = s.resolve_conflict(&it, &remote, false).unwrap();
+        assert_eq!(kept.len(), 2);
+        let copy = s.resource_file(kept[0].id()).unwrap().expect("copied file");
+        assert_eq!(copy, s.res_dir.join(format!("{}.escaped", kept[0].id())));
+        assert_eq!(std::fs::read(&copy).unwrap(), b"local file");
+
+        // A malformed id is an error, and nothing of the conflict is stored.
+        let mut bad = it.clone();
+        bad.set("id", "../0123456789abcdef0123456789abcd");
+        let mut bad_remote = bad.clone();
+        bad_remote.set("blob_updated_time", "3");
+        let before = s.dirty_items().unwrap().len();
+        assert!(s.resolve_conflict(&bad, &bad_remote, false).is_err());
+        assert_eq!(s.dirty_items().unwrap().len(), before);
+        assert!(s.raw(bad.id()).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&s.res_dir);
+    }
+
     #[test]
     fn reupload_keeps_local_edits_detectable() {
         let s = Store::open_in_memory().unwrap();
