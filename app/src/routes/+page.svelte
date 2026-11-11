@@ -27,6 +27,7 @@
     ratesChanged,
     refreshImage,
     setFxRates,
+    onRatesWanted,
     SKETCH_EDIT,
     type SketchEdit,
   } from "$lib/editor";
@@ -150,7 +151,34 @@
     };
   });
 
+  // Exchange rates for `100 € in $ =`, loaded only when a note converts a
+  // currency without declaring the rate (the editor asks through `onRatesWanted`):
+  // the app then contacts the rate service, at most once a day thanks to its cache,
+  // and offline uses the last table. A failed load is retried after a while, not
+  // at every keystroke.
+  let fxLoading = false;
+  let fxTriedAt = 0;
+  const FX_RETRY_MS = 10 * 60 * 1000;
+  function loadFxRates() {
+    if (fxLoading || Date.now() - fxTriedAt < FX_RETRY_MS) return;
+    fxLoading = true;
+    fxTriedAt = Date.now();
+    void (async () => {
+      try {
+        const table = await api.fxRates();
+        if (!Object.keys(table.rates ?? {}).length) return;
+        setFxRates(buildRates(table.rates, table.base || "EUR"));
+        view?.dispatch({ effects: ratesChanged.of(null) });
+      } catch {
+        /* no rates: conversions stay unavailable until a rate line is added */
+      } finally {
+        fxLoading = false;
+      }
+    })();
+  }
+
   onMount(() => {
+    onRatesWanted(loadFxRates);
     fitIconsToScreen();
     const offs: (() => void)[] = [];
     const onResize = () => (width = window.innerWidth);
@@ -163,18 +191,6 @@
       document.documentElement.lang = i18n.lang;
       void api.setLanguage(i18n.lang);
       await refreshStatus();
-      // Exchange rates for `100 € in $ =`: loaded in the background, cached on
-      // disk by the app (one request a day). Offline, the last table is used.
-      void (async () => {
-        try {
-          const table = await api.fxRates();
-          if (!Object.keys(table.rates ?? {}).length) return;
-          setFxRates(buildRates(table.rates, table.base || "EUR"));
-          view?.dispatch({ effects: ratesChanged.of(null) });
-        } catch {
-          /* no rates: conversions stay unavailable until a rate line is added */
-        }
-      })();
       await refresh();
       if (selection !== "all" && selection !== "trash" && !folders.some((f) => f.id === selection)) selection = "all";
       if (selection === "trash") selection = "all";

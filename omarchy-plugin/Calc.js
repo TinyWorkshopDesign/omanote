@@ -427,7 +427,7 @@ var Calc = (function () {
   }
   const SKIP = /^\s*(#|>|```|\/\/|- \[[ xX]\]\s*$)/;
   const LIST_PREFIX = /^\s*(?:[-*+•]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/;
-  function evaluate(text, auto = false, fx) {
+  function evaluate(text, auto = false, fx, onMissingRates) {
       var _a, _b;
       const vars = new Map();
       const localRates = new Map();
@@ -502,6 +502,8 @@ var Calc = (function () {
                   out.push({ value: val.v, unit: val.unit, pct: val.pct, show: asks || auto });
                   continue;
               }
+              if (left && from && to && !fx && onMissingRates)
+                  onMissingRates();
               if (left && to) {
                   out.push(null);
                   continue;
