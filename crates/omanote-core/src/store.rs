@@ -9,6 +9,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
 use crate::error::{Error, Result};
+use crate::private_fs;
 use crate::item::{self, RawItem, FOLDER_FIELDS, NOTE_FIELDS, RESOURCE_FIELDS, TYPE_FOLDER, TYPE_NOTE, TYPE_RESOURCE};
 
 const SCHEMA: &str = r#"
@@ -97,12 +98,24 @@ pub struct DirtyItem {
 
 impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let res_dir = path.as_ref().parent().unwrap_or(Path::new(".")).join("resources");
+        let path = path.as_ref();
+        let res_dir = path.parent().unwrap_or(Path::new(".")).join("resources");
+        // Created owner-only before SQLite opens it: SQLite gives the -wal and -shm
+        // files the database file's mode.
+        private_fs::create_file(path).map_err(|e| Error::Sync(format!("{}: {e}", path.display())))?;
         let conn = Connection::open(path)?;
         // WAL + busy timeout: the app, the CLI and the MCP server can share the file.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
         conn.execute_batch(SCHEMA)?;
+        // Data written by older versions with the default umask. Best effort: a file
+        // this user cannot chmod must not stop the app from opening its notes.
+        for suffix in ["", "-wal", "-shm"] {
+            let mut p = path.as_os_str().to_owned();
+            p.push(suffix);
+            let _ = private_fs::restrict(Path::new(&p));
+        }
+        let _ = private_fs::restrict_dir_and_files(&res_dir);
         Ok(Self { conn, res_dir })
     }
 
@@ -148,9 +161,9 @@ impl Store {
     /// Where a downloaded attachment is saved (the resource item must be known).
     pub fn save_resource_blob(&self, id: &str, bytes: &[u8]) -> Result<PathBuf> {
         let (it, ..) = self.raw(id)?.ok_or_else(|| Error::Sync(format!("resource {id} not found")))?;
-        std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
+        private_fs::create_dir(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
         let path = self.blob_path(id, it.get("file_extension"))?;
-        std::fs::write(&path, bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        private_fs::write(&path, bytes).map_err(|e| Error::Sync(e.to_string()))?;
         Ok(path)
     }
 
@@ -179,8 +192,8 @@ impl Store {
                 it.set_time(k, now);
             }
         }
-        std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
-        std::fs::write(self.blob_path(&id, &ext)?, bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        private_fs::create_dir(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
+        private_fs::write(&self.blob_path(&id, &ext)?, bytes).map_err(|e| Error::Sync(e.to_string()))?;
         self.put_local(&it)?;
         Ok(id)
     }
@@ -193,8 +206,8 @@ impl Store {
         if it.item_type() != TYPE_RESOURCE || encrypted {
             return Err(Error::Sync(format!("{id} is not a readable attachment")));
         }
-        std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
-        std::fs::write(self.blob_path(id, it.get("file_extension"))?, bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        private_fs::create_dir(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
+        private_fs::write(&self.blob_path(id, it.get("file_extension"))?, bytes).map_err(|e| Error::Sync(e.to_string()))?;
         let now = item::now_ms();
         it.set("size", bytes.len().to_string());
         it.set("blob_updated_time", now.to_string());
@@ -340,7 +353,9 @@ impl Store {
                     }
                     // Before the remote version is stored: that drops the original's file.
                     let copy_file = self.blob_path(copy.id(), ext)?;
-                    std::fs::copy(&file, copy_file).map_err(|e| Error::Sync(e.to_string()))?;
+                    // fs::copy gives the copy the original's mode, which older versions left loose.
+                    std::fs::copy(&file, &copy_file).map_err(|e| Error::Sync(e.to_string()))?;
+                    private_fs::restrict(&copy_file).map_err(|e| Error::Sync(e.to_string()))?;
 
                     let name = local.title.clone().unwrap_or_default();
                     let mut note = RawItem::new_with_fields(TYPE_NOTE, NOTE_FIELDS);
@@ -905,6 +920,47 @@ mod tests {
         remote.set("blob_updated_time", (it.get("blob_updated_time").parse::<i64>().unwrap() + 1).to_string());
         s.put_remote(&remote, false).unwrap();
         assert!(s.resource_file(&id).unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn database_and_attachments_are_owner_only() {
+        use crate::private_fs::tests::{loosen, mode};
+        let dir = std::env::temp_dir().join(format!("omanote-perm-store-{}", item::new_id()));
+        crate::private_fs::create_dir(&dir).unwrap();
+        let db = dir.join("omanote.sqlite");
+        let (wal, shm) = (dir.join("omanote.sqlite-wal"), dir.join("omanote.sqlite-shm"));
+        {
+            let s = Store::open(&db).unwrap();
+            let f = s.create_folder("Omanote", "").unwrap();
+            s.create_note(&f.id, "Secret\nnote").unwrap();
+            let id = s.add_resource(b"\x89PNG picture", "image/png", "photo.png").unwrap();
+            assert!(wal.exists() && shm.exists());
+            assert_eq!((mode(&db), mode(&wal), mode(&shm)), (0o600, 0o600, 0o600));
+            assert_eq!(mode(&dir.join("resources")), 0o700);
+            let file = s.resource_file(&id).unwrap().unwrap();
+            assert_eq!(mode(&file), 0o600);
+            s.update_resource(&id, b"\x89PNG edited").unwrap();
+            assert_eq!(mode(&file), 0o600);
+
+            // An install made with the default umask is tightened when it is opened.
+            for p in [&db, &wal, &shm, &file] {
+                loosen(p, 0o644);
+            }
+            loosen(&dir.join("resources"), 0o755);
+            let again = Store::open(&db).unwrap();
+            assert_eq!((mode(&db), mode(&wal), mode(&shm)), (0o600, 0o600, 0o600));
+            assert_eq!((mode(&dir.join("resources")), mode(&file)), (0o700, 0o600));
+
+            // A conflict copy of a loose file does not inherit its mode.
+            loosen(&file, 0o644);
+            let (local, ..) = again.raw(&id).unwrap().unwrap();
+            let mut remote = local.clone();
+            remote.set("blob_updated_time", "1");
+            let kept = again.resolve_conflict(&local, &remote, false).unwrap();
+            assert_eq!(mode(&again.resource_file(kept[0].id()).unwrap().unwrap()), 0o600);
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

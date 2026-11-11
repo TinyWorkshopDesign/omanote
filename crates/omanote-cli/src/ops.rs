@@ -41,6 +41,8 @@ impl Ctx {
                 dir.display()
             ));
         }
+        // Owner-only like the app makes it; best effort, the CLI may not own the folder.
+        let _ = omanote_core::private_fs::restrict(&dir);
         let cfg = Config::load(&dir);
         if cfg.root_folder_id.is_empty() {
             return Err("Omanote has no working notebook yet: pick one in the app".into());
