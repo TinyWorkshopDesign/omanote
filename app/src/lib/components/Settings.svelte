@@ -2,8 +2,8 @@
   // Settings, organised by category: a list on the left and the pane on the
   // right, or (narrow screens) the list first and the pane pushed over it.
   import { icons } from "../icons";
-  import { api, type Folder, type Status, when } from "../api";
-  import { LANGUAGES, MOD, i18n, setLang, t, type Key, type Lang } from "../i18n.svelte";
+  import { api, type Folder, type Status, type UpdateInfo, when } from "../api";
+  import { LANGUAGES, MOD, errText, i18n, setLang, t, type Key, type Lang } from "../i18n.svelte";
   import { bundledThemes, setBundledTheme, type ThemeState } from "../theme";
   import { FONT_MAX, FONT_MIN, prefs } from "../prefs.svelte";
 
@@ -60,6 +60,33 @@
   let newNotebook = $state("");
   let busy = $state<"" | "resync" | "reupload">("");
   let version = $state("");
+  const RELEASES = "https://github.com/TinyWorkshopDesign/omanote/releases/latest";
+  let update = $state<UpdateInfo | null>(null);
+  let updState = $state<"" | "checking" | "none" | "installing">("");
+  let updError = $state("");
+
+  async function checkUpdate() {
+    updState = "checking";
+    updError = "";
+    try {
+      update = await api.checkUpdate();
+      updState = update ? "" : "none";
+    } catch (e) {
+      updState = "";
+      updError = errText(e);
+    }
+  }
+
+  async function installUpdate() {
+    updState = "installing";
+    updError = "";
+    try {
+      await api.installUpdate(); // the app restarts
+    } catch (e) {
+      updError = errText(e);
+    }
+    updState = "";
+  }
 
   $effect(() => {
     import("@tauri-apps/api/app")
@@ -530,6 +557,43 @@
               <button class="link" onclick={() => void openLink("https://github.com/TinyWorkshopDesign/omanote")}>github.com/TinyWorkshopDesign/omanote</button>
             </div>
           </div>
+          {#if !status.mobile}
+            <div class="group">
+              <div class="row">
+                <span class="label">{t("upd.title")}</span>
+                {#if update?.can_install}
+                  <button class="outline" disabled={updState === "installing"} onclick={() => void installUpdate()}
+                    >{t(updState === "installing" ? "upd.installing" : "upd.install")}</button
+                  >
+                {:else if update}
+                  <button class="outline" onclick={() => void openLink(RELEASES)}>{t("upd.download")}</button>
+                {:else}
+                  <button class="outline" disabled={updState === "checking"} onclick={() => void checkUpdate()}
+                    >{t(updState === "checking" ? "upd.checking" : "upd.check")}</button
+                  >
+                {/if}
+              </div>
+              {#if updError}
+                <p class="hint">{updError}</p>
+              {:else if update}
+                <p class="hint">{t(update.can_install ? "upd.available" : "upd.availableManual", { v: update.version })}</p>
+              {:else if updState === "none"}
+                <p class="hint">{t("upd.none")}</p>
+              {/if}
+              <div class="row">
+                <span class="label">{t("upd.auto")}</span>
+                <span class="seg" role="radiogroup">
+                  <button role="radio" aria-checked={prefs.autoUpdateCheck} class:on={prefs.autoUpdateCheck} onclick={() => (prefs.autoUpdateCheck = true)}
+                    >{t("set.on")}</button
+                  >
+                  <button role="radio" aria-checked={!prefs.autoUpdateCheck} class:on={!prefs.autoUpdateCheck} onclick={() => (prefs.autoUpdateCheck = false)}
+                    >{t("set.off")}</button
+                  >
+                </span>
+              </div>
+              <p class="hint">{t("upd.autoHint")}</p>
+            </div>
+          {/if}
         {/if}
       </div>
     </div>
@@ -647,7 +711,7 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    min-height: 44px;
+    min-height: var(--hit, 44px);
     color: var(--accent);
   }
   .back :global(.ico) {
