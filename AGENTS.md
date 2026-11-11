@@ -61,7 +61,9 @@ its history. Do not name other note apps as models or references (code, docs, co
     swipes between notes, position counter, promote / Mod-1).
 - Settings (`Settings.svelte`): a sheet with categories (General, Appearance, Account & Sync,
   Notebooks, Keyboard, AI agents (desktop), Repair (with a server), About); on narrow
-  screens the category list pushes the pane.
+  screens the category list pushes the pane. Setup and Settings → Account warn (without
+  blocking) when the server URL is plain `http://` to a non-loopback host
+  (`lib/serverUrl.ts`, `tests/serverUrl.test.ts`).
 - macOS window: no title bar; the traffic lights sit over the leftmost column (sidebar or list
   headers leave room for them) and over the bare note follow the toolbar.
 - Icons: the interface draws Nerd Font glyphs, the way Omarchy draws its bar, menu and
