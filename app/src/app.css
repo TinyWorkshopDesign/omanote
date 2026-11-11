@@ -288,6 +288,17 @@ input:focus {
   font-size: 0.85em;
 }
 
+/* Side of a command button (toolbar and header icons): a finger needs 44px, a
+   mouse or trackpad pointer does not. Their glyph size is --ico-l (lib/icons.ts). */
+:root {
+  --hit: 44px;
+}
+@media (pointer: fine) {
+  :root {
+    --hit: 34px;
+  }
+}
+
 .ico {
   /* Icon glyphs (.ico spans from lib/icons.ts): a Nerd Font's symbols, like the
      Omarchy bar and menu use. A Nerd Font glyph fills roughly 0.7em of its em

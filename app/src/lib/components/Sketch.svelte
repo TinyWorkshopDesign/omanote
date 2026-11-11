@@ -801,7 +801,7 @@
   .size {
     flex: none;
     width: 40px;
-    height: 44px;
+    height: var(--hit, 44px);
     display: grid;
     place-items: center;
     padding: 0;

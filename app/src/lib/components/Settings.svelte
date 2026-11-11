@@ -711,7 +711,7 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    min-height: 44px;
+    min-height: var(--hit, 44px);
     color: var(--accent);
   }
   .back :global(.ico) {
