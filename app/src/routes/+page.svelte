@@ -1103,8 +1103,8 @@
   .icon {
     line-height: 1;
     font-size: var(--ico-l, 22px);
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--hit, 44px);
+    min-height: var(--hit, 44px);
     padding: 4px 8px;
     color: var(--muted);
   }
@@ -1118,7 +1118,7 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    min-height: 44px;
+    min-height: var(--hit, 44px);
     padding-right: 8px;
     color: var(--accent);
     max-width: 55%;

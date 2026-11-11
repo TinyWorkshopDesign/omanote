@@ -26,16 +26,26 @@ function glyph(name: IconName): string {
  * Sets `--ico-s` / `--ico-l` (small and large icon sizes, in CSS px). Glyphs are
  * text: whole device pixels keep them crisp at any display scale (1.25 on many
  * Linux laptops, 2 on Retina).
+ *
+ * The large size is the command icons' (toolbars, headers). With a mouse or a
+ * trackpad they are smaller than under a finger, which needs the bigger target;
+ * the matching button size is `--hit` in app.css.
  */
 export function fitIconsToScreen() {
+  const coarse = matchMedia("(pointer: coarse)");
+  let off: (() => void) | undefined;
   const apply = () => {
+    off?.();
     const dpr = window.devicePixelRatio || 1;
     const size = (target: number) => Math.round(target * dpr) / dpr;
     const root = document.documentElement.style;
     root.setProperty("--ico-s", `${size(15)}px`);
-    root.setProperty("--ico-l", `${size(22)}px`);
-    matchMedia(`(resolution: ${dpr}dppx)`).addEventListener("change", apply, { once: true });
+    root.setProperty("--ico-l", `${size(coarse.matches ? 22 : 18)}px`);
+    const scale = matchMedia(`(resolution: ${dpr}dppx)`);
+    scale.addEventListener("change", apply, { once: true });
+    off = () => scale.removeEventListener("change", apply);
   };
+  coarse.addEventListener("change", apply);
   apply();
 }
 
