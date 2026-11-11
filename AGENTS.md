@@ -205,6 +205,16 @@ its history. Do not name other note apps as models or references (code, docs, co
   Build it from a git clone outside Syncthing (`~/Projects/omanote` on the Omarchy box).
 
 **Not verified yet**
+- Content Security Policy (`app.security.csp` in `tauri.conf.json`, 2026-11-11, not yet run in
+  a real webview). It applies to built assets only: `tauri dev` loads the page from the Vite
+  server, where Tauri sets no CSP. Tauri adds the hashes of the inline scripts (SvelteKit's
+  bootstrap, its own init scripts) to `script-src`; `dangerousDisableAssetCspModification:
+  ["style-src"]` stops it adding style nonces, which would void `'unsafe-inline'` (needed by
+  CodeMirror's `<style>` elements and decoration `style` attributes, Svelte `style=`).
+  Origins: `asset:` / `ipc:` on macOS, iOS and Linux, `http://asset.localhost` /
+  `http://ipc.localhost` on Android (and Windows); sketches are `blob:` images; Vite inlines a
+  font subset as `data:`. A new kind of resource (a remote image, a worker, an iframe) needs
+  its directive here.
 - Linux: OCR with tesseract/grim/slurp, live theme switching (the watcher reads the new path).
 - iOS/iPadOS: project initialised and committed in `app/src-tauri/gen/apple` (iPhone + iPad,
   all iPad orientations, minimum iOS 16 in `tauri.conf.json` *and* `gen/apple/project.yml` +
