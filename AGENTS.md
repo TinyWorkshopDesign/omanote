@@ -294,6 +294,14 @@ its history. Do not name other note apps as models or references (code, docs, co
   conflicts, and any re-upload under E2EE. Docker.app is no longer installed on the dev Mac
   (the `/usr/local/bin/docker` link is dangling) and the Joplin CLI lived in a temporary
   folder: reinstall both (`npm i joplin` in a scratch dir) before rerunning the examples.
+- Sync engine tests (`crates/omanote-core/tests/sync_engine.rs`, 2026-11-11): two simulated
+  devices against an in-process fake server (`tests/common/mod.rs`, written from `api.rs`,
+  so it checks the engine's logic, not compatibility with the real server: the Docker
+  examples still do that). The `#[ignore]`d tests there are known defects, each asserting
+  the behaviour wanted: unreadable items are never retried, a deleted attachment leaves
+  its blob on the server and its file on disk, a remote edit with an older `updated_time`
+  is not applied. Not covered: lock refresh (the lock is taken once and never renewed),
+  session expiry.
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
 - Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (**public** since 2026-09-24, MIT;
   `omanote-archive` is the old private repo with pre-cleanup history, do not push to it),
@@ -358,7 +366,10 @@ cargo run -p omanote-cli -- --help  # CLI
   `crates/omanote-core/tests/joplin_vectors.json` come from Joplin's own JS crypto:
   keep those tests green.
 - **Conflicts** follow Joplin: remote wins, the local version becomes a separate note
-  with `is_conflict = 1`.
+  with `is_conflict = 1`. An attachment whose file changed on both sides keeps the local
+  file as a new attachment, linked from a conflict note in the folder of a note showing
+  the original. `Store::resolve_conflict` does the local part in one transaction before
+  anything is uploaded, so an interrupted sync never copies the same edit twice.
 - **Deleting** sets `deleted_time` (Joplin trash). Permanent deletion is explicit.
 - **Notes are plain Markdown.** Line 1 is the Joplin title. Checklists are stored as
   `- [ ] ` / `- [x] `; the editor only *renders* them. Keywords (`list`, `sum`, …) live in

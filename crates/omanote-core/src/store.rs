@@ -277,6 +277,99 @@ impl Store {
         self.upsert(it, false, true, None)
     }
 
+    /// Settles a conflict: the server's version of an item replaces a local version that
+    /// was edited here too. What would be lost is kept as new local items, which are
+    /// returned for upload (they stay dirty, so a failed upload is retried):
+    ///
+    /// * a note becomes a conflict copy (`is_conflict = 1`), as in Joplin;
+    /// * an attachment whose file was changed on both sides keeps the local file as a
+    ///   new attachment, shown by a conflict note placed next to a note that uses the
+    ///   original;
+    /// * other items (folders, tags) follow the server and keep nothing.
+    ///
+    /// The database part is one transaction, so an interrupted sync can neither lose
+    /// the local version nor find the same conflict again and copy it twice.
+    pub fn resolve_conflict(&self, local: &RawItem, remote: &RawItem, remote_encrypted: bool) -> Result<Vec<RawItem>> {
+        let now = item::now_ms();
+        let mut kept = Vec::new();
+        match local.item_type() {
+            TYPE_NOTE => {
+                let mut copy = local.clone();
+                copy.set("id", item::new_id());
+                copy.set("is_conflict", "1");
+                copy.set("conflict_original_id", local.id());
+                copy.set_time("updated_time", now);
+                kept.push(copy);
+            }
+            TYPE_RESOURCE if remote_encrypted || local.get("blob_updated_time") != remote.get("blob_updated_time") => {
+                let ext = local.get("file_extension");
+                let file = self.blob_path(local.id(), ext);
+                if file.exists() {
+                    let mut copy = local.clone();
+                    copy.set("id", item::new_id());
+                    copy.set("blob_updated_time", now.to_string());
+                    for k in ["created_time", "updated_time", "user_created_time", "user_updated_time"] {
+                        copy.set_time(k, now);
+                    }
+                    // Before the remote version is stored: that drops the original's file.
+                    std::fs::copy(&file, self.blob_path(copy.id(), ext)).map_err(|e| Error::Sync(e.to_string()))?;
+
+                    let name = local.title.clone().unwrap_or_default();
+                    let mut note = RawItem::new_with_fields(TYPE_NOTE, NOTE_FIELDS);
+                    note.set("id", item::new_id());
+                    note.set("parent_id", self.folder_using_resource(local.id())?);
+                    note.set("is_conflict", "1");
+                    note.set("source", "omanote");
+                    note.set("source_application", "app.omanote");
+                    for k in ["created_time", "updated_time", "user_created_time", "user_updated_time"] {
+                        note.set_time(k, now);
+                    }
+                    note.set("order", now.to_string());
+                    note.title = Some(format!("Attachment conflict: {name}"));
+                    note.body = Some(format!("![{name}](:/{})", copy.id()));
+                    kept.push(copy);
+                    kept.push(note);
+                }
+            }
+            _ => {}
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        for it in &kept {
+            self.put_local(it)?;
+        }
+        self.put_remote(remote, remote_encrypted)?;
+        tx.commit()?;
+        Ok(kept)
+    }
+
+    /// Where a conflict note about attachment `id` goes: the folder of a note that shows
+    /// it, else the oldest top-level folder, so the note is never out of sight ("" only
+    /// when there is no folder at all).
+    fn folder_using_resource(&self, id: &str) -> Result<String> {
+        let by_note: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT parent_id FROM items WHERE type = 1 AND deleted_time = 0 AND instr(body, ?1) > 0
+                 ORDER BY updated_time DESC LIMIT 1",
+                [format!(":/{id}")],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(folder) = by_note {
+            return Ok(folder);
+        }
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id FROM items WHERE type = 2 AND deleted_time = 0 AND parent_id = ''
+                 ORDER BY updated_time LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or_default())
+    }
+
     pub fn raw(&self, id: &str) -> Result<Option<(RawItem, bool, bool, i64)>> {
         let row: Option<(String, i64, i64, i64)> = self
             .conn
@@ -862,6 +955,34 @@ mod tests {
         s.trash(&lost.id).unwrap();
         s.restore(&lost.id, &home.id, &home.id).unwrap();
         assert_eq!(s.raw(&lost.id).unwrap().unwrap().0.get("parent_id"), home.id);
+    }
+
+    #[test]
+    fn attachment_conflict_keeps_a_changed_file_only() {
+        let s = Store::open_in_memory().unwrap();
+        let inbox = s.create_folder("Inbox", "").unwrap().id;
+        let id = s.add_resource(b"local drawing", "image/png", "sketch.png").unwrap();
+        let (local, ..) = s.raw(&id).unwrap().unwrap();
+
+        // Same file on the server, only the item changed: nothing to keep.
+        let mut remote = local.clone();
+        remote.set_time("updated_time", local.time("updated_time") + 1000);
+        assert!(s.resolve_conflict(&local, &remote, false).unwrap().is_empty());
+        assert!(s.resource_file(&id).unwrap().is_some());
+
+        // Another file on the server: the local one becomes a new attachment, and with
+        // no note showing the original, its conflict note goes to a top-level folder.
+        remote.set("blob_updated_time", "1");
+        let kept = s.resolve_conflict(&local, &remote, false).unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].item_type(), TYPE_RESOURCE);
+        assert_eq!(std::fs::read(s.resource_file(kept[0].id()).unwrap().unwrap()).unwrap(), b"local drawing");
+        assert_eq!(kept[1].int("is_conflict"), 1);
+        assert_eq!(kept[1].get("parent_id"), inbox);
+        assert!(kept[1].body.as_deref().unwrap().contains(kept[0].id()));
+        assert!(s.resource_file(&id).unwrap().is_none(), "the original's file is fetched again");
+        assert_eq!(s.dirty_items().unwrap().len(), 3, "the folder and the two kept items");
+        let _ = std::fs::remove_dir_all(&s.res_dir);
     }
 
     #[test]
