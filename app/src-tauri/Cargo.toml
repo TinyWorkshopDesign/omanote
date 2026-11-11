@@ -36,6 +36,7 @@ chrono = "0.4.45"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
 
 # Android's certificate verifier needs the JVM and the app context (android_tls.rs).
 [target.'cfg(target_os = "android")'.dependencies]

@@ -428,8 +428,8 @@
   .icon {
     font-size: var(--ico-l, 22px);
     line-height: 1;
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--hit, 44px);
+    min-height: var(--hit, 44px);
     color: var(--muted);
   }
   .icon:hover {
@@ -439,7 +439,7 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    min-height: 44px;
+    min-height: var(--hit, 44px);
     padding-right: 8px;
     color: var(--accent);
     max-width: 60%;

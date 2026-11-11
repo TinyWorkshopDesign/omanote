@@ -107,6 +107,15 @@ export interface FxTable {
   error: string | null;
 }
 
+/** A newer version published on GitHub (desktop). */
+export interface UpdateInfo {
+  version: string;
+  /** Release notes, possibly empty. */
+  notes: string;
+  /** False when this copy cannot replace itself (.deb, .rpm, built from source). */
+  can_install: boolean;
+}
+
 export const api = {
   status: () => invoke<Status>("get_status"),
   setup: (server_url: string, email: string, password: string, master_password?: string) =>
@@ -175,6 +184,10 @@ export const api = {
   /** Note asked for with `omanote --open <id>` when the app was launched. */
   takeLaunchNote: () => invoke<string | null>("take_launch_note"),
   setWindowControls: (visible: boolean) => invoke<void>("set_window_controls", { visible }),
+  // updates (desktop only: the commands do not exist on iOS and Android)
+  checkUpdate: () => invoke<UpdateInfo | null>("check_update"),
+  /** Downloads and installs the update, then restarts the app (so it never resolves). */
+  installUpdate: () => invoke<void>("install_update"),
 };
 
 export const onSyncStatus = (cb: (e: SyncEvent) => void) =>

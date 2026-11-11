@@ -239,6 +239,17 @@
     status = await api.status();
   }
 
+  /** Desktop, once per launch: says when a newer version is on GitHub (Settings → About installs it). */
+  let updateChecked = false;
+  $effect(() => {
+    if (!status || status.mobile || !prefs.autoUpdateCheck || updateChecked) return;
+    updateChecked = true;
+    api
+      .checkUpdate()
+      .then((u) => u && say(t("upd.toast", { v: u.version }), 8000))
+      .catch(() => {}); // offline, or no release yet: nothing to say
+  });
+
   async function refresh() {
     if (!status?.configured || !status.root_folder_id) return;
     [folders, allNotes, trashItems] = await Promise.all([api.folders(), api.notes(), api.trash()]);
@@ -1092,8 +1103,8 @@
   .icon {
     line-height: 1;
     font-size: var(--ico-l, 22px);
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--hit, 44px);
+    min-height: var(--hit, 44px);
     padding: 4px 8px;
     color: var(--muted);
   }
@@ -1107,7 +1118,7 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    min-height: 44px;
+    min-height: var(--hit, 44px);
     padding-right: 8px;
     color: var(--accent);
     max-width: 55%;
