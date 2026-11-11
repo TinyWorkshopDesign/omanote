@@ -1,20 +1,34 @@
 <script lang="ts">
   import { icons } from "../icons";
   import { api, type Folder } from "../api";
-  import { errText, t } from "../i18n.svelte";
+  import { errText, t, type Key } from "../i18n.svelte";
   import { isCleartextRemote } from "../serverUrl";
 
   let {
     onDone,
     onCancel,
     localRoot = "",
+    platform = "",
   }: {
     onDone: () => void;
     /** Present when connecting a server from local mode (Settings). */
     onCancel?: () => void;
     /** The local-mode notebook: offered first so its notes move to the server. */
     localRoot?: string;
+    /** `Status.platform` (Rust's `std::env::consts::OS`): where the passwords are kept. */
+    platform?: string;
   } = $props();
+
+  // secrets.rs: the system keychain on Apple platforms and Linux, a private file on Android.
+  const secretsHint: Key = $derived(
+    platform === "macos" || platform === "ios"
+      ? "setup.keychain.apple"
+      : platform === "linux"
+        ? "setup.keychain.linux"
+        : platform === "android"
+          ? "setup.keychain.android"
+          : "setup.keychain.other",
+  );
 
   let step = $state<"login" | "folder" | "local">("login");
   let localName = $state("Omanote");
@@ -101,7 +115,7 @@
       <button class="primary" onclick={login} disabled={busy || !serverUrl || !email || !password}>
         {busy ? t("setup.connecting") : t("setup.connect")}
       </button>
-      <p class="hint">{t("setup.keychain")}</p>
+      <p class="hint">{t(secretsHint)}</p>
       {#if onCancel}
         <button class="secondary" onclick={onCancel}>{t("setup.cancel")}</button>
       {:else}

@@ -990,6 +990,7 @@
 
 {#if status && (!status.configured || connecting)}
   <Setup
+    platform={status.platform}
     localRoot={connecting ? status.root_folder_id : ""}
     onCancel={connecting ? () => (connecting = false) : undefined}
     onDone={async () => {
