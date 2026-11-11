@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::JoplinServer;
 use crate::e2ee::{self, KeyRing, MasterKey};
 use crate::error::{Error, Result};
-use crate::item::{self, RawItem, TYPE_NOTE, TYPE_RESOURCE};
+use crate::item::{self, RawItem, TYPE_RESOURCE};
 use crate::store::{Store, STORED_TYPES};
 
 pub const SUPPORTED_SYNC_VERSION: i64 = 3;
@@ -179,7 +179,8 @@ impl<'a> Synchronizer<'a> {
         Ok(it.encrypted_envelope(cipher).serialize())
     }
 
-    /// Parses and, when possible, decrypts a remote item.
+    /// Parses and, when possible, decrypts a remote item. An envelope that decrypts to
+    /// an item with another id is refused: it must never be stored under the new id.
     fn open_remote(&self, content: &str) -> Result<(RawItem, bool)> {
         let envelope = RawItem::parse(content)?;
         if !envelope.is_encrypted() {
@@ -188,6 +189,13 @@ impl<'a> Synchronizer<'a> {
         match self.keys.decrypt_string(envelope.get("encryption_cipher_text")) {
             Ok(plain) => {
                 let mut it = RawItem::parse(&plain)?;
+                if it.id() != envelope.id() {
+                    return Err(Error::Sync(format!(
+                        "encrypted item {:?} decrypts to item {:?}",
+                        envelope.id(),
+                        it.id()
+                    )));
+                }
                 // Like BaseItem.decrypt: the clear-text updated_time is authoritative.
                 it.set("updated_time", envelope.get("updated_time"));
                 it.set("encryption_cipher_text", "");
@@ -197,6 +205,17 @@ impl<'a> Synchronizer<'a> {
             Err(Error::MasterKeyNotLoaded(_)) => Ok((envelope, true)),
             Err(e) => Err(e),
         }
+    }
+
+    /// `open_remote` for the content of `<id>.md`: the item must be the one its file
+    /// name says. Otherwise a hostile server or client could overwrite another local
+    /// item by naming it inside the content.
+    fn open_remote_as(&self, id: &str, content: &str) -> Result<(RawItem, bool)> {
+        let (it, encrypted) = self.open_remote(content)?;
+        if it.id() != id {
+            return Err(Error::Sync(format!("the file holds item {:?}", it.id())));
+        }
+        Ok((it, encrypted))
     }
 
     async fn upload(&mut self, info: &SyncInfo, report: &mut SyncReport) -> Result<()> {
@@ -212,7 +231,7 @@ impl<'a> Synchronizer<'a> {
             let id = d.raw.id().to_string();
             let name = format!("{id}.md");
             let remote = match self.api.get(&name).await? {
-                Some(content) => match self.open_remote(&content) {
+                Some(content) => match self.open_remote_as(&id, &content) {
                     Ok(r) => Some(r),
                     Err(e) => {
                         report.errors.push(format!("{name}: {e}"));
@@ -239,11 +258,15 @@ impl<'a> Synchronizer<'a> {
             if conflict {
                 let (remote_item, remote_encrypted) = remote.expect("conflict implies remote");
                 report.conflicts += 1;
-                if d.raw.item_type() == TYPE_NOTE {
-                    let copy = self.make_conflict_copy(&d.raw)?;
-                    self.upload_one(info, &copy, report).await?;
+                // Settled locally first: if an upload below fails, what was kept is
+                // still dirty and goes up at the next sync, without a second copy.
+                let kept = self.db().resolve_conflict(&d.raw, &remote_item, remote_encrypted)?;
+                for mut it in kept {
+                    if it.item_type() == TYPE_RESOURCE {
+                        self.upload_blob(info, &mut it).await?;
+                    }
+                    self.upload_one(info, &it, report).await?;
                 }
-                self.db().put_remote(&remote_item, remote_encrypted)?;
                 continue;
             }
 
@@ -267,16 +290,6 @@ impl<'a> Synchronizer<'a> {
         Ok(())
     }
 
-    fn make_conflict_copy(&self, local: &RawItem) -> Result<RawItem> {
-        let mut copy = local.clone();
-        copy.set("id", item::new_id());
-        copy.set("is_conflict", "1");
-        copy.set("conflict_original_id", local.id());
-        copy.set_time("updated_time", item::now_ms());
-        self.db().put_local(&copy)?;
-        Ok(copy)
-    }
-
     /// Uploads an attachment file to `.resource/<id>` (FileV1-encrypted under E2EE)
     /// and records in the item whether the blob is encrypted.
     async fn upload_blob(&mut self, info: &SyncInfo, it: &mut RawItem) -> Result<()> {
@@ -296,6 +309,9 @@ impl<'a> Synchronizer<'a> {
 
     /// Downloads (and decrypts) an attachment file, saving it next to the database.
     pub async fn fetch_resource(&mut self, id: &str) -> Result<Option<std::path::PathBuf>> {
+        if !item::is_valid_id(id) {
+            return Ok(None); // never let a malformed id reach a server path
+        }
         if let Some(p) = self.db().resource_file(id)? {
             return Ok(Some(p));
         }
@@ -303,7 +319,7 @@ impl<'a> Synchronizer<'a> {
         if self.db().raw(id)?.is_none() {
             let Some(content) = self.api.get(&format!("{id}.md")).await? else { return Ok(None) };
             let (remote, encrypted) = self
-                .open_remote(&content)
+                .open_remote_as(id, &content)
                 .map_err(|e| Error::Sync(format!("{id}.md: {e}")))?;
             if remote.item_type() != TYPE_RESOURCE {
                 return Ok(None);
@@ -387,7 +403,7 @@ impl<'a> Synchronizer<'a> {
 
                 for (id, res) in fetched {
                     let Some(content) = res? else { continue };
-                    let (remote, encrypted) = match self.open_remote(&content) {
+                    let (remote, encrypted) = match self.open_remote_as(&id, &content) {
                         Ok(r) => r,
                         Err(e) => {
                             report.errors.push(format!("{id}.md: {e}"));
@@ -407,12 +423,15 @@ impl<'a> Synchronizer<'a> {
                             if remote.time("updated_time") <= local_item.time("updated_time") {
                                 continue;
                             }
-                            if dirty && local_item.item_type() == TYPE_NOTE {
-                                // Edited here while it changed remotely.
-                                self.make_conflict_copy(&local_item)?;
-                                report.conflicts += 1;
+                            if dirty {
+                                // Edited here while it changed remotely: what is kept
+                                // stays dirty and is uploaded by the next sync.
+                                if !self.db().resolve_conflict(&local_item, &remote, encrypted)?.is_empty() {
+                                    report.conflicts += 1;
+                                }
+                            } else {
+                                self.db().put_remote(&remote, encrypted)?;
                             }
-                            self.db().put_remote(&remote, encrypted)?;
                             report.downloaded += 1;
                         }
                     }
@@ -429,7 +448,8 @@ impl<'a> Synchronizer<'a> {
     }
 
     /// Decrypts items that were downloaded before the key was available.
-    /// Returns how many are still encrypted.
+    /// Returns how many are still encrypted (an envelope that decrypts to another
+    /// item's id stays encrypted and is counted here).
     pub fn decrypt_pending(&self) -> Result<usize> {
         let items = self.db().encrypted_items()?;
         let mut remaining = 0;

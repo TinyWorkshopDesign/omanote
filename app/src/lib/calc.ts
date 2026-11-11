@@ -400,9 +400,16 @@ const LIST_PREFIX = /^\s*(?:[-*+•]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/;
  * the line ends with "=" ("2+2=", "x * 2 =", "totale ="). With `auto` (notes
  * whose first line is "math") every calculation shows.
  * `fx` holds the exchange rates (see `buildRates`); a "1 € = 1.08 $" line
- * overrides them for this note only.
+ * overrides them for this note only. Without `fx`, `onMissingRates` is called
+ * when a conversion needed a rate the note does not declare: the caller loads
+ * the table then (the only request to a third party) and evaluates again.
  */
-export function evaluate(text: string, auto = false, fx?: FxRates): (LineResult | null)[] {
+export function evaluate(
+  text: string,
+  auto = false,
+  fx?: FxRates,
+  onMissingRates?: () => void,
+): (LineResult | null)[] {
   const vars = new Map<string, Val>();
   const localRates = new Map<string, number>();
   const rateOf = (from: string, to: string): number | null =>
@@ -469,6 +476,7 @@ export function evaluate(text: string, auto = false, fx?: FxRates): (LineResult 
         out.push({ value: val.v, unit: val.unit, pct: val.pct, show: asks || auto });
         continue;
       }
+      if (left && from && to && !fx && onMissingRates) onMissingRates();
       if (left && to) { out.push(null); continue; } // no rate for that pair
     }
 

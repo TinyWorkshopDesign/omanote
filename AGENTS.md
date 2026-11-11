@@ -20,7 +20,11 @@ its history. Do not name other note apps as models or references (code, docs, co
   list, inline math and variables (also in list notes, only `code` notes are raw; a result
   shows right after a trailing "=" — "2+2=" — while "math" notes show every result; variable
   names may start with a digit and hold several words), currency conversion (`100 € in $ =`,
-  ECB rates cached in `fx-rates.json` next to the database and refreshed at most once a day;
+  ECB rates from `api.frankfurter.dev` cached in `fx-rates.json` next to the database and
+  refreshed at most once a day, requested only when a conversion needs them: `calc.evaluate`
+  calls its `onMissingRates` argument, the editor forwards it to `+page.svelte`, which loads the
+  table once and dispatches `ratesChanged`; the bar plugin only reads the cache, the CLI never
+  touches it;
   a "1 € = 1.05 $" line overrides them for one note; two different currencies in one sum are
   refused instead of silently added with the left unit), timers, auto-deleted empty notes,
   keyboard shortcuts.
@@ -61,7 +65,9 @@ its history. Do not name other note apps as models or references (code, docs, co
     swipes between notes, position counter, promote / Mod-1).
 - Settings (`Settings.svelte`): a sheet with categories (General, Appearance, Account & Sync,
   Notebooks, Keyboard, AI agents (desktop), Repair (with a server), About); on narrow
-  screens the category list pushes the pane.
+  screens the category list pushes the pane. Setup and Settings → Account warn (without
+  blocking) when the server URL is plain `http://` to a non-loopback host
+  (`lib/serverUrl.ts`, `tests/serverUrl.test.ts`).
 - macOS window: no title bar; the traffic lights sit over the leftmost column (sidebar or list
   headers leave room for them) and over the bare note follow the toolbar.
 - Icons: the interface draws Nerd Font glyphs, the way Omarchy draws its bar, menu and
@@ -115,6 +121,9 @@ its history. Do not name other note apps as models or references (code, docs, co
   (`Synchronizer::fetch_resource`, served via Tauri's asset protocol scoped to
   `$APPDATA/resources`). Verified both ways against Joplin CLI with identical SHA-256
   (`crates/omanote-core/examples/resources_e2e.rs`). Images never go on line 1 (title).
+  Local files are `resources/<id>.<ext>`, built only by `Store::blob_path`: `id` and
+  `file_extension` come from the server, so the id must be 32 hex digits and the extension
+  keeps only ASCII letters and digits (≤ 20); `fetch_resource` ignores malformed ids.
 - Handwriting and sketches (`lib/components/Sketch.svelte`, header button and Mod-Shift-D):
   one Omarchy toolbar over two engines. Tools: ballpoint pen, pencil, highlighter (and
   fountain pen on iPadOS), a pixel eraser and a stroke eraser (tap the eraser again to
@@ -186,12 +195,26 @@ its history. Do not name other note apps as models or references (code, docs, co
   connecting a Joplin Server later uploads those notes instead of resetting the store
   (only switching from one server/account to another resets it). Verified with
   `crates/omanote-core/examples/local_then_sync.rs` + the official Joplin CLI.
+  Logout and an account switch (`forget_account` in `lib.rs`) leave nothing of the account
+  on disk: `Store::reset` empties the tables, `VACUUM`s and truncates the WAL (deleted rows
+  would otherwise stay readable in free pages) and deletes `resources/`; `sync-errors.log`
+  goes too. `config.json` keeps `client_id` and the preferences; `fx-rates.json` is public data.
 - Linux/Omarchy (Omarchy 4, real hardware, 2026-09-21): release build installed in `~/.local/bin`
   with a desktop entry, theme from `colors.toml` incl. ANSI-only themes, `omanote --toggle` on a
   Hyprland binding (Super+Alt+N), undecorated window, keyring via gnome-keyring, bar plugin.
   Build it from a git clone outside Syncthing (`~/Projects/omanote` on the Omarchy box).
 
 **Not verified yet**
+- Content Security Policy (`app.security.csp` in `tauri.conf.json`, 2026-11-11, not yet run in
+  a real webview). It applies to built assets only: `tauri dev` loads the page from the Vite
+  server, where Tauri sets no CSP. Tauri adds the hashes of the inline scripts (SvelteKit's
+  bootstrap, its own init scripts) to `script-src`; `dangerousDisableAssetCspModification:
+  ["style-src"]` stops it adding style nonces, which would void `'unsafe-inline'` (needed by
+  CodeMirror's `<style>` elements and decoration `style` attributes, Svelte `style=`).
+  Origins: `asset:` / `ipc:` on macOS, iOS and Linux, `http://asset.localhost` /
+  `http://ipc.localhost` on Android (and Windows); sketches are `blob:` images; Vite inlines a
+  font subset as `data:`. A new kind of resource (a remote image, a worker, an iframe) needs
+  its directive here.
 - Linux: OCR with tesseract/grim/slurp, live theme switching (the watcher reads the new path).
 - iOS/iPadOS: project initialised and committed in `app/src-tauri/gen/apple` (iPhone + iPad,
   all iPad orientations, minimum iOS 16 in `tauri.conf.json` *and* `gen/apple/project.yml` +
@@ -252,6 +275,13 @@ its history. Do not name other note apps as models or references (code, docs, co
     accepts both; until 2026-10-23 sketches, pasted images and OCR failed on Android with
     "expected raw image bytes". Headers (`x-name`, `x-id`) do arrive. Binary *responses*
     (`resource_bytes`) reach JS as an `ArrayBuffer` on Android too.
+  - Secrets: there is no keychain backend, so `secrets.rs` keeps the server password and
+    the E2EE master password in **plain text** in `secrets.json` inside the app sandbox
+    (owner-only 0600). Backups and device-to-device transfers are therefore off:
+    `allowBackup="false"` (which on Android 12+ does not stop device-to-device transfer),
+    plus `res/xml/data_extraction_rules.xml` (12+) and `backup_rules.xml` (≤ 11) excluding
+    every domain. The real fix, the Android Keystore through JNI, is not done; until then a
+    rooted device or a full-device forensic copy exposes both passwords.
   - The sync fails with "network error" while the phone dozes (Android cuts background apps
     off the network); not a bug, it resumes when the app is in front.
   - `MainActivity.kt`: Android 15+ always draws edge to edge, so the content view is padded
@@ -294,6 +324,14 @@ its history. Do not name other note apps as models or references (code, docs, co
   conflicts, and any re-upload under E2EE. Docker.app is no longer installed on the dev Mac
   (the `/usr/local/bin/docker` link is dangling) and the Joplin CLI lived in a temporary
   folder: reinstall both (`npm i joplin` in a scratch dir) before rerunning the examples.
+- Sync engine tests (`crates/omanote-core/tests/sync_engine.rs`, 2026-11-11): two simulated
+  devices against an in-process fake server (`tests/common/mod.rs`, written from `api.rs`,
+  so it checks the engine's logic, not compatibility with the real server: the Docker
+  examples still do that). The `#[ignore]`d tests there are known defects, each asserting
+  the behaviour wanted: unreadable items are never retried, a deleted attachment leaves
+  its blob on the server and its file on disk, a remote edit with an older `updated_time`
+  is not applied. Not covered: lock refresh (the lock is taken once and never renewed),
+  session expiry.
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
 - Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (**public** since 2026-09-24, MIT;
   `omanote-archive` is the old private repo with pre-cleanup history, do not push to it),
@@ -379,7 +417,10 @@ cargo run -p omanote-cli -- --help  # CLI
   `crates/omanote-core/tests/joplin_vectors.json` come from Joplin's own JS crypto:
   keep those tests green.
 - **Conflicts** follow Joplin: remote wins, the local version becomes a separate note
-  with `is_conflict = 1`.
+  with `is_conflict = 1`. An attachment whose file changed on both sides keeps the local
+  file as a new attachment, linked from a conflict note in the folder of a note showing
+  the original. `Store::resolve_conflict` does the local part in one transaction before
+  anything is uploaded, so an interrupted sync never copies the same edit twice.
 - **Deleting** sets `deleted_time` (Joplin trash). Permanent deletion is explicit.
 - **Notes are plain Markdown.** Line 1 is the Joplin title. Checklists are stored as
   `- [ ] ` / `- [x] `; the editor only *renders* them. Keywords (`list`, `sum`, …) live in

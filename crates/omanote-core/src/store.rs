@@ -115,21 +115,33 @@ impl Store {
 
     // -- attachments (Joplin resources) ------------------------------------
 
-    fn blob_path(&self, id: &str, ext: &str) -> PathBuf {
-        if ext.is_empty() {
+    /// `res_dir/<id>.<ext>`. Both parts come from items the server (and any other
+    /// client) can write, so they are checked here, the one place that builds the
+    /// path: the id must be a Joplin id and the extension keeps only ASCII letters
+    /// and digits (at most 20, as Joplin's `safeFileExtension` does), so a value
+    /// such as `../../x` can never leave `res_dir`. Sane extensions are unchanged.
+    fn blob_path(&self, id: &str, ext: &str) -> Result<PathBuf> {
+        if !item::is_valid_id(id) {
+            return Err(Error::Sync(format!("invalid attachment id: {id:?}")));
+        }
+        let ext: String = ext.chars().filter(char::is_ascii_alphanumeric).take(20).collect();
+        Ok(if ext.is_empty() {
             self.res_dir.join(id)
         } else {
             self.res_dir.join(format!("{id}.{ext}"))
-        }
+        })
     }
 
     /// Local file of an attachment, if it has been saved or downloaded.
     pub fn resource_file(&self, id: &str) -> Result<Option<PathBuf>> {
+        if !item::is_valid_id(id) {
+            return Ok(None);
+        }
         let Some((it, ..)) = self.raw(id)? else { return Ok(None) };
         if it.item_type() != TYPE_RESOURCE {
             return Ok(None);
         }
-        let path = self.blob_path(id, it.get("file_extension"));
+        let path = self.blob_path(id, it.get("file_extension"))?;
         Ok(path.exists().then_some(path))
     }
 
@@ -137,7 +149,7 @@ impl Store {
     pub fn save_resource_blob(&self, id: &str, bytes: &[u8]) -> Result<PathBuf> {
         let (it, ..) = self.raw(id)?.ok_or_else(|| Error::Sync(format!("resource {id} not found")))?;
         std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
-        let path = self.blob_path(id, it.get("file_extension"));
+        let path = self.blob_path(id, it.get("file_extension"))?;
         std::fs::write(&path, bytes).map_err(|e| Error::Sync(e.to_string()))?;
         Ok(path)
     }
@@ -168,7 +180,7 @@ impl Store {
             }
         }
         std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
-        std::fs::write(self.blob_path(&id, &ext), bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        std::fs::write(self.blob_path(&id, &ext)?, bytes).map_err(|e| Error::Sync(e.to_string()))?;
         self.put_local(&it)?;
         Ok(id)
     }
@@ -182,7 +194,7 @@ impl Store {
             return Err(Error::Sync(format!("{id} is not a readable attachment")));
         }
         std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
-        std::fs::write(self.blob_path(id, it.get("file_extension")), bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        std::fs::write(self.blob_path(id, it.get("file_extension"))?, bytes).map_err(|e| Error::Sync(e.to_string()))?;
         let now = item::now_ms();
         it.set("size", bytes.len().to_string());
         it.set("blob_updated_time", now.to_string());
@@ -197,10 +209,22 @@ impl Store {
         self.kv_delete("delta_cursor")
     }
 
-    /// Wipes all local data (used when switching server/account).
+    /// Wipes all local data (used at logout and when switching server/account):
+    /// the items, the sync state and the decrypted attachment files.
     pub fn reset(&self) -> Result<()> {
         self.conn.execute_batch("DELETE FROM items; DELETE FROM kv;")?;
-        Ok(())
+        // Deleted rows stay readable in SQLite's free pages and in the WAL until they
+        // are reused: rebuild the file and empty the WAL so no note text is left behind.
+        // Best effort: another process (the CLI) holding a read transaction can make
+        // the checkpoint incomplete, and the logical wipe above has already happened.
+        let _ = self.conn.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);");
+        match std::fs::remove_dir_all(&self.res_dir) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(Error::Sync(format!(
+                "cannot delete {}: {e}",
+                self.res_dir.display()
+            ))),
+            _ => Ok(()),
+        }
     }
 
     // -- key/value ---------------------------------------------------------
@@ -265,7 +289,9 @@ impl Store {
                 if old.get("blob_updated_time") != it.get("blob_updated_time") {
                     // The file changed elsewhere (an edited sketch): drop the local copy,
                     // `fetch_resource` downloads the new one when it is shown.
-                    let _ = std::fs::remove_file(self.blob_path(it.id(), old.get("file_extension")));
+                    if let Ok(path) = self.blob_path(it.id(), old.get("file_extension")) {
+                        let _ = std::fs::remove_file(path);
+                    }
                 }
             }
         }
@@ -275,6 +301,101 @@ impl Store {
     /// Stores a locally modified item, to be uploaded on next sync.
     pub fn put_local(&self, it: &RawItem) -> Result<()> {
         self.upsert(it, false, true, None)
+    }
+
+    /// Settles a conflict: the server's version of an item replaces a local version that
+    /// was edited here too. What would be lost is kept as new local items, which are
+    /// returned for upload (they stay dirty, so a failed upload is retried):
+    ///
+    /// * a note becomes a conflict copy (`is_conflict = 1`), as in Joplin;
+    /// * an attachment whose file was changed on both sides keeps the local file as a
+    ///   new attachment, shown by a conflict note placed next to a note that uses the
+    ///   original;
+    /// * other items (folders, tags) follow the server and keep nothing.
+    ///
+    /// The database part is one transaction, so an interrupted sync can neither lose
+    /// the local version nor find the same conflict again and copy it twice.
+    pub fn resolve_conflict(&self, local: &RawItem, remote: &RawItem, remote_encrypted: bool) -> Result<Vec<RawItem>> {
+        let now = item::now_ms();
+        let mut kept = Vec::new();
+        match local.item_type() {
+            TYPE_NOTE => {
+                let mut copy = local.clone();
+                copy.set("id", item::new_id());
+                copy.set("is_conflict", "1");
+                copy.set("conflict_original_id", local.id());
+                copy.set_time("updated_time", now);
+                kept.push(copy);
+            }
+            TYPE_RESOURCE if remote_encrypted || local.get("blob_updated_time") != remote.get("blob_updated_time") => {
+                let ext = local.get("file_extension");
+                // Through blob_path, like every attachment path: a malformed id is an error.
+                let file = self.blob_path(local.id(), ext)?;
+                if file.exists() {
+                    let mut copy = local.clone();
+                    copy.set("id", item::new_id());
+                    copy.set("blob_updated_time", now.to_string());
+                    for k in ["created_time", "updated_time", "user_created_time", "user_updated_time"] {
+                        copy.set_time(k, now);
+                    }
+                    // Before the remote version is stored: that drops the original's file.
+                    let copy_file = self.blob_path(copy.id(), ext)?;
+                    std::fs::copy(&file, copy_file).map_err(|e| Error::Sync(e.to_string()))?;
+
+                    let name = local.title.clone().unwrap_or_default();
+                    let mut note = RawItem::new_with_fields(TYPE_NOTE, NOTE_FIELDS);
+                    note.set("id", item::new_id());
+                    note.set("parent_id", self.folder_using_resource(local.id())?);
+                    note.set("is_conflict", "1");
+                    note.set("source", "omanote");
+                    note.set("source_application", "app.omanote");
+                    for k in ["created_time", "updated_time", "user_created_time", "user_updated_time"] {
+                        note.set_time(k, now);
+                    }
+                    note.set("order", now.to_string());
+                    note.title = Some(format!("Attachment conflict: {name}"));
+                    note.body = Some(format!("![{name}](:/{})", copy.id()));
+                    kept.push(copy);
+                    kept.push(note);
+                }
+            }
+            _ => {}
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        for it in &kept {
+            self.put_local(it)?;
+        }
+        self.put_remote(remote, remote_encrypted)?;
+        tx.commit()?;
+        Ok(kept)
+    }
+
+    /// Where a conflict note about attachment `id` goes: the folder of a note that shows
+    /// it, else the oldest top-level folder, so the note is never out of sight ("" only
+    /// when there is no folder at all).
+    fn folder_using_resource(&self, id: &str) -> Result<String> {
+        let by_note: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT parent_id FROM items WHERE type = 1 AND deleted_time = 0 AND instr(body, ?1) > 0
+                 ORDER BY updated_time DESC LIMIT 1",
+                [format!(":/{id}")],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(folder) = by_note {
+            return Ok(folder);
+        }
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id FROM items WHERE type = 2 AND deleted_time = 0 AND parent_id = ''
+                 ORDER BY updated_time LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or_default())
     }
 
     pub fn raw(&self, id: &str) -> Result<Option<(RawItem, bool, bool, i64)>> {
@@ -787,6 +908,87 @@ mod tests {
     }
 
     #[test]
+    fn reset_leaves_no_account_data_on_disk() {
+        let dir = std::env::temp_dir().join(format!("omanote-reset-{}", item::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("omanote.sqlite");
+        let s = Store::open(&db).unwrap();
+        let f = s.create_folder("Omanote", "").unwrap();
+        s.create_note(&f.id, "Secret\nzebra-quokka-7421").unwrap();
+        let id = s.add_resource(b"\x89PNG private picture", "image/png", "photo.png").unwrap();
+        s.kv_set("delta_cursor", "abc").unwrap();
+        assert!(s.resource_file(&id).unwrap().is_some());
+
+        s.reset().unwrap();
+        assert!(s.raw(&id).unwrap().is_none());
+        assert!(s.kv_get("delta_cursor").unwrap().is_none());
+        assert!(!dir.join("resources").exists(), "decrypted attachments must be deleted");
+        // Neither the database file nor its WAL still holds the deleted text.
+        for name in ["omanote.sqlite", "omanote.sqlite-wal"] {
+            if let Ok(bytes) = std::fs::read(dir.join(name)) {
+                let found = bytes.windows(17).any(|w| w == b"zebra-quokka-7421");
+                assert!(!found, "{name} still holds a deleted note");
+            }
+        }
+        // The store keeps working, and a second reset with nothing to delete is fine.
+        s.add_resource(b"new", "image/png", "new.png").unwrap();
+        s.reset().unwrap();
+        s.reset().unwrap();
+        drop(s);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn attachment_paths_stay_inside_the_resources_folder() {
+        let s = Store::open_in_memory().unwrap();
+        let id = "0123456789abcdef0123456789abcdef";
+        // Sane extensions keep the path files were always saved under.
+        assert_eq!(s.blob_path(id, "png").unwrap(), s.res_dir.join(format!("{id}.png")));
+        assert_eq!(s.blob_path(id, "JPEG").unwrap(), s.res_dir.join(format!("{id}.JPEG")));
+        assert_eq!(s.blob_path(id, "").unwrap(), s.res_dir.join(id));
+        // Hostile extensions from the server lose everything but letters and digits.
+        for (ext, file) in [
+            ("../../x", format!("{id}.x")),
+            ("png/../..", format!("{id}.png")),
+            ("/etc/passwd", format!("{id}.etcpasswd")),
+            ("..\\..\\x", format!("{id}.x")),
+            ("..", id.to_string()),
+            ("p\0ng", format!("{id}.png")),
+            ("ïmg", format!("{id}.mg")),
+            ("abcdefghijklmnopqrstuvwxyz", format!("{id}.abcdefghijklmnopqrst")),
+        ] {
+            let path = s.blob_path(id, ext).unwrap();
+            assert_eq!(path, s.res_dir.join(&file), "extension {ext:?}");
+            assert_eq!(path.parent(), Some(s.res_dir.as_path()));
+        }
+        // Ids must be Joplin ids.
+        for bad in ["", "..", "../0123456789abcdef0123456789abcd", "0123456789abcdef0123456789abcdeg", "0123456789abcdef0123456789abcdef/"] {
+            assert!(s.blob_path(bad, "png").is_err(), "id {bad:?}");
+            assert!(s.resource_file(bad).unwrap().is_none());
+            assert!(s.save_resource_blob(bad, b"x").is_err());
+            assert!(s.update_resource(bad, b"x").is_err());
+        }
+    }
+
+    #[test]
+    fn remote_attachment_with_a_hostile_extension_is_saved_inside() {
+        let s = Store::open_in_memory().unwrap();
+        let mut it = RawItem::new_with_fields(TYPE_RESOURCE, RESOURCE_FIELDS);
+        let id = item::new_id();
+        it.set("id", &id);
+        it.set("file_extension", "../../../escaped");
+        it.set("blob_updated_time", "1");
+        s.put_remote(&it, false).unwrap();
+        let path = s.save_resource_blob(&id, b"data").unwrap();
+        assert_eq!(path, s.res_dir.join(format!("{id}.escaped")));
+        assert_eq!(s.resource_file(&id).unwrap(), Some(path));
+        it.set("blob_updated_time", "2"); // a newer file elsewhere drops the local one
+        s.put_remote(&it, false).unwrap();
+        assert!(s.resource_file(&id).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&s.res_dir);
+    }
+
+    #[test]
     fn note_lifecycle() {
         let s = Store::open_in_memory().unwrap();
         let f = s.create_folder("Omanote", "").unwrap();
@@ -862,6 +1064,68 @@ mod tests {
         s.trash(&lost.id).unwrap();
         s.restore(&lost.id, &home.id, &home.id).unwrap();
         assert_eq!(s.raw(&lost.id).unwrap().unwrap().0.get("parent_id"), home.id);
+    }
+
+    #[test]
+    fn attachment_conflict_keeps_a_changed_file_only() {
+        let s = Store::open_in_memory().unwrap();
+        let inbox = s.create_folder("Inbox", "").unwrap().id;
+        let id = s.add_resource(b"local drawing", "image/png", "sketch.png").unwrap();
+        let (local, ..) = s.raw(&id).unwrap().unwrap();
+
+        // Same file on the server, only the item changed: nothing to keep.
+        let mut remote = local.clone();
+        remote.set_time("updated_time", local.time("updated_time") + 1000);
+        assert!(s.resolve_conflict(&local, &remote, false).unwrap().is_empty());
+        assert!(s.resource_file(&id).unwrap().is_some());
+
+        // Another file on the server: the local one becomes a new attachment, and with
+        // no note showing the original, its conflict note goes to a top-level folder.
+        remote.set("blob_updated_time", "1");
+        let kept = s.resolve_conflict(&local, &remote, false).unwrap();
+        assert_eq!(kept.len(), 2);
+        assert_eq!(kept[0].item_type(), TYPE_RESOURCE);
+        assert_eq!(std::fs::read(s.resource_file(kept[0].id()).unwrap().unwrap()).unwrap(), b"local drawing");
+        assert_eq!(kept[1].int("is_conflict"), 1);
+        assert_eq!(kept[1].get("parent_id"), inbox);
+        assert!(kept[1].body.as_deref().unwrap().contains(kept[0].id()));
+        assert!(s.resource_file(&id).unwrap().is_none(), "the original's file is fetched again");
+        assert_eq!(s.dirty_items().unwrap().len(), 3, "the folder and the two kept items");
+        let _ = std::fs::remove_dir_all(&s.res_dir);
+    }
+
+    /// The attachment branch of resolve_conflict builds its paths through blob_path too.
+    #[test]
+    fn attachment_conflict_paths_stay_inside_the_resources_folder() {
+        let s = Store::open_in_memory().unwrap();
+        s.create_folder("Inbox", "").unwrap();
+
+        // A hostile extension: both files keep to res_dir, with only letters and digits.
+        let mut it = RawItem::new_with_fields(TYPE_RESOURCE, RESOURCE_FIELDS);
+        let id = item::new_id();
+        it.set("id", &id);
+        it.set("file_extension", "../../../escaped");
+        it.set("blob_updated_time", "1");
+        s.put_remote(&it, false).unwrap();
+        s.save_resource_blob(&id, b"local file").unwrap();
+        let mut remote = it.clone();
+        remote.set("blob_updated_time", "2");
+        let kept = s.resolve_conflict(&it, &remote, false).unwrap();
+        assert_eq!(kept.len(), 2);
+        let copy = s.resource_file(kept[0].id()).unwrap().expect("copied file");
+        assert_eq!(copy, s.res_dir.join(format!("{}.escaped", kept[0].id())));
+        assert_eq!(std::fs::read(&copy).unwrap(), b"local file");
+
+        // A malformed id is an error, and nothing of the conflict is stored.
+        let mut bad = it.clone();
+        bad.set("id", "../0123456789abcdef0123456789abcd");
+        let mut bad_remote = bad.clone();
+        bad_remote.set("blob_updated_time", "3");
+        let before = s.dirty_items().unwrap().len();
+        assert!(s.resolve_conflict(&bad, &bad_remote, false).is_err());
+        assert_eq!(s.dirty_items().unwrap().len(), before);
+        assert!(s.raw(bad.id()).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&s.res_dir);
     }
 
     #[test]
