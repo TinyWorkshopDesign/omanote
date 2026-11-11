@@ -179,7 +179,8 @@ impl<'a> Synchronizer<'a> {
         Ok(it.encrypted_envelope(cipher).serialize())
     }
 
-    /// Parses and, when possible, decrypts a remote item.
+    /// Parses and, when possible, decrypts a remote item. An envelope that decrypts to
+    /// an item with another id is refused: it must never be stored under the new id.
     fn open_remote(&self, content: &str) -> Result<(RawItem, bool)> {
         let envelope = RawItem::parse(content)?;
         if !envelope.is_encrypted() {
@@ -188,6 +189,13 @@ impl<'a> Synchronizer<'a> {
         match self.keys.decrypt_string(envelope.get("encryption_cipher_text")) {
             Ok(plain) => {
                 let mut it = RawItem::parse(&plain)?;
+                if it.id() != envelope.id() {
+                    return Err(Error::Sync(format!(
+                        "encrypted item {:?} decrypts to item {:?}",
+                        envelope.id(),
+                        it.id()
+                    )));
+                }
                 // Like BaseItem.decrypt: the clear-text updated_time is authoritative.
                 it.set("updated_time", envelope.get("updated_time"));
                 it.set("encryption_cipher_text", "");
@@ -197,6 +205,17 @@ impl<'a> Synchronizer<'a> {
             Err(Error::MasterKeyNotLoaded(_)) => Ok((envelope, true)),
             Err(e) => Err(e),
         }
+    }
+
+    /// `open_remote` for the content of `<id>.md`: the item must be the one its file
+    /// name says. Otherwise a hostile server or client could overwrite another local
+    /// item by naming it inside the content.
+    fn open_remote_as(&self, id: &str, content: &str) -> Result<(RawItem, bool)> {
+        let (it, encrypted) = self.open_remote(content)?;
+        if it.id() != id {
+            return Err(Error::Sync(format!("the file holds item {:?}", it.id())));
+        }
+        Ok((it, encrypted))
     }
 
     async fn upload(&mut self, info: &SyncInfo, report: &mut SyncReport) -> Result<()> {
@@ -212,7 +231,7 @@ impl<'a> Synchronizer<'a> {
             let id = d.raw.id().to_string();
             let name = format!("{id}.md");
             let remote = match self.api.get(&name).await? {
-                Some(content) => match self.open_remote(&content) {
+                Some(content) => match self.open_remote_as(&id, &content) {
                     Ok(r) => Some(r),
                     Err(e) => {
                         report.errors.push(format!("{name}: {e}"));
@@ -297,7 +316,7 @@ impl<'a> Synchronizer<'a> {
         if self.db().raw(id)?.is_none() {
             let Some(content) = self.api.get(&format!("{id}.md")).await? else { return Ok(None) };
             let (remote, encrypted) = self
-                .open_remote(&content)
+                .open_remote_as(id, &content)
                 .map_err(|e| Error::Sync(format!("{id}.md: {e}")))?;
             if remote.item_type() != TYPE_RESOURCE {
                 return Ok(None);
@@ -381,7 +400,7 @@ impl<'a> Synchronizer<'a> {
 
                 for (id, res) in fetched {
                     let Some(content) = res? else { continue };
-                    let (remote, encrypted) = match self.open_remote(&content) {
+                    let (remote, encrypted) = match self.open_remote_as(&id, &content) {
                         Ok(r) => r,
                         Err(e) => {
                             report.errors.push(format!("{id}.md: {e}"));
@@ -426,7 +445,8 @@ impl<'a> Synchronizer<'a> {
     }
 
     /// Decrypts items that were downloaded before the key was available.
-    /// Returns how many are still encrypted.
+    /// Returns how many are still encrypted (an envelope that decrypts to another
+    /// item's id stays encrypted and is counted here).
     pub fn decrypt_pending(&self) -> Result<usize> {
         let items = self.db().encrypted_items()?;
         let mut remaining = 0;
