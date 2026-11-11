@@ -8,9 +8,12 @@
 
 mod common;
 
-use common::{info_e2ee, info_plain, master_key, read, Device, FakeServer, MASTER_KEY_ID};
+use std::time::Duration;
+
+use common::{info_e2ee, info_plain, master_key, read, Device, FakeServer, LockLoss, MASTER_KEY_ID};
 use omanote_core::e2ee::KeyRing;
 use omanote_core::item::{self, RawItem, TYPE_NOTE};
+use omanote_core::sync::LockTiming;
 
 fn md(id: &str) -> String {
     format!("{id}.md")
@@ -813,6 +816,104 @@ async fn an_exclusive_lock_held_by_another_client_stops_the_sync_before_any_writ
     assert!(server.writes().is_empty());
     assert_eq!(server.locks().len(), 1, "only the other client's lock");
     assert_eq!(a.db().dirty_items().unwrap().len(), 2);
+}
+
+/// Lock timings for tests: a refresh every few tens of milliseconds instead of a minute.
+fn fast_locks() -> LockTiming {
+    LockTiming { refresh_interval: Duration::from_millis(40), ttl: Duration::from_secs(30) }
+}
+
+fn lock_lost(err: &omanote_core::Error) -> bool {
+    matches!(err, omanote_core::Error::Sync(m) if m.starts_with("sync lock lost"))
+}
+
+#[tokio::test]
+async fn the_lock_is_refreshed_during_a_long_sync_and_released_after_it() {
+    let server = FakeServer::start(&info_plain());
+    let mut a = Device::new(&server);
+    a.lock_timing = fast_locks();
+    let folder = a.create_folder("Work");
+    for i in 0..20 {
+        a.create_note(&folder, &format!("Note {i}"));
+    }
+    // Two requests per item (read the server copy, then write it): about a second.
+    server.set_delay(Duration::from_millis(25));
+
+    let r = a.sync().await.unwrap();
+    assert_eq!(r.uploaded, 21);
+    assert!(server.lock_refreshes() >= 3, "only {} refreshes", server.lock_refreshes());
+    assert!(server.requests().iter().any(|r| r.method == "GET" && r.path == "/api/locks"), "the lock was checked");
+    assert!(server.locks().is_empty(), "released: {:?}", server.locks());
+}
+
+#[tokio::test]
+async fn an_expired_lock_stops_the_upload_and_the_next_sync_finishes_it() {
+    let server = FakeServer::start(&info_plain());
+    let mut a = Device::new(&server);
+    a.lock_timing = fast_locks();
+    let folder = a.create_folder("Work");
+    let notes: Vec<String> = (0..30).map(|i| a.create_note(&folder, &format!("Note {i}"))).collect();
+    server.set_delay(Duration::from_millis(20));
+    server.lose_lock_after(6, LockLoss::Expired);
+
+    let err = a.sync().await.expect_err("the lock expired midway");
+    assert!(lock_lost(&err), "{err:?}");
+    let left = a.db().dirty_items().unwrap().len();
+    assert!(left > 0 && left < 31, "{left} items still to upload");
+    assert!(server.locks().is_empty(), "nothing left behind: {:?}", server.locks());
+
+    server.set_delay(Duration::ZERO);
+    server.fix_lock_clock();
+    let r = a.sync().await.unwrap();
+    assert_eq!(r.uploaded, left);
+    assert!(a.db().dirty_items().unwrap().is_empty());
+    for n in &notes {
+        assert!(server.has(&md(n)));
+    }
+    assert!(server.locks().is_empty());
+}
+
+#[tokio::test]
+async fn a_lock_taken_by_another_client_stops_the_download() {
+    let server = FakeServer::start(&info_plain());
+    let mut a = Device::new(&server);
+    let mut b = Device::new(&server);
+    b.lock_timing = fast_locks();
+    let folder = a.create_folder("Work");
+    for i in 0..40 {
+        a.create_note(&folder, &format!("Note {i}"));
+    }
+    a.sync().await.unwrap();
+
+    server.set_delay(Duration::from_millis(30));
+    server.lose_lock_after(3, LockLoss::TakenExclusive);
+    server.clear_requests();
+    let err = b.sync().await.expect_err("another client took the target");
+    assert!(lock_lost(&err), "{err:?}");
+    assert!(err.to_string().contains("exclusive"), "{err}");
+    let got = b.all_notes().len();
+    assert!(got < 40, "B stopped before the end, got {got} notes");
+    assert!(server.writes().is_empty());
+    assert_eq!(server.locks().len(), 1, "only the other client's lock: {:?}", server.locks());
+}
+
+#[tokio::test]
+async fn a_failed_refresh_stops_the_sync_and_releases_the_lock() {
+    let server = FakeServer::start(&info_plain());
+    let mut a = Device::new(&server);
+    a.lock_timing = fast_locks();
+    let folder = a.create_folder("Work");
+    for i in 0..30 {
+        a.create_note(&folder, &format!("Note {i}"));
+    }
+    server.set_delay(Duration::from_millis(20));
+    server.fail_once("GET", "/api/locks"); // the first check of the lock gets no answer
+
+    let err = a.sync().await.expect_err("the refresh failed");
+    assert!(lock_lost(&err), "{err:?}");
+    assert!(err.to_string().contains("cannot list the locks"), "{err}");
+    assert!(!a.db().dirty_items().unwrap().is_empty());
+    assert!(server.locks().is_empty(), "released after the error: {:?}", server.locks());
 }
 
 // -- 13. network failure during a download -------------------------------------------------------
