@@ -315,6 +315,14 @@ its history. Do not name other note apps as models or references (code, docs, co
   runs `.github/workflows/release.yml`, which builds a universal macOS `.dmg` (ad-hoc signed,
   not notarized) and Linux AppImage/.deb/.rpm and attaches them to a **draft** release (not marked pre-release, so `/releases/latest` keeps working);
   check the assets, then publish the draft.
+- Omarchy channels (checked 2026-11-11 against the packages `omarchy` 4.5.0, stable, and
+  `omarchy-dev`, the quattro branch tip): both install to `/usr/share/omarchy` and export
+  `OMARCHY_PATH`; `~/.local/share/omarchy` exists only on installs made from the git
+  checkout, so `is_omarchy()` looks in all three. The theme is in
+  `~/.local/state/omarchy/current/theme` on both, and the bar icon components the plugin
+  relies on (`BarIconButton`, `OpticalGlyph`, `IconContentBounds`, the `Style.bar` tokens)
+  are the same files in both. The bar fits an icon's painted bounds to `Style.bar.iconSize`
+  whatever size the plugin asks for (see `shell/plugins/bar/README.md`, "Icon geometry").
 - Release build on the dev Mac: `cd app && PATH=/usr/bin:$PATH npm run tauri build -- --bundles app`.
   A Python `xattr` (from python.org's framework) shadows `/usr/bin/xattr` and lacks `-r`,
   which breaks Tauri's ad-hoc signing step. Install with `ditto` into /Applications.

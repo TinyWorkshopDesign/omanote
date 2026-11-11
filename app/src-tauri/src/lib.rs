@@ -251,11 +251,20 @@ fn spawn_sync(app: &AppHandle) {
 // Account & notebooks
 // ---------------------------------------------------------------------------
 
+/// Omarchy installed from its packages (stable `omarchy` and `omarchy-dev` alike) lives
+/// in `/usr/share/omarchy` and exports that as `OMARCHY_PATH`; installs made from the
+/// git checkout keep it in `~/.local/share/omarchy`.
 fn is_omarchy() -> bool {
-    cfg!(target_os = "linux")
-        && std::env::var_os("HOME")
-            .map(|h| PathBuf::from(h).join(".local/share/omarchy").exists())
-            .unwrap_or(false)
+    if !cfg!(target_os = "linux") {
+        return false;
+    }
+    let from_env = std::env::var_os("OMARCHY_PATH").map(PathBuf::from).filter(|p| p.is_absolute());
+    let in_home = std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share/omarchy"));
+    any_dir([from_env, Some(PathBuf::from("/usr/share/omarchy")), in_home])
+}
+
+fn any_dir(candidates: impl IntoIterator<Item = Option<PathBuf>>) -> bool {
+    candidates.into_iter().flatten().any(|d| d.is_dir())
 }
 
 #[tauri::command]
@@ -1259,7 +1268,18 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::open_arg;
+    use super::{any_dir, open_arg};
+    use std::path::PathBuf;
+
+    #[test]
+    fn finds_omarchy_in_any_of_its_homes() {
+        let here = std::env::temp_dir();
+        let missing = here.join("omanote-no-such-omarchy-dir");
+        assert!(any_dir([None, Some(missing.clone()), Some(here.clone())])); // e.g. /usr/share/omarchy
+        assert!(any_dir([Some(here), None, None])); // $OMARCHY_PATH
+        assert!(!any_dir([None, Some(missing), None]));
+        assert!(!any_dir([None, Some(PathBuf::from("/etc/hostname")), None])); // a file is not it
+    }
 
     #[test]
     fn reads_open_arg() {
