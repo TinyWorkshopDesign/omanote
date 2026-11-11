@@ -54,9 +54,15 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
   convention. `3x4` multiplies like `3 x 4`. `total =` / `avg =` add up the block above. In
   notes starting with `math` every result shows. Click a result to copy it.
 - **Currency conversion**: `100 € in $ =`, `100 € to USD =`. The rates are the ECB reference
-  ones (fetched once a day, cached next to the database, still working offline) and a line in
-  the note overrides them for that note only: `1 € = 1.05 $`, `1 ₿ = 60000 €`. Adding two
-  different currencies (`10 € + 5 $`) shows no result instead of a wrong one.
+  ones and a line in the note overrides them for that note only: `1 € = 1.05 $`,
+  `1 ₿ = 60000 €`. Adding two different currencies (`10 € + 5 $`) shows no result instead of
+  a wrong one.
+  The rates come from [Frankfurter](https://frankfurter.dev) (`api.frankfurter.dev`, a free
+  service republishing the ECB table). Omanote contacts it only when a note converts a
+  currency without declaring the rate, at most once a day (the table is cached next to the
+  database and keeps working offline); the request carries no note content. Apart from it,
+  Omanote talks only to your Joplin Server. The bar plugin reads the app's cached table and
+  never downloads it.
 - **Timers** on any line, then Enter: `timer` (stopwatch), `timer 5` / `timer 3:30`
   (countdown), `timer 9am` / `timer 21:15` (until a time), `timer 5: Pasta` (named),
   `timer 25 5` / `timer pomo` (pomodoro), `timer p` / `r` / `s` (pause, restart, stop). Timers
@@ -86,6 +92,10 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
 - Conflicts are handled like Joplin: the remote version wins and the local one is kept as a
   conflict copy.
 - Deleting a note moves it to Joplin's trash.
+- A server address starting with `http://` (other than `localhost`) shows a warning: the
+  password, and the notes without E2EE, would travel unencrypted. Use `https://`.
+- Disconnecting the account (Settings) or switching to another one deletes the local copy
+  from the device, attachment files included. Notes on the server are not touched.
 - Repair tools in Settings: "Resync everything" and "Re-upload local data" (like Joplin
   desktop's, for a server that lost data).
 

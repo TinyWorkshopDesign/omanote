@@ -115,21 +115,33 @@ impl Store {
 
     // -- attachments (Joplin resources) ------------------------------------
 
-    fn blob_path(&self, id: &str, ext: &str) -> PathBuf {
-        if ext.is_empty() {
+    /// `res_dir/<id>.<ext>`. Both parts come from items the server (and any other
+    /// client) can write, so they are checked here, the one place that builds the
+    /// path: the id must be a Joplin id and the extension keeps only ASCII letters
+    /// and digits (at most 20, as Joplin's `safeFileExtension` does), so a value
+    /// such as `../../x` can never leave `res_dir`. Sane extensions are unchanged.
+    fn blob_path(&self, id: &str, ext: &str) -> Result<PathBuf> {
+        if !item::is_valid_id(id) {
+            return Err(Error::Sync(format!("invalid attachment id: {id:?}")));
+        }
+        let ext: String = ext.chars().filter(char::is_ascii_alphanumeric).take(20).collect();
+        Ok(if ext.is_empty() {
             self.res_dir.join(id)
         } else {
             self.res_dir.join(format!("{id}.{ext}"))
-        }
+        })
     }
 
     /// Local file of an attachment, if it has been saved or downloaded.
     pub fn resource_file(&self, id: &str) -> Result<Option<PathBuf>> {
+        if !item::is_valid_id(id) {
+            return Ok(None);
+        }
         let Some((it, ..)) = self.raw(id)? else { return Ok(None) };
         if it.item_type() != TYPE_RESOURCE {
             return Ok(None);
         }
-        let path = self.blob_path(id, it.get("file_extension"));
+        let path = self.blob_path(id, it.get("file_extension"))?;
         Ok(path.exists().then_some(path))
     }
 
@@ -137,7 +149,7 @@ impl Store {
     pub fn save_resource_blob(&self, id: &str, bytes: &[u8]) -> Result<PathBuf> {
         let (it, ..) = self.raw(id)?.ok_or_else(|| Error::Sync(format!("resource {id} not found")))?;
         std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
-        let path = self.blob_path(id, it.get("file_extension"));
+        let path = self.blob_path(id, it.get("file_extension"))?;
         std::fs::write(&path, bytes).map_err(|e| Error::Sync(e.to_string()))?;
         Ok(path)
     }
@@ -168,7 +180,7 @@ impl Store {
             }
         }
         std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
-        std::fs::write(self.blob_path(&id, &ext), bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        std::fs::write(self.blob_path(&id, &ext)?, bytes).map_err(|e| Error::Sync(e.to_string()))?;
         self.put_local(&it)?;
         Ok(id)
     }
@@ -182,7 +194,7 @@ impl Store {
             return Err(Error::Sync(format!("{id} is not a readable attachment")));
         }
         std::fs::create_dir_all(&self.res_dir).map_err(|e| Error::Sync(e.to_string()))?;
-        std::fs::write(self.blob_path(id, it.get("file_extension")), bytes).map_err(|e| Error::Sync(e.to_string()))?;
+        std::fs::write(self.blob_path(id, it.get("file_extension"))?, bytes).map_err(|e| Error::Sync(e.to_string()))?;
         let now = item::now_ms();
         it.set("size", bytes.len().to_string());
         it.set("blob_updated_time", now.to_string());
@@ -197,10 +209,22 @@ impl Store {
         self.kv_delete("delta_cursor")
     }
 
-    /// Wipes all local data (used when switching server/account).
+    /// Wipes all local data (used at logout and when switching server/account):
+    /// the items, the sync state and the decrypted attachment files.
     pub fn reset(&self) -> Result<()> {
         self.conn.execute_batch("DELETE FROM items; DELETE FROM kv;")?;
-        Ok(())
+        // Deleted rows stay readable in SQLite's free pages and in the WAL until they
+        // are reused: rebuild the file and empty the WAL so no note text is left behind.
+        // Best effort: another process (the CLI) holding a read transaction can make
+        // the checkpoint incomplete, and the logical wipe above has already happened.
+        let _ = self.conn.execute_batch("VACUUM; PRAGMA wal_checkpoint(TRUNCATE);");
+        match std::fs::remove_dir_all(&self.res_dir) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(Error::Sync(format!(
+                "cannot delete {}: {e}",
+                self.res_dir.display()
+            ))),
+            _ => Ok(()),
+        }
     }
 
     // -- key/value ---------------------------------------------------------
@@ -265,7 +289,9 @@ impl Store {
                 if old.get("blob_updated_time") != it.get("blob_updated_time") {
                     // The file changed elsewhere (an edited sketch): drop the local copy,
                     // `fetch_resource` downloads the new one when it is shown.
-                    let _ = std::fs::remove_file(self.blob_path(it.id(), old.get("file_extension")));
+                    if let Ok(path) = self.blob_path(it.id(), old.get("file_extension")) {
+                        let _ = std::fs::remove_file(path);
+                    }
                 }
             }
         }
@@ -303,7 +329,8 @@ impl Store {
             }
             TYPE_RESOURCE if remote_encrypted || local.get("blob_updated_time") != remote.get("blob_updated_time") => {
                 let ext = local.get("file_extension");
-                let file = self.blob_path(local.id(), ext);
+                // Through blob_path, like every attachment path: a malformed id is an error.
+                let file = self.blob_path(local.id(), ext)?;
                 if file.exists() {
                     let mut copy = local.clone();
                     copy.set("id", item::new_id());
@@ -312,7 +339,8 @@ impl Store {
                         copy.set_time(k, now);
                     }
                     // Before the remote version is stored: that drops the original's file.
-                    std::fs::copy(&file, self.blob_path(copy.id(), ext)).map_err(|e| Error::Sync(e.to_string()))?;
+                    let copy_file = self.blob_path(copy.id(), ext)?;
+                    std::fs::copy(&file, copy_file).map_err(|e| Error::Sync(e.to_string()))?;
 
                     let name = local.title.clone().unwrap_or_default();
                     let mut note = RawItem::new_with_fields(TYPE_NOTE, NOTE_FIELDS);
@@ -877,6 +905,87 @@ mod tests {
         remote.set("blob_updated_time", (it.get("blob_updated_time").parse::<i64>().unwrap() + 1).to_string());
         s.put_remote(&remote, false).unwrap();
         assert!(s.resource_file(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn reset_leaves_no_account_data_on_disk() {
+        let dir = std::env::temp_dir().join(format!("omanote-reset-{}", item::new_id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("omanote.sqlite");
+        let s = Store::open(&db).unwrap();
+        let f = s.create_folder("Omanote", "").unwrap();
+        s.create_note(&f.id, "Secret\nzebra-quokka-7421").unwrap();
+        let id = s.add_resource(b"\x89PNG private picture", "image/png", "photo.png").unwrap();
+        s.kv_set("delta_cursor", "abc").unwrap();
+        assert!(s.resource_file(&id).unwrap().is_some());
+
+        s.reset().unwrap();
+        assert!(s.raw(&id).unwrap().is_none());
+        assert!(s.kv_get("delta_cursor").unwrap().is_none());
+        assert!(!dir.join("resources").exists(), "decrypted attachments must be deleted");
+        // Neither the database file nor its WAL still holds the deleted text.
+        for name in ["omanote.sqlite", "omanote.sqlite-wal"] {
+            if let Ok(bytes) = std::fs::read(dir.join(name)) {
+                let found = bytes.windows(17).any(|w| w == b"zebra-quokka-7421");
+                assert!(!found, "{name} still holds a deleted note");
+            }
+        }
+        // The store keeps working, and a second reset with nothing to delete is fine.
+        s.add_resource(b"new", "image/png", "new.png").unwrap();
+        s.reset().unwrap();
+        s.reset().unwrap();
+        drop(s);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn attachment_paths_stay_inside_the_resources_folder() {
+        let s = Store::open_in_memory().unwrap();
+        let id = "0123456789abcdef0123456789abcdef";
+        // Sane extensions keep the path files were always saved under.
+        assert_eq!(s.blob_path(id, "png").unwrap(), s.res_dir.join(format!("{id}.png")));
+        assert_eq!(s.blob_path(id, "JPEG").unwrap(), s.res_dir.join(format!("{id}.JPEG")));
+        assert_eq!(s.blob_path(id, "").unwrap(), s.res_dir.join(id));
+        // Hostile extensions from the server lose everything but letters and digits.
+        for (ext, file) in [
+            ("../../x", format!("{id}.x")),
+            ("png/../..", format!("{id}.png")),
+            ("/etc/passwd", format!("{id}.etcpasswd")),
+            ("..\\..\\x", format!("{id}.x")),
+            ("..", id.to_string()),
+            ("p\0ng", format!("{id}.png")),
+            ("ïmg", format!("{id}.mg")),
+            ("abcdefghijklmnopqrstuvwxyz", format!("{id}.abcdefghijklmnopqrst")),
+        ] {
+            let path = s.blob_path(id, ext).unwrap();
+            assert_eq!(path, s.res_dir.join(&file), "extension {ext:?}");
+            assert_eq!(path.parent(), Some(s.res_dir.as_path()));
+        }
+        // Ids must be Joplin ids.
+        for bad in ["", "..", "../0123456789abcdef0123456789abcd", "0123456789abcdef0123456789abcdeg", "0123456789abcdef0123456789abcdef/"] {
+            assert!(s.blob_path(bad, "png").is_err(), "id {bad:?}");
+            assert!(s.resource_file(bad).unwrap().is_none());
+            assert!(s.save_resource_blob(bad, b"x").is_err());
+            assert!(s.update_resource(bad, b"x").is_err());
+        }
+    }
+
+    #[test]
+    fn remote_attachment_with_a_hostile_extension_is_saved_inside() {
+        let s = Store::open_in_memory().unwrap();
+        let mut it = RawItem::new_with_fields(TYPE_RESOURCE, RESOURCE_FIELDS);
+        let id = item::new_id();
+        it.set("id", &id);
+        it.set("file_extension", "../../../escaped");
+        it.set("blob_updated_time", "1");
+        s.put_remote(&it, false).unwrap();
+        let path = s.save_resource_blob(&id, b"data").unwrap();
+        assert_eq!(path, s.res_dir.join(format!("{id}.escaped")));
+        assert_eq!(s.resource_file(&id).unwrap(), Some(path));
+        it.set("blob_updated_time", "2"); // a newer file elsewhere drops the local one
+        s.put_remote(&it, false).unwrap();
+        assert!(s.resource_file(&id).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&s.res_dir);
     }
 
     #[test]
