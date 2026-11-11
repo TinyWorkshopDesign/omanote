@@ -77,7 +77,7 @@ impl Config {
     }
 
     pub fn save(&self, dir: &Path) -> std::io::Result<()> {
-        std::fs::write(dir.join("config.json"), serde_json::to_string_pretty(self).expect("config json"))
+        crate::private_fs::write(&dir.join("config.json"), serde_json::to_string_pretty(self).expect("config json").as_bytes())
     }
 }
 
@@ -87,4 +87,21 @@ pub fn default_data_dir() -> PathBuf {
         return PathBuf::from(d);
     }
     dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join(APP_ID)
+}
+
+#[cfg(all(test, unix))]
+mod perm_tests {
+    #[test]
+    fn config_file_is_owner_only() {
+        use crate::private_fs::tests::{loosen, mode};
+        let dir = std::env::temp_dir().join(format!("omanote-perm-config-{}", crate::item::new_id()));
+        crate::private_fs::create_dir(&dir).unwrap();
+        let path = dir.join("config.json");
+        super::Config::default().save(&dir).unwrap();
+        assert_eq!(mode(&path), 0o600);
+        loosen(&path, 0o644);
+        super::Config::default().save(&dir).unwrap();
+        assert_eq!(mode(&path), 0o600);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

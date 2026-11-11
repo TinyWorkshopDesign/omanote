@@ -11,3 +11,4 @@ pub mod store;
 pub mod sync;
 pub mod config;
 pub mod secrets;
+pub mod private_fs;
