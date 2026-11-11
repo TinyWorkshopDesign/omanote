@@ -2,6 +2,7 @@
   import { icons } from "../icons";
   import { api, type Folder } from "../api";
   import { errText, t } from "../i18n.svelte";
+  import { isCleartextRemote } from "../serverUrl";
 
   let {
     onDone,
@@ -91,6 +92,7 @@
     {#if step === "login"}
       <p class="sub">{t("app.tagline")}</p>
       <label>{t("setup.server")}<input type="url" inputmode="url" bind:value={serverUrl} placeholder="https://joplin.example.com" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
+      {#if isCleartextRemote(serverUrl)}<p class="warn" role="alert">{t("setup.cleartext")}</p>{/if}
       <label>{t("setup.email")}<input type="email" inputmode="email" bind:value={email} placeholder="you@example.com" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" /></label>
       <label>{t("setup.password")}<input type="password" bind:value={password} autocomplete="current-password" /></label>
       {#if needsMaster}
@@ -202,6 +204,12 @@
     margin: 0;
   }
   .error {
+    color: var(--danger);
+  }
+  .warn {
+    margin: -4px 0 0;
+    font-size: 0.8rem;
+    line-height: 1.45;
     color: var(--danger);
   }
   .list {

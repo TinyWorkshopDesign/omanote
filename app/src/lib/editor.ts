@@ -45,15 +45,25 @@ function modeOf(doc: Text): Mode {
   return detectMode(doc.line(1).text).mode;
 }
 
-// Exchange rates for the calculator (`100 € in $ =`): the app loads them once
-// at startup (see `calc.buildRates`), a note can override any pair.
+// Exchange rates for the calculator (`100 € in $ =`, see `calc.buildRates`); a
+// note can override any pair. The table is not loaded at startup: the first
+// conversion that needs it calls `ratesWanted`, the page loads it (a request to a
+// third party, at most once a day thanks to the app's cache), stores it with
+// `setFxRates` and dispatches `ratesChanged` to render the results.
 let fxRates: FxRates | undefined;
+let ratesWanted: (() => void) | undefined;
 
 /** Rebuild the results after new exchange rates arrived. */
 export const ratesChanged = StateEffect.define<null>();
 
 export function setFxRates(rates: FxRates) {
   fxRates = rates;
+}
+
+/** Called (during rendering: it must not dispatch synchronously) when a line
+ * needs the rate table and none is loaded yet. */
+export function onRatesWanted(fn: () => void) {
+  ratesWanted = fn;
 }
 
 function hasMarker(text: string) {
@@ -138,7 +148,7 @@ function build(view: EditorView): Built {
   const { mode } = detectMode(first);
   // Math works in lists too; only code notes stay raw.
   // Results show after a trailing "=" (every calculation in "math" notes).
-  const results = mode === "code" ? [] : evaluate(text, mode === "math", fxRates);
+  const results = mode === "code" ? [] : evaluate(text, mode === "math", fxRates, ratesWanted);
   const deco: Range<Decoration>[] = [];
   const atomic: Range<Decoration>[] = [];
   let inFence = false;

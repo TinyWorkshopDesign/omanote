@@ -6,6 +6,7 @@
   import { LANGUAGES, MOD, i18n, setLang, t, type Key, type Lang } from "../i18n.svelte";
   import { bundledThemes, setBundledTheme, type ThemeState } from "../theme";
   import { FONT_MAX, FONT_MIN, prefs } from "../prefs.svelte";
+  import { isCleartextRemote } from "../serverUrl";
 
   let {
     status,
@@ -408,6 +409,7 @@
           {:else}
             <div class="group">
               <div class="row"><span class="label">{t("set.server")}</span><span class="value">{status.server_url}</span></div>
+              {#if isCleartextRemote(status.server_url)}<p class="hint warn">{t("setup.cleartext")}</p>{/if}
               <div class="row"><span class="label">{t("setup.email")}</span><span class="value">{status.email}</span></div>
               <div class="row"><span class="label">{t("set.e2ee")}</span><span class="value">{status.e2ee ? t("set.on") : t("set.off")}</span></div>
             </div>
@@ -698,6 +700,9 @@
     font-size: 0.76rem;
     color: var(--muted);
     line-height: 1.45;
+  }
+  .hint.warn {
+    color: var(--danger);
   }
   .mono {
     font-size: 0.72rem;

@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::JoplinServer;
 use crate::e2ee::{self, KeyRing, MasterKey};
 use crate::error::{Error, Result};
-use crate::item::{RawItem, TYPE_RESOURCE};
+use crate::item::{self, RawItem, TYPE_RESOURCE};
 use crate::store::{Store, STORED_TYPES};
 
 pub const SUPPORTED_SYNC_VERSION: i64 = 3;
@@ -309,6 +309,9 @@ impl<'a> Synchronizer<'a> {
 
     /// Downloads (and decrypts) an attachment file, saving it next to the database.
     pub async fn fetch_resource(&mut self, id: &str) -> Result<Option<std::path::PathBuf>> {
+        if !item::is_valid_id(id) {
+            return Ok(None); // never let a malformed id reach a server path
+        }
         if let Some(p) = self.db().resource_file(id)? {
             return Ok(Some(p));
         }
