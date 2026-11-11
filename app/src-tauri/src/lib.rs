@@ -108,6 +108,17 @@ fn log_errors(dir: &std::path::Path, context: &str, lines: &[String]) {
     let _ = std::fs::write(&path, all[start..].join("\n") + "\n");
 }
 
+/// Drops the local copy of an account (logout, switching server/account): the
+/// store with its attachment files, and the sync log, which names that account's
+/// items and quotes the server's messages.
+fn forget_account(state: &AppState) -> Result<(), String> {
+    state.db().reset().map_err(err)?;
+    match std::fs::remove_file(state.dir.join("sync-errors.log")) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(err(e)),
+        _ => Ok(()),
+    }
+}
+
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
@@ -343,7 +354,7 @@ async fn setup(
     // Coming from local mode (no server yet) keeps the notes: they are uploaded.
     let server_changed = !cfg.server_url.is_empty() && (cfg.server_url != server_url || cfg.email != email.trim());
     if server_changed {
-        state.db().reset().map_err(err)?;
+        forget_account(&state)?;
         cfg.root_folder_id.clear();
     }
     cfg.local_only = false;
@@ -388,7 +399,7 @@ async fn logout(state: State<'_, AppState>) -> Result<(), String> {
     *state.e2ee_state.lock().unwrap() = (false, false);
     secrets::set(&state.dir, secrets::SERVER_PASSWORD, None)?;
     secrets::set(&state.dir, secrets::MASTER_PASSWORD, None)?;
-    state.db().reset().map_err(err)?;
+    forget_account(&state)?;
     let mut cfg = state.config();
     cfg.server_url.clear();
     cfg.email.clear();

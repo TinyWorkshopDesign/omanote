@@ -93,6 +93,31 @@ const conversions: [string, (string | null)[], string, FxRates | undefined][] = 
 for (const [input, expected, locale, table] of conversions) {
   assert.deepEqual(show(input, false, locale, table), expected, `fx: ${input}`);
 }
+// The rate table is asked for only when a conversion needs it: the app then
+// downloads it (a third-party request) and evaluates again.
+const needsRates = (text: string, table?: FxRates, auto = false) => {
+  let asked = 0;
+  evaluate(text, auto, table, () => asked++);
+  return asked > 0;
+};
+const asking: [string, boolean, FxRates | undefined][] = [
+  ["100 € in $ =", true, undefined],
+  ["math\n100 € in $", true, undefined],
+  ["price = 100 €\nprice in USD", true, undefined], // computed, not shown: still needed
+  ["100 € in $ =", false, fx], // the table is there
+  ["100 € in chf =", false, fx], // the table has no CHF: downloading would not help
+  ["1 € = 1.08 $\n100 € in $ =", false, undefined], // the note declares the rate
+  ["1 € = 1.08 $\n100 $ in € =", false, undefined], // its inverse too
+  ["100 € in € =", false, undefined],
+  ["100 in $ =", false, undefined], // nothing to convert
+  ["2+2=\n10 € + 5 € =\nlatte 2,50 €\nsomma", false, undefined],
+  ["Shopping\n- milk\n- bread", false, undefined],
+  ["", false, undefined],
+];
+for (const [input, expected, table] of asking) {
+  assert.equal(needsRates(input, table, input.startsWith("math")), expected, `needs rates: ${input}`);
+}
+
 // In a "math" note the declared rate shows too.
 assert.deepEqual(show("math\n1 € = 1.08 $\n100 € in $", true, "en-US"), [null, "1.08 $", "108.00 $"]);
 
