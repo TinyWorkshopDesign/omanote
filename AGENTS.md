@@ -330,8 +330,14 @@ its history. Do not name other note apps as models or references (code, docs, co
   examples still do that). The `#[ignore]`d tests there are known defects, each asserting
   the behaviour wanted: unreadable items are never retried, a deleted attachment leaves
   its blob on the server and its file on disk, a remote edit with an older `updated_time`
-  is not applied. Not covered: lock refresh (the lock is taken once and never renewed),
-  session expiry.
+  is not applied. Not covered: session expiry.
+- Sync lock refresh (`sync.rs`, `LockTiming`, 2026-11-11), as Joplin's `LockHandler`: while a
+  sync runs, every minute the lock list is read (`GET api/locks`) and the sync lock taken
+  again (`POST api/locks` moves its `updatedTime`; the server drops locks older than 3 minutes).
+  If our lock is gone, another client holds an exclusive lock, the refresh fails or no refresh
+  succeeded within the TTL, the sync stops at the next item and returns `sync lock lost: …`;
+  the lock is released in every case. Tested against the fake server only, not yet against
+  a real Joplin Server (`GET api/locks` response shape assumed `{items: [...]}`).
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
 - Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (**public** since 2026-09-24, MIT;
   `omanote-archive` is the old private repo with pre-cleanup history, do not push to it),
