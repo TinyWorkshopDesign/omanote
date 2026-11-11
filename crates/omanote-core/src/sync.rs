@@ -3,7 +3,7 @@
 //!
 //! 1. read `info.json` (E2EE state + master keys) — never written by Omanote;
 //! 2. take a *sync* lock so Joplin clients running a migration (exclusive
-//!    lock) are respected;
+//!    lock) are respected, and refresh it while the sync runs (see `LockTiming`);
 //! 3. upload local changes, detecting conflicts through `updated_time`;
 //! 4. download remote changes through the delta API;
 //! 5. release the lock.
@@ -13,11 +13,12 @@
 //! (it shows up in Joplin's "Conflicts" folder).
 
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 
-use crate::api::JoplinServer;
+use crate::api::{JoplinServer, LOCK_EXCLUSIVE, LOCK_SYNC};
 use crate::e2ee::{self, KeyRing, MasterKey};
 use crate::error::{Error, Result};
 use crate::item::{self, RawItem, TYPE_RESOURCE};
@@ -73,6 +74,82 @@ pub struct SyncReport {
     pub errors: Vec<String>,
 }
 
+/// How the sync lock is kept alive, as Joplin's `LockHandler` does: the server drops a
+/// lock that has not been refreshed for `ttl`, so while a sync runs the lock is checked
+/// and taken again every `refresh_interval`.
+#[derive(Debug, Clone, Copy)]
+pub struct LockTiming {
+    /// Joplin's `autoRefreshInterval`.
+    pub refresh_interval: Duration,
+    /// Joplin's `lockTtl`: with no successful refresh for this long, the lock is lost.
+    pub ttl: Duration,
+}
+
+impl Default for LockTiming {
+    fn default() -> Self {
+        Self { refresh_interval: Duration::from_secs(60), ttl: Duration::from_secs(3 * 60) }
+    }
+}
+
+/// Why the lock can no longer be trusted, set by the refresher and checked by the
+/// sync at safe points (between items), where it stops before writing more.
+#[derive(Default)]
+struct LockWatch(Mutex<Option<String>>);
+
+impl LockWatch {
+    fn fail(&self, why: String) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert(why);
+    }
+
+    fn check(&self) -> Result<()> {
+        match &*self.0.lock().unwrap_or_else(|e| e.into_inner()) {
+            Some(why) => Err(Error::Sync(format!("sync lock lost: {why}"))),
+            None => Ok(()),
+        }
+    }
+}
+
+/// Refreshes the sync lock every `refresh_interval` until a refresh fails, then
+/// records why in `watch` and returns. Runs next to the sync with its own API client.
+async fn keep_lock(mut api: JoplinServer, client_type: i64, client_id: String, timing: LockTiming, watch: &LockWatch) {
+    let mut refreshed = Instant::now();
+    loop {
+        tokio::time::sleep(timing.refresh_interval).await;
+        if let Err(why) = refresh_lock(&mut api, client_type, &client_id, timing, refreshed).await {
+            watch.fail(why);
+            return;
+        }
+        refreshed = Instant::now();
+    }
+}
+
+/// One refresh, as `LockHandler.startAutoLockRefresh`: the lock must still be active,
+/// then it is acquired again, which moves its `updatedTime` forward on the server.
+async fn refresh_lock(
+    api: &mut JoplinServer,
+    client_type: i64,
+    client_id: &str,
+    timing: LockTiming,
+    refreshed: Instant,
+) -> std::result::Result<(), String> {
+    let locks = api.locks().await.map_err(|e| format!("cannot list the locks: {e}"))?;
+    // Measured on this machine (Joplin compares updatedTime with the server's clock):
+    // a process suspended past the TTL must not trust a lock the server may have dropped.
+    if refreshed.elapsed() >= timing.ttl {
+        return Err(format!("not refreshed for {} s, longer than its time to live", refreshed.elapsed().as_secs()));
+    }
+    if let Some(l) = locks.iter().find(|l| l.lock_type == LOCK_EXCLUSIVE && l.client_id != client_id) {
+        return Err(format!("client {} holds an exclusive lock", l.client_id));
+    }
+    let ours = locks
+        .iter()
+        .any(|l| l.lock_type == LOCK_SYNC && l.client_type == client_type && l.client_id == client_id);
+    if !ours {
+        return Err("it has expired on the server".into());
+    }
+    api.acquire_lock(client_type, client_id).await.map_err(|e| format!("cannot refresh it: {e}"))
+}
+
 pub struct Synchronizer<'a> {
     pub api: &'a mut JoplinServer,
     pub store: &'a Mutex<Store>,
@@ -124,17 +201,18 @@ impl<'a> Synchronizer<'a> {
     }
 
     pub async fn sync(&mut self) -> Result<SyncReport> {
-        self.sync_with(false).await
+        self.sync_with(false, LockTiming::default()).await
     }
 
     /// Joplin's "Re-upload local data to sync target": after fetching remote changes,
     /// every local item is sent again, attachment files included. Repairs a server that
     /// lost data; items the server already has in the same version are skipped.
     pub async fn reupload_all(&mut self) -> Result<SyncReport> {
-        self.sync_with(true).await
+        self.sync_with(true, LockTiming::default()).await
     }
 
-    async fn sync_with(&mut self, reupload: bool) -> Result<SyncReport> {
+    /// `sync`, or `reupload_all` when `reupload`, with other lock timings (tests).
+    pub async fn sync_with(&mut self, reupload: bool, timing: LockTiming) -> Result<SyncReport> {
         let info = self.fetch_info().await?;
         let mut report = SyncReport::default();
 
@@ -147,7 +225,18 @@ impl<'a> Synchronizer<'a> {
         }
 
         self.api.acquire_lock(self.client_type, &self.client_id).await?;
-        let result = self.run(&info, &mut report, reupload).await;
+        let watch = LockWatch::default();
+        let keeper = keep_lock(self.api.clone(), self.client_type, self.client_id.clone(), timing, &watch);
+        let result = {
+            let work = self.run(&info, &mut report, reupload, &watch);
+            tokio::pin!(work, keeper);
+            tokio::select! {
+                r = &mut work => r,
+                // The refresher gave up: the sync stops at its next check of `watch`.
+                () = &mut keeper => work.await,
+            }
+        };
+        // Released whatever happened (a lock that expired is no longer there: 404, ignored).
         let _ = self.api.release_lock(self.client_type, &self.client_id).await;
         result?;
 
@@ -155,20 +244,21 @@ impl<'a> Synchronizer<'a> {
         Ok(report)
     }
 
-    async fn run(&mut self, info: &SyncInfo, report: &mut SyncReport, reupload: bool) -> Result<()> {
+    async fn run(&mut self, info: &SyncInfo, report: &mut SyncReport, reupload: bool, lock: &LockWatch) -> Result<()> {
         if reupload {
             if report.needs_password {
                 return Err(Error::MasterKeyNotLoaded(info.active_key_id().unwrap_or_default().to_string()));
             }
-            self.download(report).await?;
+            self.download(report, lock).await?;
+            lock.check()?;
             self.db().mark_all_for_reupload()?;
-            return self.upload(info, report).await;
+            return self.upload(info, report, lock).await;
         }
         // Uploading needs the key when E2EE is on; downloading still works.
         if !report.needs_password {
-            self.upload(info, report).await?;
+            self.upload(info, report, lock).await?;
         }
-        self.download(report).await
+        self.download(report, lock).await
     }
 
     fn serialize_for_sync(&self, info: &SyncInfo, it: &RawItem) -> Result<String> {
@@ -218,9 +308,10 @@ impl<'a> Synchronizer<'a> {
         Ok((it, encrypted))
     }
 
-    async fn upload(&mut self, info: &SyncInfo, report: &mut SyncReport) -> Result<()> {
+    async fn upload(&mut self, info: &SyncInfo, report: &mut SyncReport, lock: &LockWatch) -> Result<()> {
         let deletions = self.db().pending_deletions()?;
         for id in deletions {
+            lock.check()?;
             self.api.delete(&format!("{id}.md")).await?;
             self.db().clear_pending_deletion(&id)?;
             report.deleted_remote += 1;
@@ -228,6 +319,7 @@ impl<'a> Synchronizer<'a> {
 
         let dirty = self.db().dirty_items()?;
         for d in dirty {
+            lock.check()?;
             let id = d.raw.id().to_string();
             let name = format!("{id}.md");
             let remote = match self.api.get(&name).await? {
@@ -347,9 +439,10 @@ impl<'a> Synchronizer<'a> {
         Ok(())
     }
 
-    async fn download(&mut self, report: &mut SyncReport) -> Result<()> {
+    async fn download(&mut self, report: &mut SyncReport, lock: &LockWatch) -> Result<()> {
         let mut cursor = self.db().kv_get("delta_cursor")?;
         loop {
+            lock.check()?;
             let page = self.api.delta(cursor.as_deref()).await?;
 
             // Collapse the page to the last change of each item.
@@ -401,6 +494,9 @@ impl<'a> Synchronizer<'a> {
                     .collect()
                     .await;
 
+                // Nothing of this page is stored once the lock is gone, and the delta
+                // cursor stays before it, so the next sync fetches it again.
+                lock.check()?;
                 for (id, res) in fetched {
                     let Some(content) = res? else { continue };
                     let (remote, encrypted) = match self.open_remote_as(&id, &content) {

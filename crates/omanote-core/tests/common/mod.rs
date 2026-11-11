@@ -18,7 +18,7 @@ use omanote_core::api::{JoplinServer, LOCK_CLIENT_DESKTOP};
 use omanote_core::e2ee::KeyRing;
 use omanote_core::item::{self, RawItem};
 use omanote_core::store::Store;
-use omanote_core::sync::{SyncReport, Synchronizer};
+use omanote_core::sync::{LockTiming, SyncReport, Synchronizer};
 use serde_json::{json, Value};
 
 /// Changes per delta page: small on purpose, so every test crosses page boundaries.
@@ -72,6 +72,19 @@ pub struct Lock {
     pub client_id: String,
 }
 
+/// What happens to the locks after a number of item requests (`lose_lock_after`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LockLoss {
+    /// The server's clock says every lock is stale, from then on (sticky, until
+    /// `fix_lock_clock`): locks are dropped, `GET api/locks` lists none, and a lock taken
+    /// again is dropped at the next item request. A refresh can never see ours, whatever
+    /// the order of its list and acquire around the item requests.
+    Expired,
+    /// The locks expire and another client takes an exclusive lock, which stays: a
+    /// refresh then either sees it in the list or gets 409 when acquiring.
+    TakenExclusive,
+}
+
 #[derive(Debug, Clone)]
 pub struct Request {
     pub method: String,
@@ -90,6 +103,14 @@ struct State {
     /// `(method, path substring)`: the next matching request is dropped without a reply.
     fail_once: Vec<(String, String)>,
     info_writes: usize,
+    /// POSTs to `api/locks` by a client that already held that lock (refreshes).
+    lock_refreshes: usize,
+    /// Wait before answering each item content request (a slow network).
+    delay: Duration,
+    /// `(remaining item content requests, what then happens to the locks)`.
+    lose_lock: Option<(usize, LockLoss)>,
+    /// Set by `LockLoss::Expired`: every lock counts as stale.
+    locks_stale: bool,
 }
 
 pub struct FakeServer {
@@ -199,6 +220,25 @@ impl FakeServer {
     pub fn info_writes(&self) -> usize {
         self.st().info_writes
     }
+
+    pub fn lock_refreshes(&self) -> usize {
+        self.st().lock_refreshes
+    }
+
+    /// Every item content request (`<id>.md`, `.resource/<id>`) waits `delay` first.
+    pub fn set_delay(&self, delay: Duration) {
+        self.st().delay = delay;
+    }
+
+    /// After `n` more item content requests the locks are lost as `how` says.
+    pub fn lose_lock_after(&self, n: usize, how: LockLoss) {
+        self.st().lose_lock = Some((n, how));
+    }
+
+    /// Ends `LockLoss::Expired`: locks are kept and listed again.
+    pub fn fix_lock_clock(&self) {
+        self.st().locks_stale = false;
+    }
 }
 
 impl Drop for FakeServer {
@@ -304,9 +344,33 @@ fn error_reply(status: u16, code: &str, message: &str) -> Reply {
 fn handle_connection(mut stream: TcpStream, state: &Mutex<State>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let Some(req) = read_request(&stream) else { return };
+    let is_item_content = req.path.ends_with(":/content") && !req.path.contains("info.json");
+    if is_item_content {
+        let delay = state.lock().unwrap_or_else(|e| e.into_inner()).delay;
+        std::thread::sleep(delay);
+    }
     let reply = {
         let mut st = state.lock().unwrap_or_else(|e| e.into_inner());
         st.requests.push(Request { method: req.method.clone(), path: req.path.clone() });
+        if is_item_content {
+            if let Some((n, how)) = st.lose_lock {
+                if n <= 1 {
+                    st.lose_lock = None;
+                    st.locks.clear();
+                    match how {
+                        LockLoss::Expired => st.locks_stale = true,
+                        LockLoss::TakenExclusive => {
+                            st.locks.push(Lock { lock_type: 2, client_type: 1, client_id: "otherclient".into() })
+                        }
+                    }
+                } else {
+                    st.lose_lock = Some((n - 1, how));
+                }
+            }
+            if st.locks_stale {
+                st.locks.clear();
+            }
+        }
         if std::env::var_os("OMANOTE_FAKE_SERVER_LOG").is_some() {
             eprintln!("fake server: {} {}", req.method, req.path);
         }
@@ -441,13 +505,33 @@ fn route_locks(st: &mut State, req: &HttpRequest, rest: &str) -> Reply {
         if st.locks.iter().any(|l| l.lock_type == 2 && l.client_id != lock.client_id) {
             return error_reply(409, "hasExclusiveLock", "an exclusive lock is held by another client");
         }
-        if !st.locks.contains(&lock) {
+        if st.locks.contains(&lock) {
+            st.lock_refreshes += 1; // like Joplin Server: the same client's lock gets a new updatedTime
+        } else {
             st.locks.push(lock.clone());
         }
         return json_reply(
             200,
             json!({ "type": lock.lock_type, "clientType": lock.client_type, "clientId": lock.client_id, "updatedTime": item::now_ms() }),
         );
+    }
+    if req.method == "GET" && rest.is_empty() {
+        // Every lock was refreshed by its owner as far as this fake knows: updatedTime = now.
+        // With a stale clock none is active, so none is listed.
+        let listed = if st.locks_stale { &[][..] } else { &st.locks[..] };
+        let items: Vec<Value> = listed
+            .iter()
+            .map(|l| {
+                json!({
+                    "id": item::new_id(),
+                    "type": l.lock_type,
+                    "clientType": l.client_type,
+                    "clientId": l.client_id,
+                    "updatedTime": item::now_ms(),
+                })
+            })
+            .collect();
+        return json_reply(200, json!({ "items": items, "has_more": false }));
     }
     if req.method == "DELETE" {
         if let Some(key) = rest.strip_prefix('/') {
@@ -476,6 +560,8 @@ pub struct Device {
     pub api: JoplinServer,
     pub keys: KeyRing,
     pub client_id: String,
+    /// Lock refresh timings; the defaults are Joplin's (refresh every minute).
+    pub lock_timing: LockTiming,
 }
 
 impl Device {
@@ -489,6 +575,7 @@ impl Device {
             api: JoplinServer::new(&server.url, "user@example.com", "pw"),
             keys: KeyRing::new(),
             client_id: item::new_id(),
+            lock_timing: LockTiming::default(),
         }
     }
 
@@ -518,11 +605,13 @@ impl Device {
     }
 
     pub async fn sync(&mut self) -> omanote_core::Result<SyncReport> {
-        self.synchronizer().sync().await
+        let timing = self.lock_timing;
+        self.synchronizer().sync_with(false, timing).await
     }
 
     pub async fn reupload_all(&mut self) -> omanote_core::Result<SyncReport> {
-        self.synchronizer().reupload_all().await
+        let timing = self.lock_timing;
+        self.synchronizer().sync_with(true, timing).await
     }
 
     pub async fn fetch_resource(&mut self, id: &str) -> omanote_core::Result<Option<PathBuf>> {
