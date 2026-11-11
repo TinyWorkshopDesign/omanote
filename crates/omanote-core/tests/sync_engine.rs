@@ -531,16 +531,17 @@ async fn attachments_round_trip_and_edited_files_travel_again_under_e2ee() {
     attachment_round_trip(true).await;
 }
 
-/// Both devices redraw the same sketch: the remote file wins, but B's drawing must
-/// not vanish (Joplin keeps the local file in a conflict note).
+/// Both devices redraw the same sketch: the remote file wins and B's drawing is kept
+/// as a new attachment, shown by a conflict note that reaches the other device too.
 #[tokio::test]
-#[ignore = "an attachment edited on two devices loses the local file with no copy (sync.rs conflict branch only copies notes)"]
 async fn attachment_conflict_keeps_the_local_file() {
     let server = FakeServer::start(&info_plain());
     let mut a = Device::new(&server);
     let mut b = Device::new(&server);
-    a.create_folder("Sketches");
+    a.create_folder("Inbox");
+    let folder = a.create_folder("Sketches");
     let res = a.db().add_resource(&png(1, 100), "image/png", "sketch.png").unwrap();
+    a.create_note(&folder, &format!("Idea\n<img src=\":/{res}\" alt=\"sketch.png\" width=\"100\">"));
     a.sync().await.unwrap();
     b.sync().await.unwrap();
     b.fetch_resource(&res).await.unwrap().unwrap();
@@ -561,6 +562,29 @@ async fn attachment_conflict_keeps_the_local_file() {
         .filter_map(|e| std::fs::read(e.unwrap().path()).ok())
         .any(|bytes| bytes == from_b);
     assert!(survives, "B's drawing is gone");
+
+    // It lives on as a new attachment, referenced by one conflict note.
+    let notes = b.conflicts();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].get("parent_id"), folder, "next to the note that shows the sketch");
+    let body = notes[0].body.clone().unwrap_or_default();
+    let kept = body.split(":/").nth(1).map(|s| s[..32].to_string()).expect("the note links the kept file");
+    assert_ne!(kept, res);
+    assert_eq!(read(&b.fetch_resource(&kept).await.unwrap().unwrap()), from_b);
+    assert!(server.has(&blob(&kept)) && server.has(&md(&kept)) && server.has(&md(notes[0].id())));
+    assert!(b.db().dirty_items().unwrap().is_empty());
+
+    a.sync().await.unwrap();
+    assert_eq!(a.conflicts().len(), 1);
+    assert_eq!(read(&a.fetch_resource(&kept).await.unwrap().unwrap()), from_b);
+    assert_eq!(read(&a.fetch_resource(&res).await.unwrap().unwrap()), from_a);
+
+    // Settled: nothing more is copied on either side.
+    for d in [&mut a, &mut b] {
+        let r = d.sync().await.unwrap();
+        assert_eq!((r.conflicts, r.uploaded), (0, 0));
+        assert_eq!(d.conflicts().len(), 1);
+    }
 }
 
 // -- 10. re-upload --------------------------------------------------------------------------
@@ -831,7 +855,6 @@ async fn a_download_interrupted_by_the_network_completes_at_the_next_sync() {
 /// The conflict copy is created locally, then its upload fails: the next sync must
 /// not turn the same local edit into a second copy.
 #[tokio::test]
-#[ignore = "a network failure right after a conflict copy is made yields a second conflict copy at the next sync (sync.rs upload conflict branch)"]
 async fn a_failed_upload_after_a_conflict_does_not_duplicate_the_copy() {
     let server = FakeServer::start(&info_plain());
     let mut a = Device::new(&server);
@@ -849,6 +872,9 @@ async fn a_failed_upload_after_a_conflict_does_not_duplicate_the_copy() {
     assert_eq!(rb.errors, Vec::<String>::new());
     let copies = b.conflicts();
     assert_eq!(copies.len(), 1, "one local edit, one conflict copy");
+    assert_eq!(b.text(copies[0].id()).as_deref(), Some("Plan\nfrom B"));
+    assert!(server.has(&md(copies[0].id())), "the copy went up at the second sync");
+    assert!(b.db().dirty_items().unwrap().is_empty());
 }
 
 /// Another client whose clock is behind uploads an edit whose `updated_time` is
