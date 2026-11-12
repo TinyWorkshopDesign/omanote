@@ -69,10 +69,11 @@ jobs:
         with:
           projectPath: app
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
-          releaseName: Omanote v__VERSION__ (preview)
+          releaseName: Omanote __VERSION__
+          # The body is also copied into latest.json as the update's notes, so it says only
+          # what holds for every release. Write what is new at the top of the draft before
+          # publishing it.
           releaseBody: |
-            First preview release. See the README for features and the first-launch notes below.
-
             **macOS** (Apple Silicon and Intel): download the `.dmg`, drag Omanote to Applications.
             The app is not notarized by Apple yet: on first launch macOS blocks it. Open
             System Settings → Privacy & Security and click "Open Anyway" next to Omanote.
@@ -81,6 +82,8 @@ jobs:
             and Omarchy it needs `fuse2`). There are also `.deb` and `.rpm` packages.
             On Omarchy, bind `omanote --toggle` in Hyprland and install the bar plugin from
             `omarchy-plugin/` (see the README).
+
+            From 0.3.0 on, the macOS app and the AppImage update themselves (Settings → About).
           releaseDraft: true
           prerelease: false
           # tauri.release.conf.json turns the updater artifacts (and their signing) on.
