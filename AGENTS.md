@@ -358,7 +358,8 @@ its history. Do not name other note apps as models or references (code, docs, co
 - Public builds: pushing a tag `vX.Y.Z` (matching `version` in `app/src-tauri/tauri.conf.json`)
   runs `.github/workflows/release.yml`, which builds a universal macOS `.dmg` (ad-hoc signed,
   not notarized) and Linux AppImage/.deb/.rpm and attaches them to a **draft** release (not marked pre-release, so `/releases/latest` keeps working);
-  check the assets, then publish the draft.
+  check the assets, write what is new at the top of the draft (the fixed body has only the
+  install notes), then publish it.
 - Omarchy channels (checked 2026-11-11 against the packages `omarchy` 4.5.0, stable, and
   `omarchy-dev`, the quattro branch tip): both install to `/usr/share/omarchy` and export
   `OMARCHY_PATH`; `~/.local/share/omarchy` exists only on installs made from the git
