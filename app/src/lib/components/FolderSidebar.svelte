@@ -6,7 +6,7 @@
   // Rows are divs, not buttons: WebKit does not start drags from buttons.
   import { api, type Folder, type NoteSummary, when } from "../api";
   import { i18n, t, MOD } from "../i18n.svelte";
-  import { icons } from "../icons";
+  import { folderIcon, icons } from "../icons";
   import { DRAG_TYPE, treeClipboard, type TreeKind } from "../treeClipboard.svelte";
 
   let {
@@ -398,7 +398,7 @@
             }}
           />
         {:else}
-          <span class="glyph">{#if f?.icon}{f.icon}{:else}{@html icons.folder}{/if}</span>
+          <span class="glyph folder-glyph">{@html folderIcon(f?.icon ?? "")}</span>
           <span class="label"
             >{f?.title ?? "Omanote"}{#if !rootId && r.id === noteHome}<span class="home">{t("set.newNotesHere")}</span>{/if}</span
           >
@@ -602,6 +602,10 @@
     text-align: center;
     color: var(--muted);
     font-size: var(--ico-s, 15px);
+  }
+  /* Folder glyphs (Joplin's emoji, drawn as icons) in the theme's accent. */
+  .glyph.folder-glyph {
+    color: var(--accent);
   }
   .label {
     flex: 1;

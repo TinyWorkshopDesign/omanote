@@ -12,6 +12,7 @@
 // and in CodeMirror widgets.
 
 import { CODEPOINTS, type IconName } from "./symbols.generated";
+import FOLDER_GLYPHS from "./folderGlyphs.json";
 
 /**
  * One icon as HTML. The text is a private-use glyph drawn by the bundled font
@@ -147,3 +148,17 @@ export const icons = {
   cloudOk: glyph("cloudOk"),
   cloudOff: glyph("cloudOff"),
 };
+
+/**
+ * A folder's icon: Joplin stores an emoji, Omanote draws the matching glyph of
+ * the icon font (`folderGlyphs.json`) so folders look like the rest of the UI.
+ * Joplin's data is untouched. Unknown emoji and folders without one get the
+ * plain folder glyph.
+ */
+export function folderIcon(emoji: string): string {
+  // Variation selectors (U+FE0F) and skin tones do not change the meaning.
+  const key = emoji.replace(/[\uFE0E\uFE0F]|\uD83C[\uDFFB-\uDFFF]/g, "").trim();
+  const name = (FOLDER_GLYPHS as Record<string, string>)[key];
+  return name && name in CODEPOINTS ? glyph(name as IconName) : icons.folder;
+}
+
