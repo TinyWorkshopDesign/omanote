@@ -1,7 +1,7 @@
 <script lang="ts">
   // Settings, organised by category: a list on the left and the pane on the
   // right, or (narrow screens) the list first and the pane pushed over it.
-  import { icons } from "../icons";
+  import { folderIcon, icons } from "../icons";
   import { api, type Folder, type Status, type UpdateInfo, when } from "../api";
   import { LANGUAGES, MOD, errText, i18n, setLang, t, type Key, type Lang } from "../i18n.svelte";
   import { bundledThemes, setBundledTheme, type ThemeState } from "../theme";
@@ -469,7 +469,7 @@
               {#each notebooks as f (f.id)}
                 {@const sel = !status.whole_joplin && status.root_folder_id === f.id}
                 <button class="choice" class:sel onclick={() => void chooseRoot(f.id)}>
-                  <span class="glyph">{#if f.icon}{f.icon}{:else}{@html icons.notebook}{/if}</span>
+                  <span class="glyph">{@html f.icon ? folderIcon(f.icon) : icons.notebook}</span>
                   <span class="label">{f.title}</span>
                   <span class="count">{f.note_count}</span>
                   {#if sel}<span class="tick">{@html icons.check}</span>{/if}
@@ -861,6 +861,7 @@
   .choice .glyph {
     width: 20px;
     text-align: center;
+    color: var(--accent);
   }
   .choice .label {
     flex: 1;

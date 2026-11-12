@@ -76,7 +76,12 @@ its history. Do not name other note apps as models or references (code, docs, co
   (MIT, release and SHA-256 pinned) into `app/static/fonts/omanote-symbols.woff2` and
   writes `app/src/lib/symbols.generated.ts`; `icons.ts` renders those glyphs and
   `app.css` sizes them (`--ico-fill`). Add an icon by naming its glyph in that script
-  and rerunning it; `--check` verifies the tree without writing. `tools/gen-icons.py`
+  and rerunning it; `--check` verifies the tree without writing. Folder emoji (Joplin's
+  folder `icon` JSON) are drawn as glyphs too, in the theme's accent: `folderIcon()` in
+  `icons.ts` looks the emoji up in `app/src/lib/folderGlyphs.json` (emoji → `md-*` glyph,
+  variation selectors and skin tones ignored; unknown or missing → the folder glyph). The
+  font script adds every glyph of that map to the subset, so extend the JSON and rerun it.
+  Joplin's data keeps the emoji. `tools/gen-icons.py`
   composes the app icon and the tray from the same font's "pencil" glyph on the Omarchy
   logo grid, terminal green `#2bff88` → `npx tauri icon
   ../design/icon.png --ios-color '#040706'` from `app/` (it also writes the iOS icons into

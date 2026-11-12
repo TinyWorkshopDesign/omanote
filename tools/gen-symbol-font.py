@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import io
+import json
 import pathlib
 import shutil
 import subprocess
@@ -38,6 +39,7 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WOFF2 = ROOT / "app" / "static" / "fonts" / "omanote-symbols.woff2"
 GENERATED = ROOT / "app" / "src" / "lib" / "symbols.generated.ts"
+FOLDER_GLYPHS = ROOT / "app" / "src" / "lib" / "folderGlyphs.json"
 
 # Pinned upstream: https://github.com/ryanoasis/nerd-fonts/releases (MIT).
 NERD_VERSION = "3.5.1"
@@ -183,12 +185,17 @@ def fetch_font() -> bytes:
     return cached.read_bytes()
 
 
+def folder_glyphs() -> list[str]:
+    """Glyphs drawn in place of Joplin folder emoji (app/src/lib/folderGlyphs.json)."""
+    return sorted(set(json.loads(FOLDER_GLYPHS.read_text()).values()))
+
+
 def codepoints(font_bytes: bytes) -> dict[str, int]:
     """Maps glyph name -> codepoint for every glyph we want, failing loudly otherwise."""
     from fontTools.ttLib import TTFont
     font = TTFont(io.BytesIO(font_bytes))
     by_name = {name: cp for cp, name in font.getBestCmap().items()}
-    wanted = {**ICONS, **{name: name for name in RESERVE}}
+    wanted = {**ICONS, **{name: name for name in (*RESERVE, *folder_glyphs())}}
     out: dict[str, int] = {}
     missing: list[str] = []
     for key, glyph_name in wanted.items():

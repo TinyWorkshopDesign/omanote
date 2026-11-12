@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { icons } from "../icons";
+  import { folderIcon, icons } from "../icons";
   import { api, type Folder } from "../api";
   import { errText, t, type Key } from "../i18n.svelte";
   import { isCleartextRemote } from "../serverUrl";
@@ -141,7 +141,7 @@
       <div class="list">
         {#each folders as f (f.id)}
           <button class="row" class:sel={chosen === f.id} onclick={() => (chosen = f.id)}>
-            <span>{f.icon ? `${f.icon} ` : ""}{f.title}{f.id === localRoot ? ` · ${t("setup.keepLocal")}` : ""}</span><span class="count">{f.note_count}</span>
+            <span><span class="fg">{@html folderIcon(f.icon)}</span> {f.title}{f.id === localRoot ? ` · ${t("setup.keepLocal")}` : ""}</span><span class="count">{f.note_count}</span>
           </button>
         {/each}
         <button class="row" class:sel={chosen === ""} onclick={() => (chosen = "")}>
@@ -249,5 +249,8 @@
   .count {
     color: var(--muted);
     font-size: 0.8rem;
+  }
+  .fg {
+    color: var(--accent);
   }
 </style>
