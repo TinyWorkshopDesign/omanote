@@ -1,5 +1,7 @@
 # Omanote
 
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K8C82AR8S0)
+
 Quick notes synced with **Joplin Server**, with the look of **Omarchy**. One app for
 **Linux, macOS, iOS and Android**, in 8 languages.
 
