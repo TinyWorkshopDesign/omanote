@@ -960,6 +960,7 @@ Panel {
         }
 
         Text {
+          textFormat: Text.PlainText
           visible: root.level === "list" && root.noteRows.length === 0
           width: parent.width
           text: root.searching ? root.tr("empty.search") : root.tr("empty.folder")
@@ -1035,6 +1036,7 @@ Panel {
             spacing: 0
 
             Text {
+              textFormat: Text.PlainText
               visible: root.noteLoading
               width: parent.width
               padding: Style.spacing.controlPaddingX
@@ -1186,6 +1188,7 @@ Panel {
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             visible: root.strokes.length === 0 && !root.liveStroke
             text: root.tr("canvas.empty")
@@ -1495,6 +1498,7 @@ Panel {
     }
 
     Text {
+      textFormat: Text.PlainText
       x: Style.spacing.controlPaddingX
       y: Style.space(4)
       visible: image.status !== Image.Ready
