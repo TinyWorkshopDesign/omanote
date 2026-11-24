@@ -8,13 +8,16 @@ and looks like Omarchy.
 > app (its database, its sync with Joplin Server); on its own it shows nothing. Install
 > the app first: see [Requirements](#requirements).
 
+![The panel: Folders → Notes → Note](preview.png)
+
 [![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K8C82AR8S0)
 
 The panel works like Omanote on a phone: a stack **Folders → Notes → Note**, with a
 back arrow at the top left.
 
 - **Click** the pencil in the bar to open the panel. It opens where you left it.
-  - **Folders**: All Notes and the folder tree with note counts. **↑ / ↓** (or j / k)
+  - **Folders**: All Notes and the folder tree with note counts; a folder's Joplin emoji
+    shows as the matching Omarchy-style glyph, as in the app. **↑ / ↓** (or j / k)
     and **Enter** open a folder; **n** starts a new note.
   - **Notes**: the folder's notes in date sections (Today, Yesterday, Previous 7 Days,
     Previous 30 Days, then months). Typing searches the folder; **↓ / ↑** pick a note,
