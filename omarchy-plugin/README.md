@@ -1,7 +1,14 @@
 # Omanote for the Omarchy bar
 
-A bar widget for [Omanote](../README.md), the quick-notes scratchpad that syncs
-with Joplin Server.
+A bar widget for [Omanote](https://github.com/TinyWorkshopDesign/omanote), the
+quick-notes scratchpad for Linux, macOS, iOS and Android that syncs with Joplin Server
+and looks like Omarchy.
+
+> **This plugin needs the Omanote app.** The panel reads and writes notes through the
+> app (its database, its sync with Joplin Server); on its own it shows nothing. Install
+> the app first: see [Requirements](#requirements).
+
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K8C82AR8S0)
 
 The panel works like Omanote on a phone: a stack **Folders → Notes → Note**, with a
 back arrow at the top left.
@@ -32,36 +39,50 @@ back arrow at the top left.
 - **Right-click**: show or hide the Omanote window (`omanote --toggle`).
 - **Middle-click**: new note in the app (`omanote --new`).
 
-Notes are read and written through `omanote-cli`, which uses the app's own
-database: the app picks up changes immediately and syncs them with Joplin.
+Notes are read and written through the app's command line (`omanote-cli` when it is
+installed, otherwise the `omanote` app itself, which takes the same commands); it uses
+the app's own database, so the app picks up changes immediately and syncs them with
+Joplin.
 The widget does nothing in the background; it reads the data when the panel opens.
 
 The panel edits the note's Markdown as plain text around its images: checkboxes,
 headings and rich text show as Markdown. Recently Deleted, new folders and sorting are
 in the app only. Images are downloaded from Joplin Server the first time they show
-(`omanote-cli resource`), drawings are stored with `omanote-cli sketch`.
+(`omanote resource`), drawings are stored with `omanote sketch`.
 
-`Calc.js` is the app's calculator (`app/src/lib/calc.ts`) made to run in QML's
-JavaScript engine by `tools/gen-plugin-calc.mjs`: do not edit it, regenerate it after
-changing `calc.ts` (CI checks it).
+The panel follows the language set in Omarchy (Setup > Region > Language) in English,
+Italian, Spanish, French, German, Portuguese, Dutch and Polish; other languages show
+English.
 
 ## Requirements
 
-`omanote` and `omanote-cli` on the `PATH` (e.g. `~/.local/bin`). See the main
-README to build them.
+The **Omanote app**, 0.3.3 or later, with the `omanote` command on the `PATH`:
+
+1. Download `Omanote_<version>_amd64.AppImage` (Intel and AMD) or
+   `Omanote_<version>_aarch64.AppImage` (ARM) from the
+   [latest release](https://github.com/TinyWorkshopDesign/omanote/releases/latest).
+2. Put it in `~/Applications`, make it executable and link it as `omanote`:
+
+   ```bash
+   mkdir -p ~/Applications ~/.local/bin
+   mv ~/Downloads/Omanote_*.AppImage ~/Applications/Omanote.AppImage
+   chmod +x ~/Applications/Omanote.AppImage
+   ln -sf ~/Applications/Omanote.AppImage ~/.local/bin/omanote
+   ```
+
+3. Start it once (`omanote`), sign in to your Joplin Server or choose to use it
+   without a server. The AppImage updates itself from Settings → About.
+
+A build from source (`omanote` and `omanote-cli`, see the
+[main README](https://github.com/TinyWorkshopDesign/omanote#development)) works too.
 
 ## Install
 
-From the repository root:
-
 ```bash
-omarchy-plugin/install.sh
+omarchy plugin add https://github.com/TinyWorkshopDesign/omarchy-omanote.git --enable
 ```
 
-It copies this folder to `~/.config/omarchy/plugins/tinyworkshop.omanote/` (plugin
-folders must not contain symlinks), validates it and adds the widget to the right
-of the bar. Run it again after changes; the shell reloads plugins on save, but it may
-keep the previous version of the QML files until `omarchy restart shell`.
+Update it later with `omarchy plugin update tinyworkshop.omanote`.
 
 With the widget installed, the Omanote app does not add its own tray icon on Linux,
 so Omanote shows up once in the bar.
@@ -76,3 +97,17 @@ omarchy-shell shell toggle tinyworkshop.omanote
 
 `showPreview` (default on): the first lines of each note under its title; turn it off
 to show titles only.
+
+## Development
+
+This repository is a copy of the `omarchy-plugin/` folder of
+[TinyWorkshopDesign/omanote](https://github.com/TinyWorkshopDesign/omanote), published
+with `tools/publish-plugin.sh`: open issues and pull requests there. `Calc.js` is the
+app's calculator (`app/src/lib/calc.ts`) made to run in QML's JavaScript engine by
+`tools/gen-plugin-calc.mjs`; do not edit it by hand. From a clone of the app
+repository, `omarchy-plugin/install.sh` installs the working copy.
+
+## Support
+
+Omanote is free and open source (MIT). If it is useful to you, you can
+[support it on Ko-fi](https://ko-fi.com/K8C82AR8S0).
