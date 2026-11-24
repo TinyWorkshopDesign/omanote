@@ -1,0 +1,52 @@
+# Builds a debug APK for 64-bit ARM phones (aarch64) and keeps it as a workflow
+# artifact. Run by hand; nothing is published. Used to install Omanote on a phone
+# from a machine that cannot build Android itself (Google ships the NDK and aapt2
+# for x86_64 Linux only): `gh run download <run> -n omanote-android-debug`, then
+# `adb install -r app-universal-debug.apk`.
+#
+# The APK is signed with the runner's throwaway debug key, so it cannot be installed
+# over a build signed elsewhere: uninstall that one first.
+
+name: android
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install UI dependencies
+        run: npm ci --prefix app
+
+      - name: Build the APK
+        working-directory: app
+        run: |
+          # The runner image ships the Android SDK and NDKs.
+          export NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          npx tauri android build --debug --target aarch64 --apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: omanote-android-debug
+          path: app/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+          retention-days: 14
