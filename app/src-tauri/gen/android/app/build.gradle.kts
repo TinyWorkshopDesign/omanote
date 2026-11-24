@@ -14,6 +14,17 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// The fixed signing key (CI writes keystore.properties from repository secrets; it is
+// never committed). Without it builds use Android's per-machine debug key, and an APK
+// signed one way does not install over one signed the other.
+val keystoreProperties = Properties().apply {
+    val propFile = rootProject.file("keystore.properties")
+    if (propFile.exists()) {
+        propFile.inputStream().use { load(it) }
+    }
+}
+val fixedSigning = keystoreProperties.getProperty("storeFile") != null
+
 android {
     compileSdk = 36
     namespace = "app.omanote"
@@ -25,8 +36,19 @@ android {
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
     }
+    signingConfigs {
+        if (fixedSigning) {
+            create("fixed") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("password")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("password")
+            }
+        }
+    }
     buildTypes {
         getByName("debug") {
+            if (fixedSigning) signingConfig = signingConfigs.getByName("fixed")
             manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
             isJniDebuggable = true
@@ -38,6 +60,7 @@ android {
             }
         }
         getByName("release") {
+            if (fixedSigning) signingConfig = signingConfigs.getByName("fixed")
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
