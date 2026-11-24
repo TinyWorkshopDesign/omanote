@@ -11,6 +11,9 @@ name: android
 
 on:
   workflow_dispatch:
+  # Also when this file changes, so a change to the build is tried at once.
+  push:
+    paths: [.github/workflows/android.yml]
 
 jobs:
   apk:
