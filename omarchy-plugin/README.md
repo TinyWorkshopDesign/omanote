@@ -87,6 +87,12 @@ omarchy plugin add https://github.com/TinyWorkshopDesign/omarchy-omanote.git --e
 
 Update it later with `omarchy plugin update tinyworkshop.omanote`.
 
+To remove it (the app and your notes are not touched):
+
+```bash
+omarchy plugin remove tinyworkshop.omanote
+```
+
 With the widget installed, the Omanote app does not add its own tray icon on Linux,
 so Omanote shows up once in the bar.
 
@@ -109,6 +115,11 @@ with `tools/publish-plugin.sh`: open issues and pull requests there. `Calc.js` i
 app's calculator (`app/src/lib/calc.ts`) made to run in QML's JavaScript engine by
 `tools/gen-plugin-calc.mjs`; do not edit it by hand. From a clone of the app
 repository, `omarchy-plugin/install.sh` installs the working copy.
+
+## License
+
+MIT (see `LICENSE`). The icons are glyphs of the Nerd Font the Omarchy bar already uses;
+nothing else is bundled. The only dependency is the Omanote app (MIT).
 
 ## Support
 
