@@ -343,6 +343,15 @@ its history. Do not name other note apps as models or references (code, docs, co
   succeeded within the TTL, the sync stops at the next item and returns `sync lock lost: …`;
   the lock is released in every case. Tested against the fake server only, not yet against
   a real Joplin Server (`GET api/locks` response shape assumed `{items: [...]}`).
+- Joplin 3.7.24 / Joplin Server 3.7.6 review (2026-11-24), tested with the fake server and
+  the mock UI only:
+  - Server 3.7.4 locks an account for an hour after 10 failed logins, for every device. A
+    refused login (401/403/429 on `api/sessions`) is `Error::LoginRefused`; the app then
+    pauses its background sync (`SyncCtx::login_refused`) until a sync started by hand or
+    a new password (Settings → Account → "Sign in again", `Setup` with `relogin`).
+  - Master keys of method 11 (`StringKeyV1`, added in 3.7.24 for later use: the method byte
+    is GCM associated data, the key a UTF-16LE string) are read; every master key must
+    decrypt to hexadecimal data (vectors made with node:crypto as Joplin does).
 - Search is a linear scan (fine for hundreds of notes; add FTS5 if needed).
 - Source of truth: **GitHub** `TinyWorkshopDesign/omanote` (**public** since 2026-09-24, MIT;
   `omanote-archive` is the old private repo with pre-cleanup history, do not push to it),
@@ -425,7 +434,10 @@ cargo run -p omanote-cli -- --help  # CLI
 - **Byte-compatible item format.** `RawItem` keeps unknown properties verbatim; keep
   `serialize`/`parse` symmetric with `BaseItem.serialize/unserialize` in `@joplin/lib`.
 - **E2EE**: new data is written with `StringV1` (AES-256-GCM, PBKDF2-SHA512, 3 rounds)
-  under the active master key. Compatibility vectors in
+  under the active master key. Once a device has synced with E2EE on (`kv` `e2ee_seen`), an
+  info.json saying it is off stops every sync (`Error::E2eeDisabledRemotely`, Joplin's
+  "E2EE conflict") until the user accepts it in Settings → Account (`accept_e2ee_off`):
+  a compromised server must not get notes in clear text by flipping that flag. Compatibility vectors in
   `crates/omanote-core/tests/joplin_vectors.json` come from Joplin's own JS crypto:
   keep those tests green.
 - **Conflicts** follow Joplin: remote wins, the local version becomes a separate note

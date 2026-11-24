@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use aes::{Aes128, Aes256};
-use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::Aes256Gcm;
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
@@ -35,6 +35,9 @@ pub const METHOD_SJCL1B: u32 = 7;
 pub const METHOD_KEY_V1: u32 = 8;
 pub const METHOD_FILE_V1: u32 = 9;
 pub const METHOD_STRING_V1: u32 = 10;
+/// Master keys only (Joplin 3.7.24+): like `KeyV1`, but the key is a UTF-16LE string and
+/// the method number is authenticated, so the envelope cannot be relabelled as `KeyV1`.
+pub const METHOD_STRING_KEY_V1: u32 = 11;
 
 const STRING_V1_CHUNK: usize = 65536;
 const FILE_V1_CHUNK: usize = 131072;
@@ -108,6 +111,11 @@ fn random_bytes<const N: usize>() -> [u8; N] {
 // ---------------------------------------------------------------------------
 
 fn gcm_decrypt(password: &str, cipher_json: &str, iterations: u32) -> Result<Vec<u8>> {
+    gcm_decrypt_aad(password, cipher_json, iterations, &[])
+}
+
+/// `gcm_decrypt` with associated data, which must match the data given when encrypting.
+fn gcm_decrypt_aad(password: &str, cipher_json: &str, iterations: u32, aad: &[u8]) -> Result<Vec<u8>> {
     let p: GcmPayload = serde_json::from_str(cipher_json)?;
     let salt = b64(&p.salt)?;
     let iv = b64(&p.iv)?;
@@ -119,7 +127,7 @@ fn gcm_decrypt(password: &str, cipher_json: &str, iterations: u32) -> Result<Vec
         .try_into()
         .map_err(|_| Error::Crypto(format!("invalid GCM IV length {}", iv.len())))?;
     cipher
-        .decrypt(nonce, ct.as_slice())
+        .decrypt(nonce, Payload { msg: ct.as_slice(), aad })
         .map_err(|_| Error::Crypto("GCM authentication failed (wrong key or password?)".into()))
 }
 
@@ -243,6 +251,11 @@ fn utf16le_encode(units: &[u16]) -> Vec<u8> {
 pub fn decrypt_master_key(mk: &MasterKey, password: &str) -> Result<String> {
     let plain = match mk.encryption_method {
         METHOD_KEY_V1 => hex::encode(gcm_decrypt(password, &mk.content, 220_000)?),
+        METHOD_STRING_KEY_V1 => {
+            let bytes = gcm_decrypt_aad(password, &mk.content, 220_000, &[METHOD_STRING_KEY_V1 as u8])?;
+            String::from_utf16(&utf16le_decode_units(&bytes))
+                .map_err(|_| Error::Crypto("invalid UTF-16 in master key".into()))?
+        }
         METHOD_SJCL3 | METHOD_SJCL4 => {
             String::from_utf8(sjcl_decrypt(password, &mk.content)?)
                 .map_err(|_| Error::Crypto("invalid UTF-8 in master key".into()))?
@@ -260,6 +273,11 @@ pub fn decrypt_master_key(mk: &MasterKey, password: &str) -> Result<String> {
         if sum != mk.checksum {
             return Err(Error::Crypto("master key checksum mismatch".into()));
         }
+    }
+    // As Joplin since 3.7.24: a master key always decrypts to hexadecimal data; anything
+    // else (a damaged or forged entry in info.json) is refused rather than used as a key.
+    if plain.is_empty() || !plain.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(Error::Crypto("invalid master key content: not hexadecimal".into()));
     }
     Ok(plain)
 }
@@ -442,6 +460,39 @@ pub fn is_encrypted_text(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Made by node:crypto exactly as Joplin 3.7.24's `StringKeyV1` handler does
+    /// (PBKDF2-SHA512 220000, AES-256-GCM, the method number as associated data,
+    /// the key as UTF-16LE).
+    fn string_key_v1(content: &str) -> MasterKey {
+        serde_json::from_value(serde_json::json!({
+            "id": "0123456789abcdef0123456789abcdef",
+            "encryption_method": METHOD_STRING_KEY_V1,
+            "content": content,
+        }))
+        .unwrap()
+    }
+    const SKV1_PASSWORD: &str = "4BC5ED89A47C49C5B7A9A8F3A2D3BD55";
+
+    #[test]
+    fn decrypts_string_key_v1_master_keys() {
+        let mut mk = string_key_v1(r#"{"salt":"+0UE7pCXQNjPPE+jW4OVOlxwz4E6u80dd2PfnM/lgdg=","iv":"ng+9dlkW7BsMjZQ0","ct":"9vPdl040zq75ygXvFnHex29FrC2PG4GmQHakas7v/DAi84TmB0WN8Q9bwlucZTgUDqb7KglBtYNuOeYnDn613MIwsYS/UJsTtbZNc6MEMwU10KVh/OsQi0e7PMdcrf+9ZOLDG+CGuhYpftVS+AOl3jOD0fNV+j1zMo/isJnzEJ2TS6rlqEv3+6QvdS7+a2A1"}"#);
+        assert_eq!(
+            decrypt_master_key(&mk, SKV1_PASSWORD).unwrap(),
+            "b4d3c2a1f00dfacefeedbeef0123456789abcdef0123456789abcdef01234567"
+        );
+        assert!(decrypt_master_key(&mk, "wrong").is_err());
+        // The method is authenticated: the same envelope relabelled as KeyV1 does not open.
+        mk.encryption_method = METHOD_KEY_V1;
+        assert!(decrypt_master_key(&mk, SKV1_PASSWORD).is_err());
+    }
+
+    #[test]
+    fn refuses_a_master_key_that_is_not_hexadecimal() {
+        let mk = string_key_v1(r#"{"salt":"eiwU3sWQne7Ysnx2NHI5ToYTAupHM5vKU+2TIQZqUvc=","iv":"9nx7ebBFRdVX8a+U","ct":"+5wr36bcjtGnuuA8/gdmtw5vRdg/hLFwhDtwJi3ejBBLIg=="}"#);
+        let e = decrypt_master_key(&mk, SKV1_PASSWORD).unwrap_err().to_string();
+        assert!(e.contains("not hexadecimal"), "{e}");
+    }
 
     const MK_ID: &str = "0123456789abcdef0123456789abcdef";
 
