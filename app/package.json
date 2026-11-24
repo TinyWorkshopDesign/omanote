@@ -1,6 +1,6 @@
 {
   "name": "omanote",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "",
   "type": "module",
   "scripts": {
@@ -30,7 +30,7 @@
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.65.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
-    "@tauri-apps/cli": "^2",
+    "@tauri-apps/cli": "^2.12.6",
     "svelte": "^5.56.3",
     "svelte-check": "^4.6.0",
     "typescript": "~6.0.3",
