@@ -37,20 +37,20 @@ function plain(text) {
     .trim()
 }
 
-function title(note) {
+function title(note, L) {
   if (!note) return ""
-  if (note.encrypted) return "Encrypted note"
-  return plain(note.title) || "Untitled"
+  if (note.encrypted) return tr(L, "note.encrypted")
+  return plain(note.title) || tr(L, "note.untitled")
 }
 
 // The title of a note being edited: its first line with text, as the app does.
-function titleOfText(text) {
+function titleOfText(text, L) {
   var lines = String(text || "").split("\n")
   for (var i = 0; i < lines.length; i++) {
     var line = plain(lines[i])
     if (line !== "") return line
   }
-  return "New note"
+  return tr(L, "note.new")
 }
 
 function preview(note) {
@@ -80,6 +80,26 @@ var MONTHS = ["January", "February", "March", "April", "May", "June", "July",
               "August", "September", "October", "November", "December"]
 var WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
+// Labels come from the panel as `L`: `t(key)` (its i18n catalogs) and the language's
+// month and weekday names (`month(i)`, `monthShort(i)`, `weekdayShort(i)`, i from 0).
+// Without `L` the English below is used.
+var EN = {
+  "section.today": "Today",
+  "section.yesterday": "Yesterday",
+  "section.week": "Previous 7 Days",
+  "section.month": "Previous 30 Days",
+  "note.encrypted": "Encrypted note",
+  "note.untitled": "Untitled",
+  "note.new": "New note",
+  "folders.all": "All Notes",
+  "folders.notes": "Notes"
+}
+
+function tr(L, key) { return L && L.t ? L.t(key) : EN[key] }
+function monthName(L, i) { return L && L.month ? L.month(i) : MONTHS[i] }
+function monthShort(L, i) { return L && L.monthShort ? L.monthShort(i) : MONTHS[i].slice(0, 3) }
+function weekdayShort(L, i) { return L && L.weekdayShort ? L.weekdayShort(i) : WEEKDAYS[i] }
+
 function startOfDay(ms) {
   var d = new Date(ms)
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
@@ -89,42 +109,42 @@ function pad(n) { return n < 10 ? "0" + n : String(n) }
 
 // The list section a note edited at `ms` falls in, as in the app's note list:
 // Today, Yesterday, Previous 7 Days, Previous 30 Days, then months.
-function sectionOf(ms, now) {
+function sectionOf(ms, L, now) {
   now = now || Date.now()
   ms = Number(ms || 0)
   var today = startOfDay(now)
-  if (ms >= today) return "Today"
-  if (ms >= today - DAY) return "Yesterday"
-  if (ms >= today - 7 * DAY) return "Previous 7 Days"
-  if (ms >= today - 30 * DAY) return "Previous 30 Days"
+  if (ms >= today) return tr(L, "section.today")
+  if (ms >= today - DAY) return tr(L, "section.yesterday")
+  if (ms >= today - 7 * DAY) return tr(L, "section.week")
+  if (ms >= today - 30 * DAY) return tr(L, "section.month")
   var d = new Date(ms)
   var sameYear = d.getFullYear() === new Date(now).getFullYear()
-  return MONTHS[d.getMonth()] + (sameYear ? "" : " " + d.getFullYear())
+  return monthName(L, d.getMonth()) + (sameYear ? "" : " " + d.getFullYear())
 }
 
 // Row date: the time today, the weekday this week, otherwise the date.
-function rowDate(ms, now) {
+function rowDate(ms, L, now) {
   now = now || Date.now()
   ms = Number(ms || 0)
   var d = new Date(ms)
   var today = startOfDay(now)
   if (ms >= today) return pad(d.getHours()) + ":" + pad(d.getMinutes())
-  if (ms >= today - 6 * DAY) return WEEKDAYS[d.getDay()]
+  if (ms >= today - 6 * DAY) return weekdayShort(L, d.getDay())
   var sameYear = d.getFullYear() === new Date(now).getFullYear()
-  return d.getDate() + " " + MONTHS[d.getMonth()].slice(0, 3) + (sameYear ? "" : " " + String(d.getFullYear()).slice(2))
+  return d.getDate() + " " + monthShort(L, d.getMonth()) + (sameYear ? "" : " " + String(d.getFullYear()).slice(2))
 }
 
-function fullDate(ms) {
+function fullDate(ms, L) {
   var d = new Date(Number(ms || 0))
-  return d.getDate() + " " + MONTHS[d.getMonth()] + " " + d.getFullYear() + ", " + pad(d.getHours()) + ":" + pad(d.getMinutes())
+  return d.getDate() + " " + monthName(L, d.getMonth()) + " " + d.getFullYear() + ", " + pad(d.getHours()) + ":" + pad(d.getMinutes())
 }
 
 // Rows for the note list: each note with the section header it opens, if any.
-function noteRows(notes, now) {
+function noteRows(notes, L, now) {
   var rows = []
   var last = ""
   for (var i = 0; i < notes.length; i++) {
-    var section = sectionOf(notes[i].updated_time, now)
+    var section = sectionOf(notes[i].updated_time, L, now)
     rows.push({ note: notes[i], section: section === last ? "" : section })
     last = section
   }
@@ -135,22 +155,18 @@ function noteRows(notes, now) {
 
 // The folders level: All Notes first, then the folder tree as the CLI prints it
 // (depth-first, with depth for the indent).
-function folderRows(folders) {
+function folderRows(folders, L) {
   var total = 0
   for (var i = 0; i < folders.length; i++) total += Number(folders[i].note_count || 0)
-  var rows = [{ id: "", title: "All Notes", depth: 0, note_count: total, all: true }]
+  var rows = [{ id: "", title: tr(L, "folders.all"), depth: 0, note_count: total, all: true }]
   for (var j = 0; j < folders.length; j++) rows.push(folders[j])
   return rows
 }
 
-function folderTitle(folders, id) {
-  if (!id) return "All Notes"
-  for (var i = 0; i < folders.length; i++) if (folders[i].id === id) return folders[i].title || "Untitled"
-  return "Notes"
-}
-
-function count(n, one, many) {
-  return n === 1 ? "1 " + one : n + " " + many
+function folderTitle(folders, id, L) {
+  if (!id) return tr(L, "folders.all")
+  for (var i = 0; i < folders.length; i++) if (folders[i].id === id) return folders[i].title || tr(L, "note.untitled")
+  return tr(L, "folders.notes")
 }
 
 // ---------------------------------------------------------------- the CLI
