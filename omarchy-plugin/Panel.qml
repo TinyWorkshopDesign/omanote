@@ -350,15 +350,19 @@ Panel {
     pendingSaves = pendingSaves.slice(1)
     var info = noteInfo[job.token] || {}
     var command
+    // The text goes over stdin ("-"), never in the arguments: another account on the
+    // machine can read a process's arguments in /proc while it runs.
     if (info.id) {
-      command = [root.cli, "edit", info.id, Model.cliText(job.text)]
+      command = [root.cli, "edit", info.id, "-"]
     } else {
       command = [root.cli, "new", "--json"]
       if (info.parent) command.push("--folder", info.parent)
-      command.push(Model.cliText(job.text))
+      command.push("-")
     }
     saveProcess.token = job.token
     saveProcess.sentText = job.text
+    saveProcess.input = job.text
+    saveProcess.stdinEnabled = true
     saveProcess.command = command
     saveProcess.running = true
   }
@@ -369,7 +373,9 @@ Panel {
     if (text === "" || captureProcess.running) return
     var command = [root.cli, "new"]
     if (folderId !== "") command.push("--folder", folderId)
-    command.push(Model.cliText(text))
+    command.push("-")                    // the text over stdin, as in pumpSaves()
+    captureProcess.input = text
+    captureProcess.stdinEnabled = true
     captureProcess.command = command
     captureProcess.running = true
   }
@@ -637,6 +643,14 @@ Panel {
     id: saveProcess
     property int token: 0
     property string sentText: ""
+    property string input: ""
+    stdinEnabled: true
+    // The CLI reads the note to the end of stdin: write it, then close stdin.
+    onStarted: {
+      write(input + "\n")
+      input = ""
+      stdinEnabled = false
+    }
     stdout: StdioCollector { id: saveOut; waitForEnd: true }
     stderr: StdioCollector { id: saveErr; waitForEnd: true }
     onExited: function(exitCode) {
@@ -668,6 +682,13 @@ Panel {
 
   Process {
     id: captureProcess
+    property string input: ""
+    stdinEnabled: true
+    onStarted: {
+      write(input + "\n")
+      input = ""
+      stdinEnabled = false
+    }
     stdout: StdioCollector { waitForEnd: true }
     stderr: StdioCollector { id: captureErr; waitForEnd: true }
     onExited: function(exitCode) {
