@@ -19,6 +19,7 @@
     onRootChanged,
     onLogout,
     onConnect,
+    onRelogin,
     onClose,
   }: {
     status: Status;
@@ -33,6 +34,8 @@
     onLogout: () => void;
     /** Local mode: open the Joplin Server login. */
     onConnect: () => void;
+    /** The server refused the saved password: open the login with the server and email filled in. */
+    onRelogin: () => void;
     onClose: () => void;
   } = $props();
 
@@ -59,7 +62,7 @@
   let paneOpen = $state(false);
   let copied = $state("");
   let newNotebook = $state("");
-  let busy = $state<"" | "resync" | "reupload">("");
+  let busy = $state<"" | "resync" | "reupload" | "e2eeoff">("");
   let version = $state("");
   const RELEASES = "https://github.com/TinyWorkshopDesign/omanote/releases/latest";
   let update = $state<UpdateInfo | null>(null);
@@ -193,6 +196,19 @@
       onRootChanged();
     } finally {
       busy = "";
+    }
+  }
+
+  async function acceptE2eeOff() {
+    if (!confirm(t("set.e2eeOffConfirm"))) return;
+    busy = "e2eeoff";
+    try {
+      await api.acceptE2eeOff();
+    } catch {
+      // The sync reports its own error through the sync status.
+    } finally {
+      busy = "";
+      onRootChanged();
     }
   }
 
@@ -440,6 +456,18 @@
               <div class="row"><span class="label">{t("setup.email")}</span><span class="value">{status.email}</span></div>
               <div class="row"><span class="label">{t("set.e2ee")}</span><span class="value">{status.e2ee ? t("set.on") : t("set.off")}</span></div>
             </div>
+            {#if status.login_refused}
+              <div class="group">
+                <p class="hint warn">{t("set.loginRefused")}</p>
+                <button class="primary" onclick={onRelogin}>{t("set.relogin")}</button>
+              </div>
+            {/if}
+            {#if status.e2ee_off_pending}
+              <div class="group">
+                <p class="hint warn">{t("set.e2eeOff")}</p>
+                <button class="destructive" disabled={busy !== ""} onclick={() => void acceptE2eeOff()}>{t("set.e2eeOffAccept")}</button>
+              </div>
+            {/if}
             <div class="group">
               <div class="row">
                 <span class="label">{t("set.lastSync")}</span>
