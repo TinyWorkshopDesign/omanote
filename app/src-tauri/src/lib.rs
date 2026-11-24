@@ -31,12 +31,18 @@ const E_BAD_MASTER: &str = "BAD_MASTER_PASSWORD";
 const E_SYNC_FIRST: &str = "SYNC_FIRST";
 const E_NO_NOTEBOOK: &str = "NO_NOTEBOOK";
 const E_ROOT_NOTEBOOK: &str = "ROOT_NOTEBOOK";
+const E_LOGIN_REFUSED: &str = "LOGIN_REFUSED";
+const E_E2EE_OFF: &str = "E2EE_DISABLED_REMOTELY";
 
 #[derive(Default)]
 struct SyncCtx {
     api: Option<JoplinServer>,
     keys: KeyRing,
     info: Option<SyncInfo>,
+    /// The server refused the saved password: the background sync waits for the user
+    /// (a new password in Settings, or a sync started by hand). Joplin Server blocks an
+    /// account for an hour after 10 failed logins, for every device.
+    login_refused: bool,
 }
 
 struct AppState {
@@ -149,6 +155,11 @@ struct Status {
     /// An iPad (UIKit's idiom), whatever its screen size: the native PencilKit
     /// canvas is used only there. A foldable iPhone stays a phone when open.
     tablet: bool,
+    /// The server refused the saved password (`SyncCtx::login_refused`).
+    login_refused: bool,
+    /// E2EE was turned off on the server after this device synced with it on; nothing
+    /// syncs until the user accepts it (`accept_e2ee_off`).
+    e2ee_off_pending: bool,
 }
 
 /// Set once at startup on the main thread (UIKit is read there).
@@ -180,12 +191,23 @@ struct SyncEvent {
 // Sync
 // ---------------------------------------------------------------------------
 
+/// A sync the user asked for (or one that follows an action of theirs).
 async fn do_sync(app: &AppHandle) -> Result<Option<SyncReport>, String> {
-    run_sync(app, false).await
+    run_sync(app, false, false).await
+}
+
+/// The sync errors the UI explains itself reach it as codes.
+fn sync_error_text(e: &omanote_core::Error) -> String {
+    match e {
+        omanote_core::Error::LoginRefused(m) => format!("{E_LOGIN_REFUSED}|{m}"),
+        omanote_core::Error::E2eeDisabledRemotely => E_E2EE_OFF.into(),
+        e => e.to_string(),
+    }
 }
 
 /// `reupload`: Joplin's "re-upload local data" (waits for a running sync to finish).
-async fn run_sync(app: &AppHandle, reupload: bool) -> Result<Option<SyncReport>, String> {
+/// `auto`: the periodic background sync, which never retries a refused login.
+async fn run_sync(app: &AppHandle, reupload: bool, auto: bool) -> Result<Option<SyncReport>, String> {
     let state = app.state::<AppState>();
     let mut ctx = if reupload {
         state.sync.lock().await
@@ -196,7 +218,7 @@ async fn run_sync(app: &AppHandle, reupload: bool) -> Result<Option<SyncReport>,
         ctx
     };
     let cfg = state.config();
-    if cfg.server_url.is_empty() {
+    if cfg.server_url.is_empty() || (auto && ctx.login_refused) {
         return Ok(None);
     }
     if ctx.api.is_none() {
@@ -206,7 +228,7 @@ async fn run_sync(app: &AppHandle, reupload: bool) -> Result<Option<SyncReport>,
 
     let _ = app.emit("sync-status", SyncEvent { state: "syncing", message: String::new(), report: None });
 
-    let SyncCtx { api, keys, info } = &mut *ctx;
+    let SyncCtx { api, keys, info, .. } = &mut *ctx;
     let mut sync = Synchronizer {
         api: api.as_mut().unwrap(),
         store: &state.store,
@@ -230,6 +252,7 @@ async fn run_sync(app: &AppHandle, reupload: bool) -> Result<Option<SyncReport>,
         }
     }
     .await;
+    ctx.login_refused = matches!(result, Err(omanote_core::Error::LoginRefused(_)));
     *state.e2ee_state.lock().unwrap() = e2ee_flags(&ctx);
 
     match result {
@@ -247,8 +270,9 @@ async fn run_sync(app: &AppHandle, reupload: bool) -> Result<Option<SyncReport>,
         }
         Err(e) => {
             log_errors(&state.dir, "sync", &[e.to_string()]);
-            let _ = app.emit("sync-status", SyncEvent { state: "error", message: e.to_string(), report: None });
-            Err(e.to_string())
+            let text = sync_error_text(&e);
+            let _ = app.emit("sync-status", SyncEvent { state: "error", message: text.clone(), report: None });
+            Err(text)
         }
     }
 }
@@ -283,14 +307,18 @@ fn any_dir(candidates: impl IntoIterator<Item = Option<PathBuf>>) -> bool {
 #[tauri::command]
 async fn get_status(state: State<'_, AppState>) -> Result<Status, String> {
     let c = state.config();
-    let (e2ee, locked) = match state.sync.try_lock() {
+    let (e2ee, locked, login_refused) = match state.sync.try_lock() {
         Ok(ctx) => {
             let flags = e2ee_flags(&ctx);
             *state.e2ee_state.lock().unwrap() = flags;
-            flags
+            (flags.0, flags.1, ctx.login_refused)
         }
-        Err(_) => *state.e2ee_state.lock().unwrap(),
+        Err(_) => {
+            let (e2ee, locked) = *state.e2ee_state.lock().unwrap();
+            (e2ee, locked, false)
+        }
     };
+    let e2ee_off_pending = omanote_core::sync::e2ee_off_pending(&state.db()).unwrap_or(false);
     Ok(Status {
         configured: c.is_configured(),
         local: c.server_url.is_empty(),
@@ -306,6 +334,8 @@ async fn get_status(state: State<'_, AppState>) -> Result<Status, String> {
         omarchy: is_omarchy(),
         data_dir: state.dir.display().to_string(),
         tablet: TABLET.get().copied().unwrap_or(false),
+        login_refused,
+        e2ee_off_pending,
     })
 }
 
@@ -369,7 +399,7 @@ async fn setup(
 
     {
         let mut ctx = state.sync.lock().await;
-        *ctx = SyncCtx { api: Some(api), keys, info: Some(info) };
+        *ctx = SyncCtx { api: Some(api), keys, info: Some(info), login_refused: false };
         *state.e2ee_state.lock().unwrap() = e2ee_flags(&ctx);
     }
     do_sync(&app).await?;
@@ -441,7 +471,15 @@ async fn resync_all(app: AppHandle, state: State<'_, AppState>) -> Result<Option
 /// desktop's "Re-upload local data to sync target".
 #[tauri::command]
 async fn reupload_local(app: AppHandle) -> Result<Option<SyncReport>, String> {
-    run_sync(&app, true).await
+    run_sync(&app, true, false).await
+}
+
+/// The user confirms that end-to-end encryption was turned off on purpose (in another
+/// Joplin app): syncing resumes without encryption.
+#[tauri::command]
+async fn accept_e2ee_off(app: AppHandle, state: State<'_, AppState>) -> Result<Option<SyncReport>, String> {
+    omanote_core::sync::accept_e2ee_off(&state.db()).map_err(err)?;
+    do_sync(&app).await
 }
 
 /// Chooses (or creates) the Joplin notebook Omanote works in. It can be
@@ -1204,7 +1242,7 @@ pub fn run() {
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    let _ = do_sync(&handle).await;
+                    let _ = run_sync(&handle, false, true).await;
                     tokio::time::sleep(Duration::from_secs(interval)).await;
                 }
             });
@@ -1253,6 +1291,7 @@ pub fn run() {
             purge_item,
             empty_trash,
             reupload_local,
+            accept_e2ee_off,
             timer_command,
             timer_toggle,
             timer_stop,

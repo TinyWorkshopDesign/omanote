@@ -117,6 +117,9 @@ const status: Status = {
   whole_joplin: false,
   data_dir: "~/Library/Application Support/app.omanote",
   tablet: false,
+  // `?relogin` / `?e2eeoff` in the address show those sync problems in Settings → Account.
+  login_refused: typeof location !== "undefined" && new URLSearchParams(location.search).has("relogin"),
+  e2ee_off_pending: typeof location !== "undefined" && new URLSearchParams(location.search).has("e2eeoff"),
 };
 
 const empty: SyncReport = {
@@ -153,7 +156,12 @@ export async function mockInvoke(
       status.root_folder_id = a.folderId ?? status.root_folder_id;
       return null;
     case "setup":
+      status.login_refused = false;
       return null;
+    case "accept_e2ee_off":
+      status.e2ee_off_pending = false;
+      status.e2ee = false;
+      return { ...empty };
     case "set_root_folder":
       status.root_folder_id = a.folderId || status.root_folder_id;
       status.whole_joplin = false;

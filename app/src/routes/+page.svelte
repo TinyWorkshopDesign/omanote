@@ -72,6 +72,7 @@
   let sketchEditing: SketchEdit | null = null;
   let sketchInitial = $state<SketchData | null>(null);
   let connecting = $state(false); // local mode → Joplin Server login
+  let relogin = $state(false); // the server refused the saved password
   let syncState = $state<"idle" | "syncing" | "error">("idle");
   let syncMsg = $state("");
   let lastSync = $state(0);
@@ -200,9 +201,11 @@
       offs.push(
         await onSyncStatus((e) => {
           syncState = e.state;
-          syncMsg = e.message;
+          syncMsg = errText(e.message);
           if (e.state === "idle" && e.report) lastSync = Date.now();
-          if (e.report?.needs_password) void refreshStatus();
+          // Refused logins and E2EE turned off on the server show in Settings → Account.
+          if (e.report?.needs_password || e.state === "error" || status?.login_refused || status?.e2ee_off_pending)
+            void refreshStatus();
         }),
         await onDataChanged(async () => {
           await refresh();
@@ -408,7 +411,7 @@
       await refreshStatus();
     } catch (e) {
       syncState = "error";
-      syncMsg = String(e);
+      syncMsg = errText(e);
     }
   }
 
@@ -999,13 +1002,15 @@
   />
 {/if}
 
-{#if status && (!status.configured || connecting)}
+{#if status && (!status.configured || connecting || relogin)}
   <Setup
     platform={status.platform}
+    relogin={relogin ? { server: status.server_url, email: status.email } : undefined}
     localRoot={connecting ? status.root_folder_id : ""}
-    onCancel={connecting ? () => (connecting = false) : undefined}
+    onCancel={connecting || relogin ? () => ((connecting = false), (relogin = false)) : undefined}
     onDone={async () => {
       connecting = false;
+      relogin = false;
       await refreshStatus();
       await refresh();
       if (allNotes.length) await open(allNotes[0].id, false);
@@ -1040,6 +1045,7 @@
     }}
     onLogout={refreshStatus}
     onConnect={() => ((settings = false), (connecting = true))}
+    onRelogin={() => ((settings = false), (relogin = true))}
     onClose={() => ((settings = false), view?.focus())}
   />
 {/if}

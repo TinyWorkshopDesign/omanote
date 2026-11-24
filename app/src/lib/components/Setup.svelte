@@ -9,6 +9,7 @@
     onCancel,
     localRoot = "",
     platform = "",
+    relogin,
   }: {
     onDone: () => void;
     /** Present when connecting a server from local mode (Settings). */
@@ -17,6 +18,8 @@
     localRoot?: string;
     /** `Status.platform` (Rust's `std::env::consts::OS`): where the passwords are kept. */
     platform?: string;
+    /** Signing in again to the same account (the server refused the saved password). */
+    relogin?: { server: string; email: string };
   } = $props();
 
   // secrets.rs: the system keychain on Apple platforms and Linux, a private file on Android.
@@ -32,8 +35,11 @@
 
   let step = $state<"login" | "folder" | "local">("login");
   let localName = $state("Omanote");
-  let serverUrl = $state("");
-  let email = $state("");
+  // Only the starting values: the fields are the user's to edit afterwards.
+  // svelte-ignore state_referenced_locally
+  let serverUrl = $state(relogin?.server ?? "");
+  // svelte-ignore state_referenced_locally
+  let email = $state(relogin?.email ?? "");
   let password = $state("");
   let master = $state("");
   let needsMaster = $state(false);
@@ -51,6 +57,7 @@
     error = "";
     try {
       await api.setup(serverUrl, email, password, needsMaster ? master : undefined);
+      if (relogin) return onDone(); // same account: notebooks stay as they were
       folders = (await api.folders()).filter((f) => f.parent_id === "");
       if (localRoot && folders.some((f) => f.id === localRoot)) chosen = localRoot;
       step = "folder";
