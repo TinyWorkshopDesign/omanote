@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "tinyworkshop.omanote",
   "name": "Omanote",
-  "version": "0.3.4",
-  "author": "Michele Belleri",
+  "version": "0.3.5",
+  "author": "TinyWorkshopDesign",
   "license": "MIT",
   "description": "Omanote in the bar, like the app on a phone: folders, notes and the note itself, editable right in the panel. Requires the Omanote app, which syncs the notes with Joplin Server.",
   "kinds": [

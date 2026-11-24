@@ -35,7 +35,7 @@ if git -C "$WORK" rev-parse -q --verify refs/remotes/origin/main >/dev/null; the
   git -C "$WORK" reset -q --hard origin/main
 fi
 # The repository's own rule: commit only as the project's GitHub identity.
-git -C "$WORK" config user.name "Michele Belleri"
+git -C "$WORK" config user.name "TinyWorkshopDesign"
 git -C "$WORK" config user.email "23453441+TinyWorkshopDesign@users.noreply.github.com"
 
 # Replace everything but .git and .github with the plugin's files. install.sh stays

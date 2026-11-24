@@ -2,7 +2,7 @@
 name = "omanote"
 version = "0.3.3"
 description = "Omanote - quick notes synced with Joplin Server"
-authors = ["Michele Belleri"]
+authors = ["TinyWorkshopDesign"]
 edition = "2021"
 license = "MIT"
 
