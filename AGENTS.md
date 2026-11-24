@@ -10,8 +10,8 @@ Owner: TinyWorkshopDesign (writes in Italian). The repository is **English only*
 comments, test data, docs and **commit messages**; Italian lives only in the UI
 translations and in tests of translated keywords. Commit only as
 `TinyWorkshopDesign <23453441+TinyWorkshopDesign@users.noreply.github.com>` (set in this clone's
-git config; set it in other clones too): no personal email addresses anywhere in the repo or
-its history. Do not name other note apps as models or references (code, docs, commits). Working and verified on macOS with a real Joplin Server.
+git config; set it in other clones too): no personal names or email addresses anywhere in the
+repo or its history (code, docs, licenses, manifests, commit authors). Do not name other note apps as models or references (code, docs, commits). Working and verified on macOS with a real Joplin Server.
 
 **Done and verified**
 - Sync with Joplin Server incl. E2EE (both directions) and conflicts, tested against
