@@ -26,6 +26,8 @@ use crate::store::{Store, STORED_TYPES};
 
 pub const SUPPORTED_SYNC_VERSION: i64 = 3;
 const DOWNLOAD_CONCURRENCY: usize = 8;
+/// `kv` key: "1" once this device has synced with E2EE on (see `check_e2ee_kept`).
+const KV_E2EE_SEEN: &str = "e2ee_seen";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TimedValue<T> {
@@ -163,6 +165,22 @@ fn is_item_path(name: &str) -> Option<&str> {
     (id.len() == 32 && !id.contains('/') && id.bytes().all(|b| b.is_ascii_hexdigit())).then_some(id)
 }
 
+/// The user confirms that end-to-end encryption was turned off on purpose: syncing
+/// resumes, without encryption, until a sync sees it on again.
+pub fn accept_e2ee_off(store: &Store) -> Result<()> {
+    store.kv_delete(KV_E2EE_SEEN)
+}
+
+/// Whether a sync is held back by `Error::E2eeDisabledRemotely` (as of the last info.json).
+pub fn e2ee_off_pending(store: &Store) -> Result<bool> {
+    let seen = store.kv_get(KV_E2EE_SEEN)?.as_deref() == Some("1");
+    let off = store
+        .kv_get("sync_info")?
+        .and_then(|t| serde_json::from_str::<SyncInfo>(&t).ok())
+        .is_some_and(|i| !i.e2ee_enabled());
+    Ok(seen && off)
+}
+
 /// Decrypts every master key with `password`; returns how many succeeded.
 pub fn unlock_keys(info: &SyncInfo, password: &str, keys: &mut KeyRing) -> usize {
     let mut ok = 0;
@@ -196,8 +214,31 @@ impl<'a> Synchronizer<'a> {
                 info.version
             )));
         }
-        self.db().kv_set("sync_info", &text)?;
+        let db = self.db();
+        // Installs from before `KV_E2EE_SEEN` existed: the last info.json they saved says it.
+        let was_on = db
+            .kv_get("sync_info")?
+            .and_then(|t| serde_json::from_str::<SyncInfo>(&t).ok())
+            .is_some_and(|old| old.e2ee_enabled());
+        if was_on {
+            db.kv_set(KV_E2EE_SEEN, "1")?;
+        }
+        db.kv_set("sync_info", &text)?;
         Ok(info)
+    }
+
+    /// Joplin's "E2EE conflict": once this device has synced with encryption on, an
+    /// info.json saying it is off stops the sync instead of uploading notes in clear
+    /// text. A user who turned it off elsewhere confirms it with `accept_e2ee_off`; a
+    /// compromised server cannot.
+    fn check_e2ee_kept(&self, info: &SyncInfo) -> Result<()> {
+        let db = self.db();
+        if info.e2ee_enabled() {
+            db.kv_set(KV_E2EE_SEEN, "1")?;
+        } else if db.kv_get(KV_E2EE_SEEN)?.as_deref() == Some("1") {
+            return Err(Error::E2eeDisabledRemotely);
+        }
+        Ok(())
     }
 
     pub async fn sync(&mut self) -> Result<SyncReport> {
@@ -214,6 +255,7 @@ impl<'a> Synchronizer<'a> {
     /// `sync`, or `reupload_all` when `reupload`, with other lock timings (tests).
     pub async fn sync_with(&mut self, reupload: bool, timing: LockTiming) -> Result<SyncReport> {
         let info = self.fetch_info().await?;
+        self.check_e2ee_kept(&info)?;
         let mut report = SyncReport::default();
 
         if info.e2ee_enabled() {

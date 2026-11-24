@@ -111,6 +111,9 @@ struct State {
     lose_lock: Option<(usize, LockLoss)>,
     /// Set by `LockLoss::Expired`: every lock counts as stale.
     locks_stale: bool,
+    /// Logins answered 403 (a password changed elsewhere), and how many were tried.
+    refuse_logins: bool,
+    logins: usize,
 }
 
 pub struct FakeServer {
@@ -164,6 +167,18 @@ impl FakeServer {
     /// Names of every stored item except `info.json`.
     pub fn names(&self) -> Vec<String> {
         self.st().items.keys().filter(|k| *k != "info.json").cloned().collect()
+    }
+
+    /// From now on every login is refused, and every session ends (a password
+    /// changed on another device).
+    pub fn refuse_logins(&self) {
+        let mut st = self.st();
+        st.refuse_logins = true;
+        st.sessions.clear();
+    }
+
+    pub fn logins(&self) -> usize {
+        self.st().logins
     }
 
     /// Stores content as another client would (logged as a change).
@@ -414,6 +429,10 @@ fn jop_updated_time(content: &[u8]) -> Option<i64> {
 
 fn route(st: &mut State, req: &HttpRequest) -> Reply {
     if req.method == "POST" && req.path == "/api/sessions" {
+        st.logins += 1;
+        if st.refuse_logins {
+            return error_reply(403, "", "Invalid username or password");
+        }
         let id = item::new_id();
         st.sessions.insert(id.clone());
         return json_reply(200, json!({ "id": id, "user_id": "testuser" }));

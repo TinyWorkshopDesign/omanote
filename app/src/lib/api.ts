@@ -31,6 +31,10 @@ export interface Status {
   data_dir: string;
   /** An iPad (not just a large screen): the native PencilKit canvas is used there. */
   tablet: boolean;
+  /** The server refused the saved password: the background sync is paused until the user signs in again. */
+  login_refused: boolean;
+  /** E2EE was turned off on the server after this device synced with it on: nothing syncs until accepted. */
+  e2ee_off_pending: boolean;
 }
 
 export interface TimerTick {
@@ -126,6 +130,7 @@ export const api = {
   syncNow: () => invoke<SyncReport | null>("sync_now"),
   resyncAll: () => invoke<SyncReport | null>("resync_all"),
   reuploadLocal: () => invoke<SyncReport | null>("reupload_local"),
+  acceptE2eeOff: () => invoke<SyncReport | null>("accept_e2ee_off"),
   setRootFolder: (folderId?: string, newTitle?: string) =>
     invoke<string>("set_root_folder", { folderId: folderId ?? null, newTitle: newTitle ?? null }),
   setWholeJoplin: (enabled: boolean) => invoke<void>("set_whole_joplin", { enabled }),

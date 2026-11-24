@@ -104,7 +104,12 @@ impl JoplinServer {
             .json(&body)
             .send()
             .await?;
-        let res = check(res).await?;
+        // Wrong credentials, or the server's limiter (Joplin Server 3.7.4+ blocks an account
+        // for an hour after 10 failed logins): retrying on a timer would only lock it out.
+        let res = check(res).await.map_err(|e| match e {
+            Error::Server { status: 401 | 403 | 429, message, .. } => Error::LoginRefused(message),
+            e => e,
+        })?;
         self.session = Some(res.json().await?);
         Ok(())
     }

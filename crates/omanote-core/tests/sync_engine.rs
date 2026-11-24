@@ -1116,3 +1116,60 @@ async fn an_upload_does_not_store_a_remote_copy_holding_another_id() {
     assert_eq!(b.text(&note).as_deref(), Some("Plan\nfrom B"));
     assert!(b.conflicts().is_empty());
 }
+
+/// Joplin's "E2EE conflict": a device that synced with E2EE on never uploads in clear
+/// text because info.json now says it is off (a compromised server could write that),
+/// until the user accepts it on that device.
+#[tokio::test]
+async fn e2ee_turned_off_on_the_server_stops_the_sync_until_accepted() {
+    let server = FakeServer::start(&info_e2ee());
+    let mut a = Device::with_key(&server);
+    let folder = a.create_folder("Private matters");
+    a.sync().await.unwrap();
+
+    server.replace_silently("info.json", info_plain().as_bytes());
+    let note = a.create_note(&folder, "Secret plan\nthe launch code is 4815");
+    server.clear_requests();
+    let e = a.sync().await.unwrap_err();
+    assert!(matches!(e, omanote_core::Error::E2eeDisabledRemotely), "{e}");
+    assert!(server.writes().is_empty(), "nothing is uploaded");
+    assert!(!server.has(&md(&note)));
+    assert!(omanote_core::sync::e2ee_off_pending(&a.db()).unwrap());
+
+    omanote_core::sync::accept_e2ee_off(&a.db()).unwrap();
+    assert!(!omanote_core::sync::e2ee_off_pending(&a.db()).unwrap());
+    a.sync().await.unwrap();
+    assert!(server.item_text(&md(&note)).unwrap().contains("4815"), "uploaded as the user accepted");
+
+    // A device that never saw E2EE on syncs a plain target as before.
+    let mut b = Device::new(&server);
+    b.sync().await.unwrap();
+    assert_eq!(b.text(&note).as_deref(), Some("Secret plan\nthe launch code is 4815"));
+}
+
+/// Installs that synced with E2EE before the check existed have no flag yet: the
+/// info.json they saved last is enough.
+#[tokio::test]
+async fn e2ee_turned_off_is_caught_from_the_last_saved_info() {
+    let server = FakeServer::start(&info_e2ee());
+    let mut a = Device::with_key(&server);
+    a.sync().await.unwrap();
+    a.db().kv_delete("e2ee_seen").unwrap();
+
+    server.replace_silently("info.json", info_plain().as_bytes());
+    let e = a.sync().await.unwrap_err();
+    assert!(matches!(e, omanote_core::Error::E2eeDisabledRemotely), "{e}");
+}
+
+#[tokio::test]
+async fn a_refused_login_is_reported_as_such() {
+    let server = FakeServer::start(&info_plain());
+    let mut a = Device::new(&server);
+    a.sync().await.unwrap();
+
+    server.refuse_logins();
+    let before = server.logins();
+    let e = a.sync().await.unwrap_err();
+    assert!(matches!(e, omanote_core::Error::LoginRefused(_)), "{e}");
+    assert_eq!(server.logins() - before, 1, "one attempt per sync, no retry loop");
+}

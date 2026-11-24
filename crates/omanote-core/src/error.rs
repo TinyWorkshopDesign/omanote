@@ -18,6 +18,10 @@ pub enum Error {
     Db(#[from] rusqlite::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("the server refused the login: {0}")]
+    LoginRefused(String),
+    #[error("end-to-end encryption was turned off on the server; nothing is synced until this is accepted on this device")]
+    E2eeDisabledRemotely,
     #[error("sync error: {0}")]
     Sync(String),
 }
