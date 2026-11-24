@@ -87,8 +87,9 @@ jobs:
             The app is not notarized by Apple yet: on first launch macOS blocks it. Open
             System Settings → Privacy & Security and click "Open Anyway" next to Omanote.
 
-            **Linux**: the `.AppImage` runs on most distributions (`chmod +x`, then run it; on Arch
-            and Omarchy it needs `fuse2`). There are also `.deb` and `.rpm` packages.
+            **Linux** (`amd64`/`x86_64` for Intel and AMD PCs, `arm64`/`aarch64` for ARM): the
+            `.AppImage` runs on most distributions (`chmod +x`, then run it; it needs FUSE 3,
+            `fuse3`, which most desktops already have). There are also `.deb` and `.rpm` packages.
             On Omarchy, bind `omanote --toggle` in Hyprland and install the bar plugin from
             `omarchy-plugin/` (see the README).
 
