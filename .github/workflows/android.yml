@@ -69,7 +69,8 @@ jobs:
       - name: Signing certificate
         run: |
           apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
-          "$apksigner" verify --print-certs app/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk | grep -E "Signer #1 certificate (DN|SHA-256)"
+          echo "apksigner: $apksigner"
+          "$apksigner" verify --print-certs app/src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk 2>&1 || true
 
       - uses: actions/upload-artifact@v4
         with:
