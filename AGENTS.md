@@ -307,7 +307,15 @@ repo or its history (code, docs, licenses, manifests, commit authors). Do not na
     in `PATH`, then `cd app && npx tauri android build --debug --target aarch64 --apk` and
     `adb install -r src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`.
     Debug builds may use cleartext `http://` servers (`usesCleartextTraffic`), release builds
-    may not. On a Fold, `adb exec-out screencap -p -d <id>` needs a display id
+    may not.
+  - CI build (`.github/workflows/android.yml`, by hand): the aarch64 debug APK on an x86_64
+    runner, kept as an artifact, for machines that cannot build Android (the NDK and aapt2
+    are x86_64-only, so not the ARM Omarchy box). It is signed with the fixed key when the
+    secrets `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` are set: Gradle uses
+    `gen/android/keystore.properties` (git-ignored) for debug and release when present. The
+    PKCS12 keystore (alias `omanote`, CN=TinyWorkshopDesign) and its password live in
+    `~/.tauri/omanote-android.{jks,password}` on the Omarchy box: **never commit them**; an
+    APK signed with another key does not install over it (uninstall first). On a Fold, `adb exec-out screencap -p -d <id>` needs a display id
     (`adb shell dumpsys SurfaceFlinger --display-id`).
 
 **Known gaps / next steps**
