@@ -4,8 +4,10 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
+import "FolderGlyphs.js" as FolderGlyphs
 
 // Omanote in the Omarchy bar. The panel works like the app on a phone, a
 // navigation stack Folders -> Notes -> Note:
@@ -77,9 +79,9 @@ Panel {
 
   readonly property bool searching: query.trim() !== ""
   readonly property var shownNotes: searching ? results : notes
-  readonly property var noteRows: Model.noteRows(shownNotes)
-  readonly property var folderRows: Model.folderRows(folders)
-  readonly property string folderName: Model.folderTitle(folders, folderId)
+  readonly property var noteRows: Model.noteRows(shownNotes, labels)
+  readonly property var folderRows: Model.folderRows(folders, labels)
+  readonly property string folderName: Model.folderTitle(folders, folderId, labels)
   readonly property bool inNote: level === "note" || level === "sketch"
   readonly property bool dirty: inNote && !noteLoading && noteText !== savedText
 
@@ -97,6 +99,42 @@ Panel {
   readonly property var inkColors: Model.inkColors([Color.foreground, Color.accent, Color.urgent])
 
   function glyph(cp) { return String.fromCodePoint(cp) }
+
+  // The panel's strings (i18n/<language>.json, following Omarchy's language) and
+  // the labels Model.js builds dates, sections and titles from. Bindings that read
+  // `labels` are rebuilt when the language changes.
+  Commons.Translations { id: strings; directory: Qt.resolvedUrl("i18n") }
+  readonly property var labels: {
+    var loc = Qt.locale(Commons.I18n.formatLocale)
+    var catalog = strings.strings
+    return {
+      t: function(key) { return strings.t(key) },
+      month: function(i) { return loc.standaloneMonthName(i, Locale.LongFormat) },
+      monthShort: function(i) { return loc.standaloneMonthName(i, Locale.ShortFormat) },
+      weekdayShort: function(i) { return loc.standaloneDayName(i, Locale.ShortFormat) },
+      catalog: catalog
+    }
+  }
+  function tr(key) { return strings.t(key) }
+  function countText(key, n) { return strings.tn(key, n).arg(Commons.I18n.formatNumber(n)) }
+
+  // The command that reads and writes notes: omanote-cli when it is installed,
+  // otherwise the Omanote app itself, which takes the same commands
+  // (`omanote folders --json`, …). An AppImage install has only the app.
+  property string cli: "omanote-cli"
+  property bool cliFound: true
+
+  Process {
+    id: cliProbe
+    command: ["sh", "-c", "command -v omanote-cli || command -v omanote"]
+    stdout: StdioCollector { id: cliProbeOut; waitForEnd: true }
+    onExited: function(exitCode) {
+      var path = String(cliProbeOut.text || "").trim().split("\n")[0]
+      root.cliFound = exitCode === 0 && path !== ""
+      if (root.cliFound) root.cli = path
+    }
+    Component.onCompleted: running = true
+  }
 
   // --------------------------------------------------------------- the CLI
 
@@ -118,13 +156,13 @@ Panel {
   }
 
   function cliError(exitCode, stderr, fallback) {
-    return exitCode === 127 ? "omanote-cli is not installed" : (String(stderr || "").trim() || fallback)
+    return exitCode === 127 ? root.tr("error.noApp") : (String(stderr || "").trim() || fallback)
   }
 
-  function refreshFolders() { run(foldersProcess, ["omanote-cli", "folders", "--json"]) }
+  function refreshFolders() { run(foldersProcess, [root.cli, "folders", "--json"]) }
 
   function refreshNotes() {
-    var command = ["omanote-cli", "list", "--json", "--limit", "500"]
+    var command = [root.cli, "list", "--json", "--limit", "500"]
     if (folderId !== "") command.push("--folder", folderId)
     run(listProcess, command)
     if (searching) runSearch()
@@ -132,7 +170,7 @@ Panel {
 
   function runSearch() {
     if (!searching) { results = []; return }
-    run(searchProcess, ["omanote-cli", "search", "--json", query.trim()])
+    run(searchProcess, [root.cli, "search", "--json", query.trim()])
   }
 
   // ------------------------------------------------------------ navigation
@@ -226,7 +264,7 @@ Panel {
     savedText = ""
     setNoteText("")
     focusBlock = -1
-    run(showProcess, ["omanote-cli", "show", "--json", noteId])
+    run(showProcess, [root.cli, "show", "--json", noteId])
   }
 
   // A new note in the folder on screen; it is created on the first save.
@@ -313,9 +351,9 @@ Panel {
     var info = noteInfo[job.token] || {}
     var command
     if (info.id) {
-      command = ["omanote-cli", "edit", info.id, Model.cliText(job.text)]
+      command = [root.cli, "edit", info.id, Model.cliText(job.text)]
     } else {
-      command = ["omanote-cli", "new", "--json"]
+      command = [root.cli, "new", "--json"]
       if (info.parent) command.push("--folder", info.parent)
       command.push(Model.cliText(job.text))
     }
@@ -329,7 +367,7 @@ Panel {
   function capture() {
     var text = query.trim()
     if (text === "" || captureProcess.running) return
-    var command = ["omanote-cli", "new"]
+    var command = [root.cli, "new"]
     if (folderId !== "") command.push("--folder", folderId)
     command.push(Model.cliText(text))
     captureProcess.command = command
@@ -339,7 +377,7 @@ Panel {
   function trashNote() {
     if (!confirmTrash) {
       confirmTrash = true
-      status = "Click the bin again to move this note to the trash"
+      status = root.tr("status.trashConfirm")
       failed = false
       trashTimer.restart()
       return
@@ -355,7 +393,7 @@ Panel {
     savedText = noteText
     level = "list"
     cursor = -1
-    if (id !== "") run(trashProcess, ["omanote-cli", "trash", id])
+    if (id !== "") run(trashProcess, [root.cli, "trash", id])
     else refreshNotes()
     focusLevel()
   }
@@ -399,7 +437,7 @@ Panel {
     if (sketchProcess.running) return
     var ink = strokes.filter(function(s) { return s.kind !== "erase" })
     if (ink.length === 0) { closeSketch(); return }
-    var command = ["omanote-cli", "sketch", "--json", "--background", Model.hex(Color.background)]
+    var command = [root.cli, "sketch", "--json", "--background", Model.hex(Color.background)]
     if (sketchReplace !== "") command.push("--replace", sketchReplace)
     sketchProcess.token = noteToken
     sketchProcess.payload = JSON.stringify({ strokes: strokes })
@@ -488,7 +526,7 @@ Panel {
         cursor = -1
         refreshNotes()
       } else if (level === "note" && noteId !== "" && !dirty && !saveProcess.running && pendingSaves.length === 0) {
-        run(showProcess, ["omanote-cli", "show", "--json", noteId])
+        run(showProcess, [root.cli, "show", "--json", noteId])
       }
       focusLevel()
     } else if (level === "note") {
@@ -523,7 +561,7 @@ Panel {
       if (exitCode === 0) root.folders = Model.parseList(foldersOut.text)
       else if (root.level === "folders") {
         root.failed = true
-        root.status = root.cliError(exitCode, foldersErr.text, "Could not read the folders")
+        root.status = root.cliError(exitCode, foldersErr.text, root.tr("error.folders"))
       }
     }
   }
@@ -540,7 +578,7 @@ Panel {
       } else {
         root.notes = []
         root.failed = true
-        root.status = root.cliError(exitCode, listErr.text, "Could not read notes")
+        root.status = root.cliError(exitCode, listErr.text, root.tr("error.notes"))
       }
     }
   }
@@ -556,7 +594,7 @@ Panel {
       if (exitCode !== 0) {
         root.results = []
         root.failed = true
-        root.status = root.cliError(exitCode, searchErr.text, "Search failed")
+        root.status = root.cliError(exitCode, searchErr.text, root.tr("error.search"))
         return
       }
       var found = Model.parseList(searchOut.text)
@@ -578,7 +616,7 @@ Panel {
           root.noteLoading = false
           root.noteEncrypted = true   // nothing to edit: keep it read-only
           root.failed = true
-          root.status = root.cliError(exitCode, showErr.text, "Could not open the note")
+          root.status = root.cliError(exitCode, showErr.text, root.tr("error.open"))
         }
         return
       }
@@ -612,7 +650,7 @@ Panel {
         }
         if (root.trashAfterSave[token] && info.id) {
           delete root.trashAfterSave[token]
-          root.run(trashProcess, ["omanote-cli", "trash", info.id])
+          root.run(trashProcess, [root.cli, "trash", info.id])
         } else if (token === root.noteToken) {
           root.noteId = info.id || root.noteId
           root.savedText = saveProcess.sentText
@@ -621,7 +659,7 @@ Panel {
         }
       } else if (token === root.noteToken) {
         root.failed = true
-        root.status = root.cliError(exitCode, saveErr.text, "Could not save the note")
+        root.status = root.cliError(exitCode, saveErr.text, root.tr("error.save"))
       }
       if (root.pendingSaves.length > 0) Qt.callLater(root.pumpSaves)
       else if (!root.inNote) Qt.callLater(root.refreshNotes)
@@ -635,12 +673,12 @@ Panel {
     onExited: function(exitCode) {
       if (exitCode === 0) {
         field.text = ""
-        root.status = "Saved"
+        root.status = root.tr("status.saved")
         root.failed = false
         root.refreshNotes()
       } else {
         root.failed = true
-        root.status = root.cliError(exitCode, captureErr.text, "Could not save the note")
+        root.status = root.cliError(exitCode, captureErr.text, root.tr("error.save"))
       }
       root.focusLevel()   // the field was disabled while saving
     }
@@ -653,11 +691,11 @@ Panel {
     stderr: StdioCollector { id: trashErr; waitForEnd: true }
     onExited: function(exitCode) {
       if (exitCode === 0) {
-        root.status = "Moved to the trash"
+        root.status = root.tr("status.trashed")
         root.failed = false
       } else {
         root.failed = true
-        root.status = root.cliError(exitCode, trashErr.text, "Could not move the note to the trash")
+        root.status = root.cliError(exitCode, trashErr.text, root.tr("error.trash"))
       }
       if (!root.runQueued(trashProcess)) root.refreshNotes()
     }
@@ -681,7 +719,7 @@ Panel {
       var out = exitCode === 0 ? Model.parseObject(sketchOut.text) : null
       if (!out || !out.tag) {
         root.failed = true
-        root.status = root.cliError(exitCode, sketchErr.text, "Could not save the drawing")
+        root.status = root.cliError(exitCode, sketchErr.text, root.tr("error.drawing"))
         return
       }
       var replaced = root.sketchReplace !== ""
@@ -735,7 +773,7 @@ Panel {
     id: backButton
     PanelActionButton {
       iconText: root.glyph(0xF0141)
-      tooltipText: root.level === "sketch" ? "Cancel" : root.level === "note" ? root.folderName : "Folders"
+      tooltipText: root.level === "sketch" ? root.tr("tip.cancel") : root.level === "note" ? root.folderName : root.tr("tip.folders")
       foreground: root.foreground
       fontFamily: root.fontFamily
       onClicked: root.back()
@@ -746,7 +784,7 @@ Panel {
     id: newNoteButton
     PanelActionButton {
       iconText: root.glyph(0xF090C)
-      tooltipText: "New note"
+      tooltipText: root.tr("tip.newNote")
       foreground: root.foreground
       fontFamily: root.fontFamily
       onClicked: root.newNote(root.level === "list" ? root.query.trim() : "")
@@ -757,7 +795,7 @@ Panel {
     id: openInAppButton
     PanelActionButton {
       iconText: root.glyph(0xF03CC)
-      tooltipText: "Open in Omanote"
+      tooltipText: root.tr("tip.openInApp")
       enabled: root.noteId !== ""
       foreground: root.foreground
       fontFamily: root.fontFamily
@@ -769,7 +807,7 @@ Panel {
     id: insertSketchButton
     PanelActionButton {
       iconText: root.glyph(0xF012C)
-      tooltipText: "Insert drawing"
+      tooltipText: root.tr("tip.insertDrawing")
       enabled: !sketchProcess.running
       foreground: root.foreground
       fontFamily: root.fontFamily
@@ -819,12 +857,12 @@ Panel {
           width: parent.width
           title: root.level === "folders" ? "Omanote"
                  : root.level === "list" ? root.folderName
-                 : root.level === "sketch" ? (root.sketchReplace !== "" ? "Edit drawing" : "Draw")
-                 : (root.noteEncrypted ? "Encrypted note" : Model.titleOfText(root.noteText))
-          meta: root.level === "folders" ? Model.count(root.folders.length, "folder", "folders")
-                : root.level === "list" ? (root.searching ? Model.count(root.results.length, "match", "matches")
-                                                          : Model.count(root.notes.length, "note", "notes"))
-                : root.level === "sketch" ? "Enter inserts · Esc cancels"
+                 : root.level === "sketch" ? (root.sketchReplace !== "" ? root.tr("title.editDrawing") : root.tr("title.draw"))
+                 : (root.noteEncrypted ? root.tr("note.encrypted") : Model.titleOfText(root.noteText, root.labels))
+          meta: root.level === "folders" ? root.countText("count.folders", root.folders.length)
+                : root.level === "list" ? (root.searching ? root.countText("count.matches", root.results.length)
+                                                          : root.countText("count.notes", root.notes.length))
+                : root.level === "sketch" ? root.tr("hint.sketch")
                 : root.noteMeta()
           foreground: root.foreground
           fontFamily: root.fontFamily
@@ -866,7 +904,7 @@ Panel {
           id: field
           visible: root.level === "list"
           width: parent.width
-          placeholderText: root.folderId === "" ? "Search, or type a new note…" : "Search " + root.folderName + ", or type a new note…"
+          placeholderText: root.folderId === "" ? root.tr("search.placeholderAll") : root.tr("search.placeholderIn").arg(root.folderName)
           foreground: root.foreground
           font.family: root.fontFamily
           enabled: !captureProcess.running
@@ -913,8 +951,8 @@ Panel {
           width: parent.width
           visible: root.level === "list" && (root.status !== "" || root.searching)
           text: root.status !== "" ? root.status
-                : (root.cursor >= 0 ? "Enter opens the note · Ctrl+Enter opens it in Omanote"
-                                    : "Enter saves it as a new note · ↓ to pick a note")
+                : (root.cursor >= 0 ? root.tr("hint.listPick")
+                                    : root.tr("hint.listNew"))
           color: root.failed ? root.urgent : root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -922,9 +960,10 @@ Panel {
         }
 
         Text {
+          textFormat: Text.PlainText
           visible: root.level === "list" && root.noteRows.length === 0
           width: parent.width
-          text: root.searching ? "No matching notes." : "No notes here yet."
+          text: root.searching ? root.tr("empty.search") : root.tr("empty.folder")
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
@@ -997,10 +1036,11 @@ Panel {
             spacing: 0
 
             Text {
+              textFormat: Text.PlainText
               visible: root.noteLoading
               width: parent.width
               padding: Style.spacing.controlPaddingX
-              text: "Loading…"
+              text: root.tr("status.loading")
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -1044,9 +1084,9 @@ Panel {
             textFormat: Text.PlainText
             Layout.fillWidth: true
             text: root.status !== "" ? root.status
-                  : (saveProcess.running || root.pendingSaves.length > 0) ? "Saving…"
-                  : root.dirty ? "Editing…"
-                  : "Saved as you type · Esc goes back"
+                  : (saveProcess.running || root.pendingSaves.length > 0) ? root.tr("status.saving")
+                  : root.dirty ? root.tr("status.editing")
+                  : root.tr("hint.note")
             color: root.failed || root.confirmTrash ? root.urgent : root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -1055,7 +1095,7 @@ Panel {
 
           PanelActionButton {
             iconText: root.glyph(0xF0F49)
-            tooltipText: "Draw (Ctrl+Shift+D)"
+            tooltipText: root.tr("tip.draw")
             enabled: !root.noteLoading && !root.noteEncrypted
             foreground: root.foreground
             fontFamily: root.fontFamily
@@ -1064,7 +1104,7 @@ Panel {
 
           PanelActionButton {
             iconText: root.glyph(0xF0A7A)
-            tooltipText: "Move to trash"
+            tooltipText: root.tr("tip.trash")
             enabled: !root.noteLoading && !root.noteEncrypted
             foreground: root.confirmTrash ? root.urgent : root.foreground
             hoverColor: root.urgent
@@ -1148,9 +1188,10 @@ Panel {
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.centerIn: parent
             visible: root.strokes.length === 0 && !root.liveStroke
-            text: "Draw here"
+            text: root.tr("canvas.empty")
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
@@ -1163,9 +1204,9 @@ Panel {
           width: parent.width
           spacing: Style.space(4)
 
-          ToolButton { glyphCode: 0xF03EA; tip: "Pen (P)"; active: root.inkTool === "pen"; onActivated: root.chooseTool("pen") }
-          ToolButton { glyphCode: 0xF0652; tip: "Marker (H)"; active: root.inkTool === "marker"; onActivated: root.chooseTool("marker") }
-          ToolButton { glyphCode: 0xF01FE; tip: "Eraser (E)"; active: root.inkTool === "erase"; onActivated: root.chooseTool("erase") }
+          ToolButton { glyphCode: 0xF03EA; tip: root.tr("tool.pen"); active: root.inkTool === "pen"; onActivated: root.chooseTool("pen") }
+          ToolButton { glyphCode: 0xF0652; tip: root.tr("tool.marker"); active: root.inkTool === "marker"; onActivated: root.chooseTool("marker") }
+          ToolButton { glyphCode: 0xF01FE; tip: root.tr("tool.eraser"); active: root.inkTool === "erase"; onActivated: root.chooseTool("erase") }
 
           Item { Layout.preferredWidth: Style.space(6); Layout.preferredHeight: 1 }
 
@@ -1194,7 +1235,7 @@ Panel {
 
           // Size: click cycles small / medium / large (keys 1-3).
           PanelActionButton {
-            tooltipText: "Size (1-3)"
+            tooltipText: root.tr("tool.size")
             iconText: ["S", "M", "L"][root.inkSize]
             fontSize: Style.font.caption
             foreground: root.foreground
@@ -1206,7 +1247,7 @@ Panel {
 
           PanelActionButton {
             iconText: root.glyph(0xF054C)
-            tooltipText: "Undo (Ctrl+Z)"
+            tooltipText: root.tr("tool.undo")
             enabled: root.strokes.length > 0
             foreground: root.foreground
             fontFamily: root.fontFamily
@@ -1215,7 +1256,7 @@ Panel {
 
           PanelActionButton {
             iconText: root.glyph(0xF0156)
-            tooltipText: "Clear"
+            tooltipText: root.tr("tool.clear")
             enabled: root.strokes.length > 0
             foreground: root.foreground
             hoverColor: root.urgent
@@ -1239,9 +1280,9 @@ Panel {
   }
 
   function noteMeta() {
-    if (noteLoading) return "Loading…"
-    var when = noteUpdated > 0 ? "Edited " + Model.rowDate(noteUpdated) : "New note"
-    var where = noteParent !== "" ? Model.folderTitle(folders, noteParent) : (folderId === "" ? "" : folderName)
+    if (noteLoading) return root.tr("status.loading")
+    var when = noteUpdated > 0 ? root.tr("note.edited").arg(Model.rowDate(noteUpdated, labels)) : root.tr("note.new")
+    var where = noteParent !== "" ? Model.folderTitle(folders, noteParent, labels) : (folderId === "" ? "" : folderName)
     return where !== "" ? when + " · " + where : when
   }
 
@@ -1284,7 +1325,7 @@ Panel {
       selectionColor: Style.selectionFillFor(root.foreground, Color.accent)
       selectedTextColor: root.foreground
       placeholderText: tb.blockIndex === 0 && root.blocks.length === 1
-                       ? (root.noteEncrypted ? "This note is encrypted: open it in Omanote." : "Write here. The first line is the title.")
+                       ? (root.noteEncrypted ? root.tr("note.encryptedHint") : root.tr("note.placeholder"))
                        : ""
       placeholderTextColor: root.dim
       leftPadding: Style.spacing.controlPaddingX
@@ -1414,7 +1455,7 @@ Panel {
     function load() {
       if (!picture || !picture.id) return
       if (resourceProcess.running) return
-      resourceProcess.command = ["omanote-cli", "resource", "--json", picture.id]
+      resourceProcess.command = [root.cli, "resource", "--json", picture.id]
       resourceProcess.running = true
     }
 
@@ -1435,7 +1476,7 @@ Panel {
           ib.sketchData = out.sketch || null
           ib.path = String(out.path)
         } else {
-          ib.problem = String(resourceErr.text || "").trim() || "Image not available"
+          ib.problem = String(resourceErr.text || "").trim() || root.tr("image.unavailable")
         }
       }
     }
@@ -1457,10 +1498,11 @@ Panel {
     }
 
     Text {
+      textFormat: Text.PlainText
       x: Style.spacing.controlPaddingX
       y: Style.space(4)
       visible: image.status !== Image.Ready
-      text: ib.problem !== "" ? ib.problem : "Loading image…"
+      text: ib.problem !== "" ? ib.problem : root.tr("image.loading")
       color: ib.problem !== "" ? root.urgent : root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
@@ -1500,7 +1542,7 @@ Panel {
         property bool hot: false
         visible: ib.editable
         iconText: root.glyph(0xF03EB)
-        tooltipText: "Edit drawing"
+        tooltipText: root.tr("tip.editDrawing")
         foreground: root.foreground
         fontFamily: root.fontFamily
         bordered: true
@@ -1512,7 +1554,7 @@ Panel {
         id: removeButton
         property bool hot: false
         iconText: root.glyph(0xF0156)
-        tooltipText: "Remove from the note"
+        tooltipText: root.tr("tip.removeImage")
         foreground: root.foreground
         hoverColor: root.urgent
         fontFamily: root.fontFamily
@@ -1571,7 +1613,9 @@ Panel {
 
       Text {
         textFormat: Text.PlainText
-        text: root.glyph(frow.folder && frow.folder.all ? 0xF06B9 : 0xF0256)
+        // A folder's Joplin emoji shows as the glyph the app draws for it.
+        text: root.glyph(frow.folder && frow.folder.all ? 0xF06B9
+                         : FolderGlyphs.codepoint(frow.folder ? frow.folder.icon : "", 0xF0256))
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -1581,7 +1625,7 @@ Panel {
         id: folderLabel
         textFormat: Text.PlainText
         Layout.fillWidth: true
-        text: frow.folder ? (frow.folder.title || "Untitled") : ""
+        text: frow.folder ? (frow.folder.title || root.tr("note.untitled")) : ""
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -1640,7 +1684,7 @@ Panel {
         Text {
           textFormat: Text.PlainText
           Layout.fillWidth: true
-          text: Model.title(row.note)
+          text: Model.title(row.note, root.labels)
           color: row.note && row.note.is_conflict ? root.urgent : root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
@@ -1661,7 +1705,7 @@ Panel {
 
       Text {
         textFormat: Text.PlainText
-        text: row.note ? Model.rowDate(row.note.updated_time) : ""
+        text: row.note ? Model.rowDate(row.note.updated_time, root.labels) : ""
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption

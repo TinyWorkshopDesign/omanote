@@ -25,6 +25,9 @@ pub struct FolderOut {
     pub note_count: i64,
     /// Nesting level below the working notebook.
     pub depth: usize,
+    /// The folder's emoji as Joplin stores it ("" when it has none); the app and the
+    /// bar plugin draw the matching glyph.
+    pub icon: String,
 }
 
 fn e(err: impl std::fmt::Display) -> String {
@@ -68,6 +71,7 @@ impl Ctx {
                     title: f.title.clone(),
                     note_count: f.note_count,
                     depth,
+                    icon: f.icon.clone(),
                 });
                 walk(all, &f.id, depth + 1, out);
             }
@@ -82,6 +86,7 @@ impl Ctx {
                 title: root.title.clone(),
                 note_count: root.note_count,
                 depth: 0,
+                icon: root.icon.clone(),
             });
             walk(&all, &root.id, 1, &mut out);
         }
