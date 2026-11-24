@@ -7,8 +7,13 @@
 #
 # macOS: one universal .dmg (Apple Silicon + Intel), ad-hoc signed only: it is not
 # notarized, so the first launch has to be allowed in System Settings.
-# Linux: AppImage, .deb and .rpm, built on the oldest supported Ubuntu so the
-# AppImage runs on older glibc versions too.
+# Linux: AppImage, .deb and .rpm for x86_64 and ARM64 (aarch64, on GitHub's ARM
+# runners), built on the oldest supported Ubuntu so the AppImage runs on older glibc
+# versions too.
+#
+# Run by hand with "platforms: linux-arm64" to add only the ARM64 Linux bundles to an
+# existing draft release (the version in tauri.conf.json names it): latest.json keeps
+# the platforms already listed and gains linux-aarch64.
 
 name: release
 
@@ -16,6 +21,12 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Which bundles to build
+        type: choice
+        options: [all, linux-arm64]
+        default: all
 
 permissions:
   contents: write
@@ -25,11 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: macos-latest
-            args: --target universal-apple-darwin
-          - platform: ubuntu-22.04
-            args: ""
+        include: ${{ fromJSON(inputs.platforms == 'linux-arm64' && '[{"platform":"ubuntu-22.04-arm","args":""}]' || '[{"platform":"macos-latest","args":"--target universal-apple-darwin"},{"platform":"ubuntu-22.04","args":""},{"platform":"ubuntu-22.04-arm","args":""}]') }}
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4

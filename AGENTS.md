@@ -371,7 +371,9 @@ its history. Do not name other note apps as models or references (code, docs, co
   check that Linux still compiles when the dev machine is a Mac.
 - Public builds: pushing a tag `vX.Y.Z` (matching `version` in `app/src-tauri/tauri.conf.json`)
   runs `.github/workflows/release.yml`, which builds a universal macOS `.dmg` (ad-hoc signed,
-  not notarized) and Linux AppImage/.deb/.rpm and attaches them to a **draft** release (not marked pre-release, so `/releases/latest` keeps working);
+  not notarized) and Linux AppImage/.deb/.rpm for x86_64 and ARM64 (`ubuntu-22.04-arm`,
+  added 2026-11-24; running the workflow by hand with `platforms: linux-arm64` adds only
+  the ARM64 bundles to an existing draft) and attaches them to a **draft** release (not marked pre-release, so `/releases/latest` keeps working);
   check the assets, write what is new at the top of the draft (the fixed body has only the
   install notes), then publish it.
 - Omarchy channels (checked 2026-11-11 against the packages `omarchy` 4.5.0, stable, and
