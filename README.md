@@ -19,8 +19,9 @@ Get the latest build from **[Releases](https://github.com/TinyWorkshopDesign/oma
 - **macOS** (Apple Silicon and Intel): open the `.dmg` and drag Omanote to Applications. The
   app is not notarized by Apple yet, so the first launch is blocked: open System Settings →
   Privacy & Security and click **Open Anyway**.
-- **Linux**: the `.AppImage` runs on most distributions (`chmod +x Omanote*.AppImage`; on
-  Arch and Omarchy install `fuse2` first). `.deb` and `.rpm` packages are there too.
+- **Linux** (`amd64`/`x86_64` for Intel and AMD PCs, `arm64`/`aarch64` for ARM): the
+  `.AppImage` runs on most distributions (`chmod +x Omanote*.AppImage`; it needs FUSE 3,
+  `fuse3`, which most desktops already have). `.deb` and `.rpm` packages are there too.
 - Or build it from source (see [Development](#development)).
 
 From the version after 0.2.0 the macOS app and the Linux AppImage **update themselves**:
