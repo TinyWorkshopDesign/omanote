@@ -75,12 +75,14 @@ fn take_opt(args: &mut Vec<String>, name: &str) -> Option<String> {
     (i < args.len()).then(|| args.remove(i))
 }
 
-/// Text from the remaining args, or stdin when it is "-" or missing.
+/// Text from the remaining args, or stdin when it is "-" or missing. Programs should
+/// send note text over stdin: other accounts can read a process's arguments.
+/// Only the one newline that ends the input is dropped, so a note may end in blank lines.
 fn text_arg(rest: &[String]) -> Result<String, String> {
     if rest.is_empty() || rest == ["-"] {
         let mut s = String::new();
         std::io::stdin().read_to_string(&mut s).map_err(|e| e.to_string())?;
-        Ok(s.trim_end_matches('\n').to_string())
+        Ok(s.strip_suffix('\n').unwrap_or(&s).to_string())
     } else {
         Ok(rest.join(" "))
     }

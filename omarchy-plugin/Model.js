@@ -171,14 +171,6 @@ function folderTitle(folders, id, L) {
 
 // ---------------------------------------------------------------- the CLI
 
-// omanote-cli joins the text arguments, reads stdin when the text is "-" and
-// takes "--json", "--folder", "-h" and "--help" as options wherever they are: never pass those
-// alone as a note's text.
-function cliText(text) {
-  var t = String(text || "")
-  return (t === "-" || t === "--json" || t === "--folder" || t === "-h" || t === "--help") ? t + "\n" : t
-}
-
 // ------------------------------------------------------------ note blocks
 
 // A line holding only attachment images (one or more, as the app allows):
