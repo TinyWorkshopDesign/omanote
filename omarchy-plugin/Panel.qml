@@ -7,6 +7,7 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
+import "FolderGlyphs.js" as FolderGlyphs
 
 // Omanote in the Omarchy bar. The panel works like the app on a phone, a
 // navigation stack Folders -> Notes -> Note:
@@ -1608,7 +1609,9 @@ Panel {
 
       Text {
         textFormat: Text.PlainText
-        text: root.glyph(frow.folder && frow.folder.all ? 0xF06B9 : 0xF0256)
+        // A folder's Joplin emoji shows as the glyph the app draws for it.
+        text: root.glyph(frow.folder && frow.folder.all ? 0xF06B9
+                         : FolderGlyphs.codepoint(frow.folder ? frow.folder.icon : "", 0xF0256))
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
